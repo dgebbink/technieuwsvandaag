@@ -20,6 +20,9 @@ class WordPressClient:
     """Client voor de WordPress REST API (wp/v2)."""
 
     def __init__(self) -> None:
+        """Initialise WordPress REST client with Basic-Auth session."""
+        # pre: WP_URL, WP_USERNAME, WP_APP_PASSWORD are configured
+        # post: self.session carries Authorization header
         self.base_url = WP_URL.rstrip("/") + "/wp-json/wp/v2"
 
         credentials = f"{WP_USERNAME}:{WP_APP_PASSWORD}"
@@ -39,7 +42,9 @@ class WordPressClient:
     # ------------------------------------------------------------------
 
     def get_or_create_category(self, name: str) -> Optional[int]:
-        """Geef de ID van de categorie. Maakt een nieuwe aan als die niet bestaat."""
+        """Return category ID by name, creating it if absent."""
+        # pre: name is non-empty
+        # post: returns None only on unrecoverable API error
         try:
             # Zoek op naam (werkt mogelijk niet voor namen met & of speciale tekens)
             resp = self.session.get(
@@ -91,7 +96,9 @@ class WordPressClient:
     # ------------------------------------------------------------------
 
     def get_or_create_tags(self, keywords: str) -> list[int]:
-        """Geef tag-IDs voor komma-gescheiden trefwoorden. Maakt ontbrekende tags aan."""
+        """Return tag IDs for comma-separated keywords, creating missing ones."""
+        # pre: keywords is a comma-separated string
+        # post: may return fewer IDs than keywords on partial failure
         tag_ids: list[int] = []
 
         for keyword in keywords.split(","):
@@ -135,10 +142,9 @@ class WordPressClient:
         image_path: str,
         filename: str = "featured-image.jpg",
     ) -> Optional[dict]:
-        """
-        Upload een lokale afbeelding naar de WordPress media-bibliotheek.
-        Geeft {'id': int, 'url': str} terug of None bij mislukking.
-        """
+        """Upload a local image to the WordPress media library; return {id, url} or None."""
+        # pre: image_path exists on disk
+        # post: returns None on upload failure or missing file
         path = Path(image_path)
         if not path.exists():
             logger.warning("Afbeeldingsbestand niet gevonden: %s", image_path)
@@ -179,10 +185,9 @@ class WordPressClient:
         article: ProcessedArticle,
         dry_run: bool = False,
     ) -> Optional[dict]:
-        """
-        Maak een WordPress draft-post aan.
-        Geeft een dict terug met 'id', 'preview_url' en 'title'.
-        """
+        """Publish article to WordPress; return {id, preview_url, title} or None."""
+        # pre: article.original.url and pub_date are valid
+        # post: returns None on any WordPress API failure
         if dry_run:
             logger.info("[DRY RUN] Zou draft aanmaken: %s", article.titel1)
             return {
@@ -295,10 +300,9 @@ def publish_articles(
     processed_articles: list[ProcessedArticle],
     dry_run: bool = False,
 ) -> list[dict]:
-    """
-    Verwerk alle ProcessedArticle-objecten en maak WordPress drafts aan.
-    Geeft een lijst van dicts terug: {'article': ProcessedArticle, 'post': dict}.
-    """
+    """Create WordPress posts for all articles; return list of {article, post} dicts."""
+    # pre: processed_articles is non-empty
+    # post: failed posts are logged and excluded from result
     client = WordPressClient()
     results: list[dict] = []
 

@@ -55,14 +55,17 @@ class Article:
 # ---------------------------------------------------------------------------
 
 def load_posted_urls() -> set[str]:
-    """Laad de set van al-geposte artikel-URLs."""
+    """Return the set of already-posted article URLs from file."""
+    # pre: POSTED_URLS_FILE path is configured
+    # post: returns empty set if file absent
     if not POSTED_URLS_FILE.exists():
         return set()
     return set(line.strip() for line in POSTED_URLS_FILE.read_text().splitlines() if line.strip())
 
 
 def save_posted_url(url: str) -> None:
-    """Voeg een URL toe aan posted_urls.txt."""
+    """Append url to posted_urls.txt."""
+    # pre: url is non-empty
     with open(POSTED_URLS_FILE, "a", encoding="utf-8") as f:
         f.write(url.strip() + "\n")
 
@@ -72,6 +75,8 @@ def save_posted_url(url: str) -> None:
 # ---------------------------------------------------------------------------
 
 def _get_headers() -> dict[str, str]:
+    """Return HTTP request headers for scraping."""
+    # post: always includes User-Agent and Accept keys
     return {
         "User-Agent": USER_AGENT,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -80,6 +85,8 @@ def _get_headers() -> dict[str, str]:
 
 
 def _make_session() -> requests.Session:
+    """Create a requests.Session pre-configured with scraping headers."""
+    # post: session.headers includes User-Agent
     session = requests.Session()
     session.headers.update(_get_headers())
     return session
@@ -90,10 +97,9 @@ def _make_session() -> requests.Session:
 # ---------------------------------------------------------------------------
 
 def try_rss_feed(base_url: str) -> Optional[feedparser.FeedParserDict]:
-    """
-    Probeer veelgebruikte RSS-feed-paden voor een gegeven basis-URL.
-    Geeft de eerste werkende feed terug, of None als geen gevonden.
-    """
+    """Probe common RSS paths for base_url; return first feed with entries or None."""
+    # pre: base_url is a valid http(s) URL
+    # post: returned feed has >= 1 entry, or None
     parsed = urlparse(base_url)
     root = f"{parsed.scheme}://{parsed.netloc}"
 
@@ -124,7 +130,8 @@ def try_rss_feed(base_url: str) -> Optional[feedparser.FeedParserDict]:
 # ---------------------------------------------------------------------------
 
 def _image_from_entry(entry: feedparser.FeedParserDict) -> Optional[str]:
-    """Haal afbeeldings-URL op uit feed-entry metadata."""
+    """Extract image URL from feed entry metadata."""
+    # post: returns None if no image found in any metadata field
     if hasattr(entry, "media_thumbnail") and entry.media_thumbnail:
         return entry.media_thumbnail[0].get("url")
 
@@ -153,7 +160,9 @@ def _image_from_entry(entry: feedparser.FeedParserDict) -> Optional[str]:
 
 
 def extract_image_from_page(url: str, session: requests.Session) -> Optional[str]:
-    """Haal og:image of eerste relevante <img> op van een artikelpagina."""
+    """Fetch og:image or first article <img> from a page URL."""
+    # pre: session is a configured requests.Session
+    # post: returns absolute URL or None on failure
     try:
         resp = session.get(url, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
@@ -188,10 +197,9 @@ def extract_image_from_page(url: str, session: requests.Session) -> Optional[str
 # ---------------------------------------------------------------------------
 
 def fetch_article_text(url: str, session: Optional[requests.Session] = None) -> str:
-    """
-    Haal de volledige tekst van een artikel op via HTTP en extraheer
-    de hoofdinhoud. Geeft maximaal 4000 tekens terug.
-    """
+    """Fetch and return up to 4000 chars of main text from an article URL."""
+    # pre: url points to an HTML page
+    # post: returns empty string on error or non-HTML content type
     if session is None:
         session = _make_session()
     try:
@@ -230,7 +238,8 @@ def fetch_article_text(url: str, session: Optional[requests.Session] = None) -> 
 # ---------------------------------------------------------------------------
 
 def _parse_date(entry: feedparser.FeedParserDict) -> datetime:
-    """Haal publicatiedatum op uit een feed-entry."""
+    """Parse publication datetime from a feed entry; fallback to now()."""
+    # post: always returns a timezone-aware UTC datetime
     for attr in ("published_parsed", "updated_parsed"):
         val = getattr(entry, attr, None)
         if val:
@@ -246,7 +255,9 @@ def parse_feed_articles(
     source: str,
     cutoff: datetime,
 ) -> list[Article]:
-    """Zet feed-entries om naar Article-objecten en filter op datum."""
+    """Convert feed entries to Article objects filtered to after cutoff."""
+    # pre: cutoff is timezone-aware; feed.entries is iterable
+    # post: all returned articles have pub_date >= cutoff
     articles: list[Article] = []
 
     for entry in feed.entries:
@@ -298,10 +309,9 @@ def scrape_html_fallback(
     session: requests.Session,
     cutoff: datetime,
 ) -> list[Article]:
-    """
-    Eenvoudige HTML-scraper als er geen RSS-feed beschikbaar is.
-    Zoekt op heuristiek naar artikel-links.
-    """
+    """Scrape article links heuristically from an HTML page (no-RSS fallback)."""
+    # pre: url is a reachable HTML page
+    # post: at most 10 articles returned; pub_date set to now()
     articles: list[Article] = []
     try:
         logger.info("HTML-fallback scraping voor: %s", url)
@@ -356,7 +366,9 @@ def scrape_html_fallback(
 # ---------------------------------------------------------------------------
 
 def download_image(url: str, dest_path: str = "/tmp/artikel_image.jpg") -> Optional[str]:
-    """Download een afbeelding naar een lokaal pad. Geeft pad terug of None bij mislukking."""
+    """Download image from url to dest_path; return dest_path or None on failure."""
+    # pre: url points to an image resource
+    # post: file written at dest_path on success
     try:
         session = _make_session()
         resp = session.get(url, timeout=REQUEST_TIMEOUT, stream=True)
@@ -383,7 +395,9 @@ def download_image(url: str, dest_path: str = "/tmp/artikel_image.jpg") -> Optio
 # ---------------------------------------------------------------------------
 
 def load_sources() -> list[str]:
-    """Laad en normaliseer bronnen uit sources.txt."""
+    """Load and normalise source URLs from sources.txt."""
+    # pre: SOURCES_FILE is a readable UTF-8 file
+    # post: each returned entry starts with 'http'
     if not SOURCES_FILE.exists():
         logger.error("sources.txt niet gevonden: %s", SOURCES_FILE)
         return []
@@ -409,15 +423,9 @@ def scrape_all_sources(
     lookback_days: int = 1,
     max_articles: Optional[int] = MAX_ARTICLES_FOR_SELECTION,
 ) -> list[Article]:
-    """
-    Scrape alle geconfigureerde bronnen. Geeft een lijst van nieuwe artikelen
-    terug die nog niet in posted_urls.txt staan.
-
-    Args:
-        test_source:   Optioneel domein om slechts één bron te testen.
-        lookback_days: Aantal dagen terug om artikelen te zoeken (standaard 1 = 24 uur).
-        max_articles:  Maximaal aantal artikelen terug te geven (None = geen limiet).
-    """
+    """Scrape all configured sources; return new articles not yet in posted_urls."""
+    # pre: lookback_days >= 1
+    # post: result sorted newest-first; already-posted URLs excluded
     sources = load_sources()
 
     if test_source:

@@ -23,6 +23,9 @@ from pathlib import Path
 
 
 def _setup_logging(logs_dir: Path) -> logging.Logger:
+    """Configure file + stdout logging for backfill; return module logger."""
+    # pre: logs_dir parent is writable
+    # post: log file created at logs_dir/backfill_{timestamp}.log
     logs_dir.mkdir(parents=True, exist_ok=True)
     date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_file = logs_dir / f"backfill_{date_str}.log"
@@ -60,10 +63,9 @@ from wordpress_client import WordPressClient  # noqa: E402
 # ---------------------------------------------------------------------------
 
 def group_by_interval(articles: list[Article], interval_days: int) -> dict[int, list[Article]]:
-    """
-    Groepeer artikelen in blokken van interval_days dagen.
-    De sleutel is het aantal volledige intervallen geleden (0 = meest recent).
-    """
+    """Group articles into interval_days buckets; key = periods ago (0 = most recent)."""
+    # pre: interval_days >= 1; all articles have timezone-aware pub_date
+    # post: bucket keys are non-negative integers
     now = datetime.now(timezone.utc)
     buckets: dict[int, list[Article]] = {}
 
@@ -83,7 +85,9 @@ def select_best_in_bucket(
     articles: list[Article],
     client: anthropic.Anthropic,
 ) -> Article:
-    """Laat Claude het meest nieuwswaardige artikel kiezen uit een blok."""
+    """Ask Claude to pick the most newsworthy article from a bucket; fallback to first."""
+    # pre: len(articles) >= 1; client is authenticated
+    # post: always returns a valid Article from the input list
     if len(articles) == 1:
         return articles[0]
 
@@ -122,6 +126,8 @@ def select_best_in_bucket(
 # ---------------------------------------------------------------------------
 
 def _domain(url: str) -> str:
+    """Return the netloc (domain) from a URL string."""
+    # post: returns url unchanged on parse failure
     try:
         from urllib.parse import urlparse
         return urlparse(url).netloc or url
@@ -134,6 +140,8 @@ def _domain(url: str) -> str:
 # ---------------------------------------------------------------------------
 
 def main() -> int:
+    """Run the backfill pipeline: scrape → group → select → process → publish."""
+    # post: returns 0 on success, 1 on fatal error
     parser = argparse.ArgumentParser(
         description="TechNieuwsVandaag Backfill — historische berichten genereren",
         formatter_class=argparse.RawDescriptionHelpFormatter,

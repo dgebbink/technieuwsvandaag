@@ -49,10 +49,9 @@ class ProcessedArticle:
 # ---------------------------------------------------------------------------
 
 def _extract_json(text: str) -> object:
-    """
-    Parseer JSON uit Claude-output, ook als deze in een markdown-codeblok staat.
-    Gooit json.JSONDecodeError als parsing mislukt.
-    """
+    """Parse JSON from Claude output, stripping markdown code fences if present."""
+    # pre: text contains a JSON object or array, possibly fenced
+    # post: raises json.JSONDecodeError if no valid JSON found
     # Probeer JSON uit een ```json ... ``` blok te halen
     match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
     if match:
@@ -72,10 +71,9 @@ def _extract_json(text: str) -> object:
 # ---------------------------------------------------------------------------
 
 def select_articles(articles: list[Article], client: anthropic.Anthropic) -> list[int]:
-    """
-    Vraag Claude om de 2 meest relevante artikelen te selecteren.
-    Geeft een lijst van 0-gebaseerde indices terug.
-    """
+    """Ask Claude to pick the 2 most newsworthy articles; return 0-based indices."""
+    # pre: len(articles) >= 2; client is authenticated
+    # post: returns 1–2 valid indices; raises InsufficientCreditsError on low balance
     article_list = "\n".join(
         f"{i + 1}. [{_domain(a.source)}] {a.title}\n   {a.excerpt[:250]}"
         for i, a in enumerate(articles)
@@ -126,10 +124,9 @@ def select_articles(articles: list[Article], client: anthropic.Anthropic) -> lis
 # ---------------------------------------------------------------------------
 
 def process_article(article: Article, client: anthropic.Anthropic) -> Optional[ProcessedArticle]:
-    """
-    Genereer een Nederlandse samenvatting, twee titels, trefwoorden en categorie
-    voor het gegeven artikel.
-    """
+    """Generate Dutch summary, titles, keywords and categories for one article."""
+    # pre: article.url is reachable; client is authenticated
+    # post: returns None on any API or parse failure
     categories_str = ", ".join(CATEGORIES)
 
     # Haal artikeltekst op als excerpt te kort is
@@ -216,10 +213,9 @@ def process_article(article: Article, client: anthropic.Anthropic) -> Optional[P
 # ---------------------------------------------------------------------------
 
 def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
-    """
-    Selecteer de 2 beste artikelen en genereer voor elk een volledige verwerking.
-    Geeft een lijst van maximaal 2 ProcessedArticle-objecten terug.
-    """
+    """Select top 2 articles and generate full Dutch processing for each."""
+    # pre: ANTHROPIC_API_KEY is set; len(articles) >= 1
+    # post: returns at most 2 ProcessedArticle objects
     if not ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY is niet ingesteld in .env")
 
@@ -262,7 +258,8 @@ def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
 # ---------------------------------------------------------------------------
 
 def _domain(url: str) -> str:
-    """Geeft het domein terug uit een URL."""
+    """Return the netloc (domain) from a URL string."""
+    # post: returns url unchanged on parse failure
     try:
         from urllib.parse import urlparse
         return urlparse(url).netloc or url

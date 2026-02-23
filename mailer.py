@@ -30,7 +30,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _article_section(index: int, data: dict) -> str:
-    """Bouw een HTML-sectie voor één artikel."""
+    """Render one article as an HTML email card."""
+    # pre: data contains 'article' (ProcessedArticle) and 'post' (dict with preview_url)
+    # post: returns a valid HTML string
     article: ProcessedArticle = data["article"]
     post: dict = data["post"]
 
@@ -87,7 +89,8 @@ def build_html_email(
     date_str: str,
     warning_message: str = "",
 ) -> str:
-    """Bouw de volledige HTML-mailbody op."""
+    """Assemble the full HTML email body from article sections."""
+    # post: always returns a complete HTML document string
     sections = "".join(
         _article_section(i, data) for i, data in enumerate(articles_data, start=1)
     )
@@ -139,7 +142,8 @@ def build_html_email(
 # ---------------------------------------------------------------------------
 
 def _save_email_to_file(subject: str, html_body: str, date_str: str) -> None:
-    """Sla de mail op als HTML-bestand in de logs-map (fallback)."""
+    """Save email HTML to a fallback file in LOGS_DIR."""
+    # post: file written to LOGS_DIR/email_fallback_{date_str}.html
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     safe_date = date_str.replace(" ", "_").replace(":", "-").replace("/", "-")
     filepath = LOGS_DIR / f"email_fallback_{safe_date}.html"
@@ -153,10 +157,9 @@ def _save_email_to_file(subject: str, html_body: str, date_str: str) -> None:
 # ---------------------------------------------------------------------------
 
 def send_balance_warning() -> None:
-    """
-    Verstuur een urgente HTML-mail wanneer het Anthropic tegoed op is.
-    Valt terug op bestandsopslag als SMTP niet beschikbaar of mislukt.
-    """
+    """Send an urgent email warning that the Anthropic credit balance is depleted."""
+    # pre: SMTP_HOST and NOTIFICATION_EMAIL are configured
+    # post: falls back to file save if SMTP fails
     date_str = datetime.now().strftime("%d-%m-%Y %H:%M")
     subject = f"⚠ [TechNieuwsVandaag] Anthropic tegoed op — actie vereist! ({date_str})"
 
@@ -235,10 +238,9 @@ def send_notification(
     warning_message: str = "",
     dry_run: bool = False,
 ) -> None:
-    """
-    Verstuur een HTML-notificatiemail naar het geconfigureerde adres.
-    Valt terug op bestandsopslag als SMTP niet beschikbaar of mislukt.
-    """
+    """Send HTML notification email; fall back to file on SMTP failure."""
+    # pre: NOTIFICATION_EMAIL is set
+    # post: email sent or saved to LOGS_DIR as fallback
     date_str = datetime.now().strftime("%d-%m-%Y %H:%M")
     count = len(articles_data)
 

@@ -21,7 +21,9 @@ from pathlib import Path
 
 
 def _setup_logging(logs_dir: Path) -> logging.Logger:
-    """Configureer logging naar bestand en stdout."""
+    """Configure file + stdout logging; return module logger."""
+    # pre: logs_dir parent is writable
+    # post: log file created at logs_dir/run_{timestamp}.log
     logs_dir.mkdir(parents=True, exist_ok=True)
     date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_file = logs_dir / f"run_{date_str}.log"
@@ -50,6 +52,8 @@ from wordpress_client import publish_articles  # noqa: E402
 
 
 def _parse_args() -> argparse.Namespace:
+    """Parse and return CLI arguments."""
+    # post: args.lookback_days >= 1 (default 1)
     parser = argparse.ArgumentParser(
         description="TechNieuwsVandaag — automatisch nieuws scrapen en publiceren",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -77,9 +81,8 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    """
-    Hoofd-pijplijn. Geeft 0 terug bij succes, 1 bij fatale fout.
-    """
+    """Run the full scrape → AI → publish → notify pipeline; return exit code."""
+    # post: returns 0 on success, 1 on fatal error
     args = _parse_args()
 
     if args.dry_run:
