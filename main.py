@@ -43,8 +43,8 @@ from config import LOGS_DIR  # noqa: E402
 
 logger = _setup_logging(LOGS_DIR)
 
-from ai_processor import process_articles  # noqa: E402
-from mailer import send_notification  # noqa: E402
+from ai_processor import InsufficientCreditsError, process_articles  # noqa: E402
+from mailer import send_balance_warning, send_notification  # noqa: E402
 from scraper import download_image, fetch_article_text, save_posted_url, scrape_all_sources  # noqa: E402
 from wordpress_client import publish_articles  # noqa: E402
 
@@ -128,6 +128,10 @@ def main() -> int:
     logger.info("── Stap 2: AI-verwerking via Claude ──")
     try:
         processed_articles = process_articles(articles)
+    except InsufficientCreditsError as exc:
+        logger.critical("Anthropic tegoed op: %s", exc)
+        send_balance_warning()
+        return 1
     except Exception as exc:
         logger.critical("AI-verwerking volledig mislukt: %s", exc)
         send_notification(

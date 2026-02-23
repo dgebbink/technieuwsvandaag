@@ -149,6 +149,84 @@ def _save_email_to_file(subject: str, html_body: str, date_str: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Urgente balans-waarschuwing
+# ---------------------------------------------------------------------------
+
+def send_balance_warning() -> None:
+    """
+    Verstuur een urgente HTML-mail wanneer het Anthropic tegoed op is.
+    Valt terug op bestandsopslag als SMTP niet beschikbaar of mislukt.
+    """
+    date_str = datetime.now().strftime("%d-%m-%Y %H:%M")
+    subject = f"⚠ [TechNieuwsVandaag] Anthropic tegoed op — actie vereist! ({date_str})"
+
+    html_body = f"""<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>Anthropic tegoed op</title>
+</head>
+<body style="font-family:Arial,Helvetica,sans-serif; max-width:600px; margin:0 auto;
+             padding:20px; background:#f0f2f5;">
+  <div style="background:#d32f2f; color:#ffffff; padding:24px 28px;
+              border-radius:8px 8px 0 0;">
+    <h1 style="margin:0; font-size:22px;">⚠ Anthropic tegoed op</h1>
+    <p style="margin:6px 0 0; opacity:0.9;">{date_str}</p>
+  </div>
+  <div style="background:#ffffff; padding:24px 28px; border-radius:0 0 8px 8px;
+              box-shadow:0 1px 3px rgba(0,0,0,.08);">
+    <p style="font-size:16px; color:#333;">
+      Het Anthropic API-tegoed is <strong>te laag</strong> om nieuwe artikelen te verwerken.
+      De TechNieuwsVandaag Bot is gestopt en er zijn <strong>geen artikelen gepubliceerd</strong>.
+    </p>
+    <p style="color:#555;">
+      Herlaad het tegoed via
+      <a href="https://console.anthropic.com/settings/billing" style="color:#1a73e8;">
+        console.anthropic.com → Plans &amp; Billing
+      </a>
+      en start de bot daarna handmatig opnieuw als je de gemiste dag wil inhalen:
+    </p>
+    <pre style="background:#f5f5f5; padding:12px; border-radius:4px; font-size:13px;">
+cd /home/dgebbink/projects/technieuwsvandaag
+python3 main.py --lookback-days 2</pre>
+    <hr style="border:none; border-top:1px solid #e8e8e8; margin:24px 0 16px;">
+    <p style="color:#aaa; font-size:12px; text-align:center; margin:0;">
+      Automatisch gegenereerd door TechNieuwsVandaag-Bot op {date_str}
+    </p>
+  </div>
+</body>
+</html>"""
+
+    if SMTP_HOST:
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = formataddr((SMTP_DISPLAY_NAME, SMTP_USERNAME))
+            msg["To"] = NOTIFICATION_EMAIL
+            msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
+                server.ehlo()
+                server.starttls()
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                server.sendmail(SMTP_USERNAME, [NOTIFICATION_EMAIL], msg.as_string())
+
+            logger.info("Balans-waarschuwingsmail verstuurd naar %s", NOTIFICATION_EMAIL)
+            return
+
+        except smtplib.SMTPAuthenticationError as exc:
+            logger.error("SMTP authenticatie mislukt: %s", exc)
+        except smtplib.SMTPException as exc:
+            logger.error("SMTP-fout: %s", exc)
+        except Exception as exc:
+            logger.error("Onverwachte mail-fout: %s", exc)
+    else:
+        logger.warning("SMTP_HOST niet geconfigureerd — fallback naar bestand")
+
+    _save_email_to_file(subject, html_body, date_str)
+
+
+# ---------------------------------------------------------------------------
 # Hoofd-functie
 # ---------------------------------------------------------------------------
 

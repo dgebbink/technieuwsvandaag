@@ -16,6 +16,10 @@ from scraper import Article, fetch_article_text
 
 logger = logging.getLogger(__name__)
 
+
+class InsufficientCreditsError(Exception):
+    """Opgegooid wanneer het Anthropic API-tegoed te laag is om een verzoek uit te voeren."""
+
 # Beschikbare WordPress-categorieën
 CATEGORIES: list[str] = [
     "Aankondiging", "AI", "AI & Innovatie", "Amazon", "API", "Apple", "ASML",
@@ -88,11 +92,16 @@ def select_articles(articles: list[Article], client: anthropic.Anthropic) -> lis
         f"Artikelen:\n{article_list}"
     )
 
-    message = client.messages.create(
-        model=MODEL,
-        max_tokens=50,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    try:
+        message = client.messages.create(
+            model=MODEL,
+            max_tokens=50,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except anthropic.APIError as exc:
+        if "credit" in str(exc).lower():
+            raise InsufficientCreditsError(str(exc)) from exc
+        raise
 
     response_text = message.content[0].text  # type: ignore[union-attr]
     result = _extract_json(response_text)
@@ -158,11 +167,16 @@ def process_article(article: Article, client: anthropic.Anthropic) -> Optional[P
     )
 
     try:
-        message = client.messages.create(
-            model=MODEL,
-            max_tokens=1500,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        try:
+            message = client.messages.create(
+                model=MODEL,
+                max_tokens=1500,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        except anthropic.APIError as exc:
+            if "credit" in str(exc).lower():
+                raise InsufficientCreditsError(str(exc)) from exc
+            raise
 
         response_text = message.content[0].text  # type: ignore[union-attr]
         data = _extract_json(response_text)
@@ -223,6 +237,8 @@ def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
         try:
             selected_indices = select_articles(articles, client)
             logger.info("Claude selecteerde indices: %s", selected_indices)
+        except InsufficientCreditsError:
+            raise  # doorsturen naar aanroeper voor urgente melding
         except Exception as exc:
             logger.error("Artikel-selectie mislukt, val terug op eerste twee: %s", exc)
             selected_indices = [0, 1]
