@@ -42,6 +42,8 @@ MAX_ARTICLES_FOR_SELECTION: int = 50
 # Afbeeldingsstrategie: 'generate' (FAL.ai) of 'scrape' (og:image van bron)
 IMAGE_STRATEGY: str = os.environ.get("IMAGE_STRATEGY", "generate")
 FAL_API_KEY: str = os.environ.get("FAL_API_KEY", "")
+# Waarschuwingsdrempel voor FAL.ai tegoed (in dollars); 0 schakelt de check uit
+FAL_CREDIT_THRESHOLD: float = float(os.environ.get("FAL_CREDIT_THRESHOLD", "2.0"))
 
 # Social media
 ENABLE_SOCIAL_POSTING: bool = os.environ.get("ENABLE_SOCIAL_POSTING", "false").lower() == "true"

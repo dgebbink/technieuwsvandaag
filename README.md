@@ -173,6 +173,7 @@ dutchcowboys.nl|https://www.dutchcowboys.nl/sitemap/news.xml
 | `ENABLE_SOCIAL_POSTING` | `true` om automatisch naar Bluesky te posten | `false` |
 | `BLUESKY_HANDLE` | Je Bluesky handle (bijv. `technieuwsvandaag.bsky.social`) | — |
 | `BLUESKY_APP_PASSWORD` | Bluesky App Password (Instellingen → App Passwords) | — |
+| `FAL_CREDIT_THRESHOLD` | Stuur waarschuwingsmail als FAL.ai tegoed onder dit bedrag (USD) valt; `0` schakelt uit | `2.0` |
 
 ---
 
@@ -186,6 +187,7 @@ dutchcowboys.nl|https://www.dutchcowboys.nl/sitemap/news.xml
 | `ANTHROPIC_API_KEY` fout | Controleer sleutel op console.anthropic.com |
 | Meta-veld waarschuwing | Voeg `register_post_meta` toe aan WordPress (zie hierboven) |
 | FAL.ai timeout | FAL.ai kan 60-90 sec nodig hebben; verhoog timeout in `image_generator.py` |
+| FAL.ai tegoed laag | Je ontvangt automatisch een waarschuwingsmail; herlaad via fal.ai → Dashboard → Billing |
 | `atproto` niet gevonden | Voer `pip install atproto` uit |
 
 ---
@@ -249,10 +251,26 @@ Upload naar WordPress Mediabibliotheek en stel in als standaard Featured Image v
 .cat-hardware .entry-category { background: #f59e0b; }
 ```
 
-**Favicon:**
-Genereer een favicon via FAL.ai (prompt: *"Minimalist tech news logo, blue circuit board pattern, square icon, flat design, no text"*) en implementeer via:
-- WordPress-admin → Weergave → Aanpassen → Site-identiteit → Siteicoon
-- Aanbevolen formaat: 512×512px PNG
+**Favicon genereren via FAL.ai:**
+
+1. Genereer de afbeelding via het script of handmatig:
+   ```bash
+   python - <<'EOF'
+   from image_generator import generate_fal_image
+   generate_fal_image(
+       "Minimalist tech news logo, blue circuit board pattern, square icon, flat design, no text, white background",
+       "assets/favicon_source.png"
+   )
+   EOF
+   ```
+2. Converteer naar 512×512 PNG (Pillow):
+   ```bash
+   python -c "from PIL import Image; Image.open('assets/favicon_source.png').resize((512,512)).save('assets/favicon.png')"
+   ```
+3. Implementeer in WordPress: **Weergave → Aanpassen → Site-identiteit → Siteicoon**
+   - Upload `assets/favicon.png` (minimaal 512×512px)
+   - WordPress snijdt automatisch bij voor diverse formaten (32×32, 180×180 Apple Touch)
+4. Controleer resultaat via `technieuwsvandaag.nl/favicon.ico`
 
 ---
 

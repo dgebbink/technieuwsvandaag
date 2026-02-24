@@ -1,0 +1,140 @@
+<!--
+  WordPress-pagina: "Colofon"
+  Kopieer de inhoud hieronder naar de WordPress-editor in de HTML-modus.
+  Datum wordt statisch ingevuld; pas handmatig aan bij grote wijzigingen.
+
+  SEO meta description (instellen via Yoast / RankMath):
+  "Lees hoe TechNieuwsVandaag.nl werkt: AI-gegenereerde Nederlandstalige
+   tech-samenvattingen, gereviewd door een menselijke redacteur. Geen advertenties,
+   geen tracking."
+-->
+
+<div class="tnv-colofon">
+
+  <style>
+    .tnv-colofon { max-width: 780px; font-size: 1em; line-height: 1.75; color: #333; }
+    .tnv-colofon h2 { font-size: 1.15em; margin-top: 2em; margin-bottom: 0.4em; color: #111; }
+    .tnv-colofon p  { margin: 0 0 1em; }
+    .tnv-colofon a  { color: #1a73e8; }
+    .tnv-info-grid {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 6px 16px;
+      margin-bottom: 1.5em;
+    }
+    .tnv-info-grid dt { font-weight: 600; color: #555; }
+    .tnv-info-grid dd { margin: 0; }
+    .tnv-badge-row {
+      display: flex; flex-wrap: wrap; gap: 8px; margin: 0.8em 0 1.5em;
+    }
+    .tnv-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #f0f4ff; border: 1px solid #c5d4f0;
+      border-radius: 20px; padding: 4px 14px; font-size: 0.88em;
+      color: #1a3a7a; font-weight: 500;
+    }
+    .tnv-disclaimer-box {
+      background: #fff8e1; border-left: 4px solid #ffc107;
+      padding: 14px 18px; border-radius: 0 4px 4px 0;
+      font-size: 0.92em; margin-bottom: 1.5em;
+    }
+    .tnv-meta {
+      font-size: 0.82em; color: #999; border-top: 1px solid #e4e8f0;
+      padding-top: 1em; margin-top: 2em;
+    }
+  </style>
+
+  <!-- Basisgegevens -->
+  <dl class="tnv-info-grid">
+    <dt>Website</dt>       <dd><a href="https://technieuwsvandaag.nl">TechNieuwsVandaag.nl</a></dd>
+    <dt>Contactadres</dt>  <dd><a href="mailto:info@technieuwsvandaag.nl">info@technieuwsvandaag.nl</a></dd>
+    <dt>Laatste update</dt><dd>24 februari 2026</dd>
+  </dl>
+
+  <!-- Doel -->
+  <h2>Doel van de website</h2>
+  <p>
+    TechNieuwsVandaag.nl brengt dagelijks de belangrijkste technologienieuws&shy;berichten
+    uit internationale media samen in heldere, Nederlandstalige samenvattingen.
+    Het doel is Nederlandssprekende lezers snel en toegankelijk op de hoogte te houden
+    van ontwikkelingen in de techwereld — zonder een betaalmuur of reclame-overvloed.
+  </p>
+
+  <!-- Werkwijze -->
+  <h2>Werkwijze</h2>
+  <p>
+    Elke dag scant een geautomatiseerd script tientallen Engelstalige tech-nieuwsbronnen
+    op recente publicaties. De meest relevante artikelen worden geselecteerd en herschreven
+    tot beknopte Nederlandstalige samenvattingen. Dit zijn <strong>geen directe vertalingen</strong>:
+    de teksten zijn opnieuw geformuleerd en gericht op de kern van het nieuwsbericht.
+    Elk artikel bevat een directe link naar het origineel, zodat lezers de volledige bron
+    kunnen raadplegen.
+  </p>
+
+  <!-- Technologie -->
+  <h2>Gebruikte technologie</h2>
+  <div class="tnv-badge-row">
+    <span class="tnv-chip">&#129302; Claude AI (Anthropic)</span>
+    <span class="tnv-chip">&#128247; FAL.ai (beeldgeneratie)</span>
+    <span class="tnv-chip">&#128196; WordPress</span>
+    <span class="tnv-chip">&#9881;&#65039; Python (geautomatiseerd)</span>
+  </div>
+  <p>
+    De selectie van artikelen en het schrijven van Nederlandstalige samenvattingen
+    verloopt via <strong>Claude AI</strong> van Anthropic — een groot taalmodel getraind
+    op een brede kennisbasis. Afbeeldingen bij artikelen worden gegenereerd via
+    <strong>FAL.ai</strong> (flux/dev-model) op basis van een door Claude opgestelde
+    beeldprompt. De publicatieworkflow is volledig geautomatiseerd en draait op een
+    Python-script dat dagelijks via een cron-taak wordt uitgevoerd.
+  </p>
+
+  <!-- Redactioneel proces -->
+  <h2>Redactioneel proces</h2>
+  <p>
+    Artikelen worden door het script als <em>concept (draft)</em> klaargezet in WordPress.
+    Vóór publicatie beoordeelt een menselijke redacteur de tekst op juistheid, toon
+    en relevantie. Pas na goedkeuring wordt het artikel gepubliceerd.
+    Dit twee-staps-proces zorgt ervoor dat AI-fouten of ongewenste inhoud worden
+    onderschept voordat ze zichtbaar zijn voor lezers.
+  </p>
+
+  <!-- Disclaimer afbeeldingen -->
+  <div class="tnv-disclaimer-box">
+    <strong>Disclaimer — Afbeeldingen</strong><br>
+    De afbeeldingen op TechNieuwsVandaag.nl zijn synthetisch gegenereerd via
+    <strong>FAL.ai</strong> en zijn <em>geen foto's van werkelijke gebeurtenissen of personen</em>.
+    Ze zijn uitsluitend bedoeld als visuele illustratie bij het nieuwsbericht.
+    Eventuele gelijkenis met bestaande personen, merken of situaties berust op toeval.
+  </div>
+
+  <!-- Advertenties & gesponsorde content -->
+  <h2>Advertenties &amp; gesponsorde content</h2>
+  <p>
+    TechNieuwsVandaag.nl toont <strong>geen advertenties</strong> en publiceert
+    <strong>geen gesponsorde content</strong>.
+    Er worden geen commerciële relaties onderhouden met de bronnen die worden geciteerd.
+  </p>
+
+  <!-- Privacy -->
+  <h2>Privacy</h2>
+  <p>
+    Deze website gebruikt <strong>geen externe tracking-scripts</strong> of advertentienetwerken.
+    Er worden uitsluitend de standaard WordPress-statistieken bijgehouden
+    (anonieme paginabezoek-tellingen via de ingebouwde WordPress.com Stats of Jetpack Stats).
+    Er worden geen persoonsgegevens verkocht of gedeeld met derden.
+  </p>
+
+  <!-- Contact -->
+  <h2>Contact</h2>
+  <p>
+    Vragen, correctieverzoeken of opmerkingen? Stuur een e-mail naar
+    <a href="mailto:info@technieuwsvandaag.nl">info@technieuwsvandaag.nl</a>.
+    We streven ernaar binnen twee werkdagen te reageren.
+  </p>
+
+  <p class="tnv-meta">
+    Laatste update: 24 februari 2026 &mdash;
+    TechNieuwsVandaag.nl is een onafhankelijke publicatie.
+  </p>
+
+</div>

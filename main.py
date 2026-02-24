@@ -47,7 +47,7 @@ logger = _setup_logging(LOGS_DIR)
 
 from ai_processor import InsufficientCreditsError, process_articles  # noqa: E402
 from config import IMAGE_STRATEGY  # noqa: E402
-from mailer import send_balance_warning, send_notification  # noqa: E402
+from mailer import send_balance_warning, send_fal_balance_warning, send_notification  # noqa: E402
 from scraper import download_image, fetch_article_text, save_posted_url, scrape_all_sources  # noqa: E402
 from social_poster import post_articles_to_social  # noqa: E402
 from wordpress_client import publish_articles  # noqa: E402
@@ -163,7 +163,15 @@ def main() -> int:
     logger.info("── Stap 3: Afbeeldingen ophalen (strategie: %s) ──", IMAGE_STRATEGY)
 
     if IMAGE_STRATEGY == "generate":
-        from image_generator import generate_image_for_article  # noqa: PLC0415
+        from image_generator import generate_image_for_article, is_fal_balance_low  # noqa: PLC0415
+
+        if not args.dry_run and is_fal_balance_low():
+            from config import FAL_CREDIT_THRESHOLD  # noqa: PLC0415
+            from image_generator import check_fal_balance  # noqa: PLC0415
+            bal = check_fal_balance()
+            logger.warning("FAL.ai tegoed laag ($%.4f) — waarschuwingsmail verstuurd", bal or 0)
+            send_fal_balance_warning(bal or 0.0)
+
         for i, processed in enumerate(processed_articles):
             dest = f"/tmp/tnv_image_{i}.jpg"
             processed.image_path = generate_image_for_article(
