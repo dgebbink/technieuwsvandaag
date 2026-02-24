@@ -38,3 +38,12 @@ REQUEST_TIMEOUT: int = 20
 
 # Maximum aantal artikelen dat naar Claude wordt gestuurd voor selectie
 MAX_ARTICLES_FOR_SELECTION: int = 50
+
+# Afbeeldingsstrategie: 'generate' (FAL.ai) of 'scrape' (og:image van bron)
+IMAGE_STRATEGY: str = os.environ.get("IMAGE_STRATEGY", "generate")
+FAL_API_KEY: str = os.environ.get("FAL_API_KEY", "")
+
+# Social media
+ENABLE_SOCIAL_POSTING: bool = os.environ.get("ENABLE_SOCIAL_POSTING", "false").lower() == "true"
+BLUESKY_HANDLE: str = os.environ.get("BLUESKY_HANDLE", "")
+BLUESKY_APP_PASSWORD: str = os.environ.get("BLUESKY_APP_PASSWORD", "")

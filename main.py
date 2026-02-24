@@ -46,8 +46,10 @@ from config import LOGS_DIR  # noqa: E402
 logger = _setup_logging(LOGS_DIR)
 
 from ai_processor import InsufficientCreditsError, process_articles  # noqa: E402
+from config import IMAGE_STRATEGY  # noqa: E402
 from mailer import send_balance_warning, send_notification  # noqa: E402
 from scraper import download_image, fetch_article_text, save_posted_url, scrape_all_sources  # noqa: E402
+from social_poster import post_articles_to_social  # noqa: E402
 from wordpress_client import publish_articles  # noqa: E402
 
 
@@ -156,32 +158,47 @@ def main() -> int:
     logger.info("%d artikel(en) verwerkt door AI", len(processed_articles))
 
     # ------------------------------------------------------------------
-    # Stap 3: Afbeeldingen downloaden
+    # Stap 3: Afbeeldingen ophalen (strategie: generate of scrape)
     # ------------------------------------------------------------------
-    logger.info("── Stap 3: Afbeeldingen downloaden ──")
-    for i, processed in enumerate(processed_articles):
-        if processed.original.image_url:
-            dest = f"/tmp/tnv_image_{i}.jpg"
-            local_path = download_image(processed.original.image_url, dest)
-            processed.image_path = local_path
-            if not local_path:
-                logger.warning(
-                    "Afbeelding downloaden mislukt voor artikel '%s' — doorgaan zonder",
-                    processed.titel1,
-                )
-        else:
-            # Probeer alsnog van de artikelpagina
-            logger.info(
-                "Geen afbeelding in feed voor '%s', probeer van artikelpagina",
-                processed.titel1,
-            )
-            from scraper import extract_image_from_page, _make_session  # type: ignore[attr-defined]
+    logger.info("── Stap 3: Afbeeldingen ophalen (strategie: %s) ──", IMAGE_STRATEGY)
 
-            session = _make_session()
-            img_url = extract_image_from_page(processed.original.url, session)
+    if IMAGE_STRATEGY == "generate":
+        from image_generator import generate_image_for_article  # noqa: PLC0415
+        for i, processed in enumerate(processed_articles):
+            dest = f"/tmp/tnv_image_{i}.jpg"
+            processed.image_path = generate_image_for_article(
+                title=processed.titel1,
+                article_text=processed.samenvatting,
+                dest_path=dest,
+                dry_run=args.dry_run,
+            )
+            if not processed.image_path:
+                logger.warning("FAL.ai afbeelding mislukt voor '%s' — doorgaan zonder", processed.titel1)
+    else:
+        # Scrape-modus: og:image van bronpagina
+        from scraper import extract_image_from_page, _make_session  # type: ignore[attr-defined]  # noqa: PLC0415
+        from urllib.parse import urlparse  # noqa: PLC0415
+        session = _make_session()
+        for i, processed in enumerate(processed_articles):
+            dest = f"/tmp/tnv_image_{i}.jpg"
+            img_url = processed.original.image_url
+
+            if not img_url:
+                logger.info("Geen afbeelding in feed voor '%s', probeer artikelpagina", processed.titel1)
+                img_url = extract_image_from_page(processed.original.url, session)
+
             if img_url:
-                dest = f"/tmp/tnv_image_{i}.jpg"
-                processed.image_path = download_image(img_url, dest)
+                local_path = download_image(img_url, dest)
+                processed.image_path = local_path
+                if local_path:
+                    # Caption + bron-URL voor copyright-vermelding
+                    domain = urlparse(processed.original.source).netloc or processed.original.source
+                    processed.image_caption = (
+                        f"Afbeelding: {domain} — Alle rechten voorbehouden aan de oorspronkelijke eigenaar."
+                    )
+                    processed.bron_image_url = img_url
+                else:
+                    logger.warning("Afbeelding downloaden mislukt voor '%s' — doorgaan zonder", processed.titel1)
             else:
                 logger.warning("Geen afbeelding gevonden voor: %s", processed.titel1)
 
@@ -214,9 +231,15 @@ def main() -> int:
         )
 
     # ------------------------------------------------------------------
-    # Stap 5: Notificatiemail
+    # Stap 5: Social media
     # ------------------------------------------------------------------
-    logger.info("── Stap 5: Notificatiemail versturen ──")
+    logger.info("── Stap 5: Social media publicatie ──")
+    post_articles_to_social(results, dry_run=args.dry_run)
+
+    # ------------------------------------------------------------------
+    # Stap 6: Notificatiemail
+    # ------------------------------------------------------------------
+    logger.info("── Stap 6: Notificatiemail versturen ──")
     send_notification(results, warning_message=warning_message, dry_run=args.dry_run)
 
     # ------------------------------------------------------------------

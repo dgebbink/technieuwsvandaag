@@ -42,6 +42,13 @@ class ProcessedArticle:
     trefwoorden: str
     categorieen: list[str]
     image_path: Optional[str] = None
+    # SEO-velden
+    meta_description: str = ""
+    slug: str = ""
+    focus_keyword: str = ""
+    # Afbeelding-metadata (scrape-modus)
+    image_caption: str = ""
+    bron_image_url: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -159,8 +166,16 @@ def process_article(article: Article, client: anthropic.Anthropic) -> Optional[P
         '  "titel2": "...",\n'
         '  "samenvatting": "...",\n'
         '  "trefwoorden": "woord1, woord2, woord3, woord4, woord5",\n'
-        '  "categorieen": ["cat1", "cat2"]\n'
-        "}"
+        '  "categorieen": ["cat1", "cat2"],\n'
+        '  "meta_description": "...",\n'
+        '  "slug": "...",\n'
+        '  "focus_keyword": "..."\n'
+        "}\n\n"
+        "Regels voor de extra SEO-velden:\n"
+        "- meta_description: max 155 tekens, bevat het focus-trefwoord, prikkelend voor de lezer\n"
+        "- slug: URL-vriendelijke slug van max 5 woorden, geen lidwoorden of stopwoorden, "
+        "alleen kleine letters en koppeltekens (bijv. 'openai-lanceert-nieuw-model')\n"
+        "- focus_keyword: het primaire SEO-trefwoord, 1-3 woorden"
     )
 
     try:
@@ -194,6 +209,11 @@ def process_article(article: Article, client: anthropic.Anthropic) -> Optional[P
         if not categorieen:
             categorieen = ["Technologie"]
 
+        # SEO-velden (optioneel — geen fout als ze ontbreken)
+        meta_description = str(data.get("meta_description", "")).strip()[:155]
+        slug = str(data.get("slug", "")).strip().lower()
+        focus_keyword = str(data.get("focus_keyword", "")).strip()
+
         return ProcessedArticle(
             original=article,
             titel1=str(data["titel1"]).strip(),
@@ -201,6 +221,9 @@ def process_article(article: Article, client: anthropic.Anthropic) -> Optional[P
             samenvatting=str(data["samenvatting"]).strip(),
             trefwoorden=str(data["trefwoorden"]).strip(),
             categorieen=categorieen,
+            meta_description=meta_description,
+            slug=slug,
+            focus_keyword=focus_keyword,
         )
 
     except Exception as exc:

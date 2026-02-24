@@ -394,22 +394,37 @@ def download_image(url: str, dest_path: str = "/tmp/artikel_image.jpg") -> Optio
 # Sources laden
 # ---------------------------------------------------------------------------
 
-def load_sources() -> list[str]:
-    """Load and normalise source URLs from sources.txt."""
+def load_sources() -> list[tuple[str, Optional[str]]]:
+    """Load and normalise source URLs from sources.txt.
+
+    Lines may optionally include a pipe-separated RSS feed URL:
+      tweakers.net|https://tweakers.net/feeds/mixed.xml
+    Returns list of (website_url, rss_override_or_None).
+    """
     # pre: SOURCES_FILE is a readable UTF-8 file
-    # post: each returned entry starts with 'http'
+    # post: each returned website_url starts with 'http'
     if not SOURCES_FILE.exists():
         logger.error("sources.txt niet gevonden: %s", SOURCES_FILE)
         return []
 
-    sources: list[str] = []
+    sources: list[tuple[str, Optional[str]]] = []
     for line in SOURCES_FILE.read_text(encoding="utf-8").splitlines():
-        line = line.strip().replace(" ", "").replace("_", "")
+        line = line.strip()
         if not line or line.startswith("#"):
             continue
-        if not line.startswith("http"):
-            line = "https://" + line
-        sources.append(line)
+
+        rss_override: Optional[str] = None
+        if "|" in line:
+            website, rss_override = line.split("|", 1)
+            website = website.strip().replace(" ", "").replace("_", "")
+            rss_override = rss_override.strip()
+        else:
+            website = line.replace(" ", "").replace("_", "")
+
+        if not website.startswith("http"):
+            website = "https://" + website
+
+        sources.append((website, rss_override))
 
     return sources
 
@@ -429,13 +444,14 @@ def scrape_all_sources(
     sources = load_sources()
 
     if test_source:
-        filtered = [s for s in sources if test_source.lower() in s.lower()]
+        filtered = [(s, r) for s, r in sources if test_source.lower() in s.lower()]
         if filtered:
             sources = filtered
         else:
             # Gebruik opgegeven URL direct
-            sources = [test_source if test_source.startswith("http") else "https://" + test_source]
-        logger.info("Test-modus: alleen bron %s", sources)
+            url = test_source if test_source.startswith("http") else "https://" + test_source
+            sources = [(url, None)]
+        logger.info("Test-modus: alleen bron %s", [s for s, _ in sources])
 
     posted_urls = load_posted_urls()
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
@@ -444,10 +460,18 @@ def scrape_all_sources(
 
     session = _make_session()
 
-    for source_url in sources:
+    for source_url, rss_override in sources:
         logger.info("Verwerken: %s", source_url)
         try:
-            feed = try_rss_feed(source_url)
+            if rss_override:
+                logger.info("Directe RSS-feed opgegeven: %s", rss_override)
+                raw = feedparser.parse(rss_override, agent=USER_AGENT)
+                feed = raw if raw.entries else None
+                if not feed:
+                    logger.warning("Directe RSS-feed leeg of onbereikbaar: %s", rss_override)
+            else:
+                feed = try_rss_feed(source_url)
+
             if feed:
                 articles = parse_feed_articles(feed, source_url, cutoff)
             else:

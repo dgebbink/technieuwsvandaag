@@ -11,7 +11,7 @@ from typing import Optional
 import requests
 
 from ai_processor import ProcessedArticle
-from config import USER_AGENT, WP_APP_PASSWORD, WP_URL, WP_USERNAME
+from config import IMAGE_STRATEGY, USER_AGENT, WP_APP_PASSWORD, WP_URL, WP_USERNAME
 
 logger = logging.getLogger(__name__)
 
@@ -141,10 +141,13 @@ class WordPressClient:
         self,
         image_path: str,
         filename: str = "featured-image.jpg",
+        alt_text: str = "",
     ) -> Optional[dict]:
-        """Upload a local image to the WordPress media library; return {id, url} or None."""
-        # pre: image_path exists on disk
-        # post: returns None on upload failure or missing file
+        """Upload a local image to the WordPress media library; return {id, url} or None.
+
+        Pre:  image_path exists on disk
+        Post: alt_text set via follow-up PATCH if provided; None on any failure
+        """
         path = Path(image_path)
         if not path.exists():
             logger.warning("Afbeeldingsbestand niet gevonden: %s", image_path)
@@ -169,8 +172,21 @@ class WordPressClient:
             )
             resp.raise_for_status()
             media = resp.json()
-            logger.info("Afbeelding geüpload (media ID %d)", media["id"])
-            return {"id": media["id"], "url": media.get("source_url", "")}
+            media_id: int = media["id"]
+            logger.info("Afbeelding geüpload (media ID %d)", media_id)
+
+            # Alt-tekst instellen via follow-up PATCH
+            if alt_text:
+                try:
+                    self.session.patch(
+                        f"{self.base_url}/media/{media_id}",
+                        json={"alt_text": alt_text[:125]},
+                        timeout=15,
+                    )
+                except Exception as exc:
+                    logger.warning("Alt-tekst instellen mislukt voor media %d: %s", media_id, exc)
+
+            return {"id": media_id, "url": media.get("source_url", "")}
 
         except Exception as exc:
             logger.error("Afbeelding uploaden mislukt voor '%s': %s", image_path, exc)
@@ -208,9 +224,10 @@ class WordPressClient:
             tag_ids = self.get_or_create_tags(article.trefwoorden)
 
             # Afbeelding uploaden
+            alt_text = f"{article.focus_keyword} {article.titel1}".strip()
             media: Optional[dict] = None
             if article.image_path:
-                media = self.upload_image(article.image_path)
+                media = self.upload_image(article.image_path, alt_text=alt_text)
                 if not media:
                     logger.warning(
                         "Afbeelding upload mislukt, artikel '%s' wordt zonder afbeelding geplaatst",
@@ -222,10 +239,21 @@ class WordPressClient:
             content_parts = []
 
             if media and media.get("url"):
-                content_parts.append(
-                    f'<img src="{media["url"]}" alt="{article.titel1}" '
-                    f'style="width:100%;height:auto;margin-bottom:1.2em;">'
-                )
+                if IMAGE_STRATEGY == "scrape" and article.image_caption:
+                    content_parts.append(
+                        f'<figure>'
+                        f'<img src="{media["url"]}" alt="{alt_text}" '
+                        f'style="width:100%;height:auto;margin-bottom:0.4em;">'
+                        f'<figcaption style="font-size:0.8em;color:#888;">'
+                        f'{article.image_caption}'
+                        f'</figcaption>'
+                        f'</figure>'
+                    )
+                else:
+                    content_parts.append(
+                        f'<img src="{media["url"]}" alt="{alt_text}" '
+                        f'style="width:100%;height:auto;margin-bottom:1.2em;">'
+                    )
 
             content_parts += [f"<p>{p.strip()}</p>" for p in paragraphs if p.strip()]
             content_parts.append(
@@ -249,10 +277,25 @@ class WordPressClient:
             if media:
                 post_data["featured_media"] = media["id"]
 
-            # Bron-URL als custom field opslaan (vereist registratie via register_post_meta)
-            # Zie README voor WordPress-configuratie
+            if article.slug:
+                post_data["slug"] = article.slug
+
+            # Meta-velden: bron, SEO (Yoast + RankMath), schema markup
+            # Zie README voor WordPress register_post_meta vereisten
             try:
-                post_data["meta"] = {"bron_url": article.original.url}
+                meta: dict = {
+                    "bron_url": article.original.url,
+                    "schema_article_type": "NewsArticle",
+                }
+                if article.meta_description:
+                    meta["_yoast_wpseo_metadesc"] = article.meta_description
+                    meta["rank_math_description"] = article.meta_description
+                if article.focus_keyword:
+                    meta["_yoast_wpseo_focuskw"] = article.focus_keyword
+                    meta["rank_math_focus_keyword"] = article.focus_keyword
+                if IMAGE_STRATEGY == "scrape" and article.bron_image_url:
+                    meta["bron_image_url"] = article.bron_image_url
+                post_data["meta"] = meta
                 resp = self.session.post(
                     f"{self.base_url}/posts",
                     json=post_data,
@@ -279,11 +322,13 @@ class WordPressClient:
             post = resp.json()
             post_id: int = post["id"]
             preview_url = f"{WP_URL.rstrip('/')}/?p={post_id}&preview=true"
+            post_link: str = post.get("link", preview_url)
 
             logger.info("Artikel gepubliceerd: '%s' (ID %d)", article.titel1, post_id)
             return {
                 "id": post_id,
                 "preview_url": preview_url,
+                "link": post_link,
                 "title": article.titel1,
             }
 

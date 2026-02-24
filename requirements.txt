@@ -5,3 +5,4 @@ feedparser>=6.0.10
 python-dotenv>=1.0.0
 Pillow>=10.0.0
 lxml>=5.0.0
+atproto>=0.0.55
