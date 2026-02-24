@@ -8,7 +8,6 @@ www.theverge.com
 www.arstechnica.com
 www.gizmodo.com
 www.engadget.com
-www.bloomberg.com/technology
 news.ycombinator.com
 www.cnet.com
 www.zdnet.com
