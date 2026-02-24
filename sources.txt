@@ -12,8 +12,6 @@ www.bloomberg.com/technology
 news.ycombinator.com
 www.cnet.com
 www.zdnet.com
-www.arstechnica.com
-news.ycombinator.com
 www.technologyreview.com
 spectrum.ieee.org
 www.tomshardware.com
