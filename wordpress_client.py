@@ -238,22 +238,18 @@ class WordPressClient:
             paragraphs = article.samenvatting.split("\n\n")
             content_parts = []
 
-            if media and media.get("url"):
-                if IMAGE_STRATEGY == "scrape" and article.image_caption:
-                    content_parts.append(
-                        f'<figure>'
-                        f'<img src="{media["url"]}" alt="{alt_text}" '
-                        f'style="width:100%;height:auto;margin-bottom:0.4em;">'
-                        f'<figcaption style="font-size:0.8em;color:#888;">'
-                        f'{article.image_caption}'
-                        f'</figcaption>'
-                        f'</figure>'
-                    )
-                else:
-                    content_parts.append(
-                        f'<img src="{media["url"]}" alt="{alt_text}" '
-                        f'style="width:100%;height:auto;margin-bottom:1.2em;">'
-                    )
+            # Afbeelding alleen in content plaatsen bij scrape-modus met caption
+            # (featured_media zorgt al voor de afbeelding bovenaan bij generate-modus)
+            if media and media.get("url") and IMAGE_STRATEGY == "scrape" and article.image_caption:
+                content_parts.append(
+                    f'<figure>'
+                    f'<img src="{media["url"]}" alt="{alt_text}" '
+                    f'style="width:100%;height:auto;margin-bottom:0.4em;">'
+                    f'<figcaption style="font-size:0.8em;color:#888;">'
+                    f'{article.image_caption}'
+                    f'</figcaption>'
+                    f'</figure>'
+                )
 
             content_parts += [f"<p>{p.strip()}</p>" for p in paragraphs if p.strip()]
             content_parts.append(
