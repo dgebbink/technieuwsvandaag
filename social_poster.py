@@ -3,9 +3,9 @@ Social media publicatie: post nieuwe artikelen naar Bluesky (AT Protocol).
 Wordt alleen uitgevoerd wanneer ENABLE_SOCIAL_POSTING=true.
 
 Embed-strategie:
-- Afbeelding wordt groot getoond via app.bsky.embed.images
-- Artikel URL staat als klikbare link facet in de posttekst
-- Fallback naar app.bsky.embed.external als geen afbeelding beschikbaar
+- app.bsky.embed.external met thumb blob
+- Afbeelding wordt groot getoond bovenin de link card
+- URL staat NIET in de posttekst (loopt via embed uri)
 """
 import logging
 import os
@@ -194,32 +194,22 @@ def _upload_image_blob(filepath: str, session: dict) -> dict | None:
 # ---------------------------------------------------------------------------
 
 def _build_embed(article_url: str, og_data: dict, image_blob: dict | None) -> dict:
-    """Bouwt het Bluesky embed object.
+    """Bouwt het Bluesky embed object: external link card met optionele thumb.
 
     Pre:  article_url is geldig; og_data heeft title/description
-    Post: app.bsky.embed.images als image_blob aanwezig,
-          anders app.bsky.embed.external als fallback
+    Post: app.bsky.embed.external; thumb ingevuld als image_blob aanwezig
     """
+    embed: dict = {
+        "$type": "app.bsky.embed.external",
+        "external": {
+            "uri":         article_url,
+            "title":       (og_data.get("title") or "")[:300],
+            "description": (og_data.get("description") or "")[:300],
+        },
+    }
     if image_blob:
-        # Afbeelding groot in de post; URL-link loopt via facet in tekst
-        return {
-            "$type": "app.bsky.embed.images",
-            "images": [{
-                "image":       image_blob,
-                "alt":         (og_data.get("title") or "Afbeelding bij artikel")[:1000],
-                "aspectRatio": {"width": 16, "height": 9},
-            }],
-        }
-    else:
-        # Fallback: link card
-        return {
-            "$type": "app.bsky.embed.external",
-            "external": {
-                "uri":         article_url,
-                "title":       (og_data.get("title") or "")[:300],
-                "description": (og_data.get("description") or "")[:300],
-            },
-        }
+        embed["external"]["thumb"] = image_blob
+    return embed
 
 
 # ---------------------------------------------------------------------------
@@ -274,11 +264,11 @@ def _format_hashtags(keywords: str) -> str:
     )
 
 
-def _build_post_text(title: str, summary: str, url: str, hashtags: str) -> str:
-    """Bouw post tekst met URL als klikbare link op aparte regel.
+def _build_post_text(title: str, summary: str, hashtags: str) -> str:
+    """Bouw post tekst zonder URL; kap af op zingrens als > 300 graphemes.
 
-    Pre:  title, summary, url, hashtags zijn strings
-    Post: tekst <= BLUESKY_MAX_GRAPHEMES graphemes; URL staat op aparte regel
+    Pre:  title, summary, hashtags zijn strings
+    Post: tekst <= BLUESKY_MAX_GRAPHEMES graphemes; URL staat NIET in tekst
     """
     # Eerste 2 zinnen als intro
     sentences = summary.split(". ")
@@ -286,20 +276,16 @@ def _build_post_text(title: str, summary: str, url: str, hashtags: str) -> str:
     if intro and not intro.endswith("."):
         intro += "."
 
-    url_line  = f"\n\n{url}"
-    hash_line = f"\n\n{hashtags}" if hashtags else ""
-    reserved  = _grapheme_len(url_line) + _grapheme_len(hash_line)
-    max_base  = BLUESKY_MAX_GRAPHEMES - reserved
+    text = f"{title}\n\n{intro}\n\n{hashtags}"
 
-    base = f"{title}\n\n{intro}"
-    if _grapheme_len(base) <= max_base:
-        return f"{base}{url_line}{hash_line}"
+    if _grapheme_len(text) <= BLUESKY_MAX_GRAPHEMES:
+        return text
 
-    # Te lang: kap intro af op woordgrens
-    title_part = f"{title}\n\n"
-    budget = max_base - _grapheme_len(title_part) - 1  # -1 voor "…"
+    # Te lang: bereken budget voor intro
+    base   = f"{title}\n\n\n\n{hashtags}"
+    budget = BLUESKY_MAX_GRAPHEMES - _grapheme_len(base) - 1  # -1 voor "…"
     if budget <= 0:
-        return f"{title}{url_line}{hash_line}"
+        return (title + "\n\n" + hashtags)[: BLUESKY_MAX_GRAPHEMES]
 
     words = intro.split()
     trimmed = ""
@@ -310,7 +296,7 @@ def _build_post_text(title: str, summary: str, url: str, hashtags: str) -> str:
         trimmed = candidate
 
     intro = (trimmed + "…").strip()
-    return f"{title}\n\n{intro}{url_line}{hash_line}"
+    return f"{title}\n\n{intro}\n\n{hashtags}"
 
 
 # ---------------------------------------------------------------------------
@@ -379,7 +365,7 @@ def post_to_bluesky(
         return False
 
     hashtags = _format_hashtags(keywords)
-    text     = _build_post_text(title, summary, post_url, hashtags)
+    text     = _build_post_text(title, summary, hashtags)
     og_data  = fetch_og_data(post_url)
 
     if dry_run:
@@ -410,11 +396,8 @@ def post_to_bluesky(
         # Embed opbouwen
         embed = _build_embed(post_url, og_data, image_blob)
 
-        # Facets: hashtags + URL-link
+        # Facets: alleen hashtags (URL loopt via embed uri)
         facets = _build_hashtag_facets(text)
-        url_facet = _build_url_facet(text, post_url)
-        if url_facet:
-            facets.append(url_facet)
 
         result   = _create_post(session, text, facets, embed)
         post_uri = result.get("uri", "")
