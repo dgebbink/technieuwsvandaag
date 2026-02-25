@@ -157,7 +157,7 @@ def generate_pillow_logo() -> Path:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     dest = OUTPUT_DIR / "header_variant_4.png"
 
-    img  = Image.new("RGB", (LOGO_W, LOGO_H), color=(10, 22, 40))
+    img  = Image.new("RGB", (LOGO_W, LOGO_H), color=(255, 255, 255))
     draw = ImageDraw.Draw(img)
 
     # Font laden — probeer Ubuntu Bold, daarna DejaVu Bold, daarna Liberation Bold
@@ -181,10 +181,10 @@ def generate_pillow_logo() -> Path:
         font_large = ImageFont.load_default()
         font_small = ImageFont.load_default()
 
-    # Tekst-segmenten met kleur
+    # Tekst-segmenten met kleur (op witte achtergrond)
     parts = [
-        ("Tech",    (255, 255, 255)),   # wit
-        ("Nieuws",  (0,   212, 255)),   # cyaan
+        ("Tech",    (26,  26,  26 )),   # zwart
+        ("Nieuws",  (26,  26,  26 )),   # zwart
         ("Vandaag", (204, 0,   0  )),   # rood
     ]
 
