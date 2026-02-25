@@ -79,11 +79,13 @@ def generate_image_prompt(title: str, article_text: str) -> str:
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     prompt = (
         "Genereer een Engelse prompt voor een fotorealistische AI-afbeelding "
-        "die past bij dit tech-nieuwsartikel. "
-        "Geen tekst in de afbeelding. "
-        "Geen logo's of herkenbare merken. "
-        "Stijl: professionele persfotografie. "
-        "Max 2 zinnen.\n\n"
+        "die past bij dit tech-nieuwsartikel. Gebruik heldere, warme belichting "
+        "en een optimistische sfeer. Vermijd donkere achtergronden, schaduwen "
+        "en sombere kleurpaletten. Kies voor lichte, moderne omgevingen: "
+        "kantoren met daglicht, heldere interfaces, futuristische maar "
+        "toegankelijke settings. Geen tekst in de afbeelding. Geen logo's of "
+        "herkenbare merken. Stijl: professionele persfotografie met een "
+        "positieve, energieke uitstraling. Max 2 zinnen.\n\n"
         f"Artikel titel: {title}\n\n"
         f"Artikel tekst:\n{article_text[:1000]}"
     )

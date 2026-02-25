@@ -79,6 +79,11 @@ def _parse_args() -> argparse.Namespace:
         default=1,
         help="Aantal dagen terug om artikelen te zoeken (standaard 1 = 24 uur)",
     )
+    parser.add_argument(
+        "--adhoc",
+        action="store_true",
+        help="Verwerk URLs uit adhoc.txt (max 2 per run) in plaats van de normale scrape",
+    )
     return parser.parse_args()
 
 
@@ -86,6 +91,11 @@ def main() -> int:
     """Run the full scrape → AI → publish → notify pipeline; return exit code."""
     # post: returns 0 on success, 1 on fatal error
     args = _parse_args()
+
+    # Adhoc-modus: delegeer naar adhoc_processor
+    if args.adhoc:
+        from adhoc_processor import run_adhoc  # noqa: PLC0415
+        return run_adhoc(dry_run=args.dry_run)
 
     if args.dry_run:
         logger.info("=" * 60)

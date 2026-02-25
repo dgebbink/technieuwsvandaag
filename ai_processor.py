@@ -82,7 +82,7 @@ def select_articles(articles: list[Article], client: anthropic.Anthropic) -> lis
     # pre: len(articles) >= 2; client is authenticated
     # post: returns 1–2 valid indices; raises InsufficientCreditsError on low balance
     article_list = "\n".join(
-        f"{i + 1}. [{_domain(a.source)}] {a.title}\n   {a.excerpt[:250]}"
+        f"{i + 1}. [{_domain(a.source)}] [{getattr(a, 'source_lang', 'EN')}] {a.title}\n   {a.excerpt[:250]}"
         for i, a in enumerate(articles)
     )
 
@@ -92,6 +92,10 @@ def select_articles(articles: list[Article], client: anthropic.Anthropic) -> lis
         "Selecteer de 2 meest relevante en impactvolle artikelen voor een Nederlands publiek. "
         "Overweeg: breedte van impact, innovatie, relevantie voor consument én professional, "
         "en nieuwswaarde. "
+        "Geef een lichte voorkeur aan artikelen van Nederlandse bronnen "
+        "(gemarkeerd als [NL]) boven Engelstalige bronnen, mits de "
+        "nieuwswaarde vergelijkbaar is. Geef elke NL-bron een gewicht "
+        "van 1.3x ten opzichte van EN-bronnen bij gelijke relevantie. "
         "Geef als output ALLEEN de nummers van de 2 gekozen artikelen als JSON array, "
         "bijv: [3, 7]\n\n"
         f"Artikelen:\n{article_list}"
@@ -266,12 +270,22 @@ def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
     for idx in selected_indices[:2]:
         if 0 <= idx < len(articles):
             article = articles[idx]
-            logger.info("Artikel verwerken: %s", article.title)
+            lang = getattr(article, "source_lang", "EN")
+            logger.info("Artikel verwerken [%s]: %s", lang, article.title)
             result = process_article(article, client)
             if result:
                 processed.append(result)
         else:
             logger.warning("Index %d buiten bereik (max %d)", idx, len(articles) - 1)
+
+    # Log NL vs EN verdeling van geselecteerde artikelen
+    nl_selected = sum(1 for p in processed if getattr(p.original, "source_lang", "EN") == "NL")
+    en_selected = len(processed) - nl_selected
+    logger.info(
+        "Geselecteerd: %d NL-artikel(en), %d EN-artikel(en)",
+        nl_selected,
+        en_selected,
+    )
 
     return processed
 

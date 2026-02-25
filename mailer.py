@@ -322,17 +322,19 @@ def send_notification(
     articles_data: list[dict],
     warning_message: str = "",
     dry_run: bool = False,
+    subject_prefix: str = "",
 ) -> None:
     """Send HTML notification email; fall back to file on SMTP failure."""
     # pre: NOTIFICATION_EMAIL is set
     # post: email sent or saved to LOGS_DIR as fallback
     date_str = datetime.now().strftime("%d-%m-%Y %H:%M")
     count = len(articles_data)
+    prefix = f"{subject_prefix} " if subject_prefix else ""
 
     if count == 0:
-        subject = f"⚠ [TechNieuwsVandaag] Geen nieuwe artikelen — {date_str}"
+        subject = f"⚠ {prefix}[TechNieuwsVandaag] Geen nieuwe artikelen — {date_str}"
     else:
-        subject = f"✅ [TechNieuwsVandaag] {count} nieuwe artikel(en) gepubliceerd — {date_str}"
+        subject = f"✅ {prefix}[TechNieuwsVandaag] {count} nieuwe artikel(en) gepubliceerd — {date_str}"
 
     html_body = build_html_email(articles_data, date_str, warning_message)
 

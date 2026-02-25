@@ -1,7 +1,9 @@
+// NL
 www.Tweakers.net|https://tweakers.net/feeds/mixed.xml
 www.Bright.nl
 www.Dutchcowboys.nl|https://www.dutchcowboys.nl/sitemap/news.xml
 www.Androidworld.nl
+// EN
 www.techcrunch.com
 www.wired.com
 www.theverge.com

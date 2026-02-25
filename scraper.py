@@ -48,6 +48,7 @@ class Article:
     image_url: Optional[str] = None
     source: str = ""
     full_text: str = ""
+    source_lang: str = "EN"  # 'NL' of 'EN' — afgeleid uit sources.txt secties
 
 
 # ---------------------------------------------------------------------------
@@ -394,23 +395,37 @@ def download_image(url: str, dest_path: str = "/tmp/artikel_image.jpg") -> Optio
 # Sources laden
 # ---------------------------------------------------------------------------
 
-def load_sources() -> list[tuple[str, Optional[str]]]:
+def load_sources() -> list[tuple[str, Optional[str], str]]:
     """Load and normalise source URLs from sources.txt.
 
     Lines may optionally include a pipe-separated RSS feed URL:
       tweakers.net|https://tweakers.net/feeds/mixed.xml
-    Returns list of (website_url, rss_override_or_None).
+    Section markers // NL and // EN set the language for following sources.
+    Returns list of (website_url, rss_override_or_None, lang).
     """
     # pre: SOURCES_FILE is a readable UTF-8 file
-    # post: each returned website_url starts with 'http'
+    # post: each returned website_url starts with 'http'; lang is 'NL' or 'EN'
     if not SOURCES_FILE.exists():
         logger.error("sources.txt niet gevonden: %s", SOURCES_FILE)
         return []
 
-    sources: list[tuple[str, Optional[str]]] = []
+    sources: list[tuple[str, Optional[str], str]] = []
+    current_lang = "EN"  # standaard als geen marker aanwezig
+
     for line in SOURCES_FILE.read_text(encoding="utf-8").splitlines():
         line = line.strip()
-        if not line or line.startswith("#"):
+        if not line:
+            continue
+
+        # Sectie-marker: // NL of // EN (hoofdletterongevoelig)
+        if line.startswith("//"):
+            marker = line.lstrip("/").strip().upper()
+            if marker in ("NL", "EN"):
+                current_lang = marker
+            continue
+
+        # Overgeslagen commentaar
+        if line.startswith("#"):
             continue
 
         rss_override: Optional[str] = None
@@ -424,7 +439,7 @@ def load_sources() -> list[tuple[str, Optional[str]]]:
         if not website.startswith("http"):
             website = "https://" + website
 
-        sources.append((website, rss_override))
+        sources.append((website, rss_override, current_lang))
 
     return sources
 
@@ -440,18 +455,18 @@ def scrape_all_sources(
 ) -> list[Article]:
     """Scrape all configured sources; return new articles not yet in posted_urls."""
     # pre: lookback_days >= 1
-    # post: result sorted newest-first; already-posted URLs excluded
+    # post: result sorted newest-first; already-posted URLs excluded; source_lang set per article
     sources = load_sources()
 
     if test_source:
-        filtered = [(s, r) for s, r in sources if test_source.lower() in s.lower()]
+        filtered = [(s, r, lang) for s, r, lang in sources if test_source.lower() in s.lower()]
         if filtered:
             sources = filtered
         else:
             # Gebruik opgegeven URL direct
             url = test_source if test_source.startswith("http") else "https://" + test_source
-            sources = [(url, None)]
-        logger.info("Test-modus: alleen bron %s", [s for s, _ in sources])
+            sources = [(url, None, "EN")]
+        logger.info("Test-modus: alleen bron %s", [s for s, _, _ in sources])
 
     posted_urls = load_posted_urls()
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
@@ -459,9 +474,11 @@ def scrape_all_sources(
     all_articles: list[Article] = []
 
     session = _make_session()
+    nl_count = 0
+    en_count = 0
 
-    for source_url, rss_override in sources:
-        logger.info("Verwerken: %s", source_url)
+    for source_url, rss_override, source_lang in sources:
+        logger.info("Verwerken: %s [%s]", source_url, source_lang)
         try:
             if rss_override:
                 logger.info("Directe RSS-feed opgegeven: %s", rss_override)
@@ -478,19 +495,31 @@ def scrape_all_sources(
                 logger.warning("Geen RSS-feed gevonden voor %s, HTML-fallback", source_url)
                 articles = scrape_html_fallback(source_url, session, cutoff)
 
+            # Stel source_lang in op elk artikel
+            for a in articles:
+                a.source_lang = source_lang
+
             new_articles = [a for a in articles if a.url not in posted_urls]
             logger.info(
-                "%d nieuw(e) artikel(en) gevonden voor %s (van %d totaal)",
+                "%d nieuw(e) artikel(en) gevonden voor %s [%s] (van %d totaal)",
                 len(new_articles),
                 source_url,
+                source_lang,
                 len(articles),
             )
             all_articles.extend(new_articles)
+
+            if source_lang == "NL":
+                nl_count += len(new_articles)
+            else:
+                en_count += len(new_articles)
 
             time.sleep(1)  # Beleefd crawlen
 
         except Exception as exc:
             logger.error("Bron mislukt, overgeslagen — %s: %s", source_url, exc)
+
+    logger.info("Gescand totaal: %d NL-artikelen, %d EN-artikelen", nl_count, en_count)
 
     # Sorteer op publicatiedatum (nieuwste eerst)
     all_articles.sort(key=lambda a: a.pub_date, reverse=True)
