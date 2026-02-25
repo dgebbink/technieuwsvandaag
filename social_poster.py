@@ -8,13 +8,14 @@ Implementeert rich link cards via app.bsky.embed.external:
 """
 import logging
 import re
+import time
 import unicodedata
 from datetime import datetime, timezone
 
 import requests
 from bs4 import BeautifulSoup
 
-from config import BLUESKY_APP_PASSWORD, BLUESKY_HANDLE, ENABLE_SOCIAL_POSTING
+from config import BLUESKY_APP_PASSWORD, BLUESKY_HANDLE, BLUESKY_POST_DELAY_SECONDS, ENABLE_SOCIAL_POSTING
 
 logger = logging.getLogger(__name__)
 
@@ -319,10 +320,20 @@ def post_articles_to_social(results: list[dict], dry_run: bool = False) -> None:
     if not ENABLE_SOCIAL_POSTING:
         return
 
+    delay = BLUESKY_POST_DELAY_SECONDS
+
     for item in results:
-        article = item["article"]
-        post    = item["post"]
+        article  = item["article"]
+        post     = item["post"]
         post_url = post.get("link") or post.get("preview_url", "")
+
+        if dry_run:
+            logger.info("[DRY RUN] Zou %ds wachten voor Bluesky post van: %s", delay, article.titel1)
+        else:
+            logger.info("Bluesky delay gestart (%ds) voor artikel: %s", delay, article.titel1)
+            time.sleep(delay)
+            logger.info("Bluesky delay voltooid, post wordt verstuurd")
+
         post_to_bluesky(
             title=article.titel1,
             summary=article.samenvatting,
