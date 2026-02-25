@@ -84,6 +84,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Verwerk URLs uit adhoc.txt (max 2 per run) in plaats van de normale scrape",
     )
+    parser.add_argument(
+        "--test-bluesky",
+        action="store_true",
+        help="Test Bluesky posting met het meest recente gepubliceerde artikel",
+    )
     return parser.parse_args()
 
 
@@ -96,6 +101,38 @@ def main() -> int:
     if args.adhoc:
         from adhoc_processor import run_adhoc  # noqa: PLC0415
         return run_adhoc(dry_run=args.dry_run)
+
+    # Bluesky test: post het meest recente gepubliceerde artikel
+    if args.test_bluesky:
+        import base64 as _b64  # noqa: PLC0415
+
+        import requests as _req  # noqa: PLC0415
+        from bs4 import BeautifulSoup  # noqa: PLC0415
+        from config import WP_APP_PASSWORD, WP_URL, WP_USERNAME  # noqa: PLC0415
+        from social_poster import post_to_bluesky  # noqa: PLC0415
+
+        _token = _b64.b64encode(f"{WP_USERNAME}:{WP_APP_PASSWORD}".encode()).decode()
+        _resp = _req.get(
+            f"{WP_URL.rstrip('/')}/wp-json/wp/v2/posts",
+            params={"per_page": 1, "status": "publish", "orderby": "date", "order": "desc"},
+            headers={"Authorization": f"Basic {_token}"},
+            timeout=15,
+        )
+        _posts = _resp.json()
+        if not _posts:
+            logger.error("Geen gepubliceerde artikelen gevonden voor Bluesky test")
+            return 1
+        _p = _posts[0]
+        _excerpt = BeautifulSoup(_p.get("excerpt", {}).get("rendered", ""), "html.parser").get_text()
+        _success = post_to_bluesky(
+            title=_p["title"]["rendered"],
+            summary=_excerpt,
+            keywords=", ".join(str(t) for t in _p.get("tags", [])),
+            post_url=_p["link"],
+            dry_run=args.dry_run,
+        )
+        print(f"Bluesky test: {'✅ geslaagd' if _success else '❌ mislukt'}")
+        return 0 if _success else 1
 
     if args.dry_run:
         logger.info("=" * 60)
