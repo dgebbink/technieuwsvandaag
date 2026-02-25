@@ -1,21 +1,20 @@
 """
-adhoc_processor.py — Verwerkt handmatig opgegeven URLs uit adhoc.txt.
+adhoc_processor.py — Verwerkt handmatig opgegeven URLs via Nextcloud WebDAV share.
 
 Werking:
-  - Leest adhoc.txt (één URL per regel)
+  - Leest adhoc.txt van Nextcloud (NEXTCLOUD_WEBDAV_URL in .env)
   - Verwerkt maximaal 2 URLs per run via dezelfde pipeline als main.py
-  - Verwijdert verwerkte URLs uit adhoc.txt na succesvolle post
-  - Schrijft backup adhoc.txt.bak vóór elke mutatie
+  - Schrijft resterende URLs terug naar Nextcloud na verwerking
+  - Bij NetworkError: logt fout en stopt (geen retry — volgende cron is over 10 min)
   - Logt naar logs/adhoc_{datum}.log
 
 Gebruik:
   python adhoc_processor.py
   python adhoc_processor.py --dry-run
 """
-import fcntl
 import logging
-import shutil
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -28,9 +27,7 @@ import requests
 # Constanten
 # ---------------------------------------------------------------------------
 PROJECT_DIR = Path(__file__).parent
-ADHOC_FILE = PROJECT_DIR / "adhoc.txt"
-ADHOC_BACKUP = PROJECT_DIR / "adhoc.txt.bak"
-LOGS_DIR = PROJECT_DIR / "logs"
+LOGS_DIR    = PROJECT_DIR / "logs"
 MAX_PER_RUN = 2
 
 logger = logging.getLogger(__name__)
@@ -45,92 +42,6 @@ def _setup_adhoc_logging() -> None:
     fh = logging.FileHandler(log_file, encoding="utf-8")
     fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)-8s] %(name)s: %(message)s"))
     logging.getLogger().addHandler(fh)
-
-
-# ---------------------------------------------------------------------------
-# adhoc.txt beheer (met file locking)
-# ---------------------------------------------------------------------------
-
-def _read_urls_locked(f) -> list[str]:
-    """Lees en retourneer alle geldige URLs uit een al-geopend bestand."""
-    f.seek(0)
-    lines = f.read().splitlines()
-    return [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
-
-
-def _write_urls_locked(f, urls: list[str]) -> None:
-    """Overschrijf het bestand met de gegeven URL-lijst (bestand al geopend)."""
-    f.seek(0)
-    f.truncate()
-    f.write("\n".join(urls) + ("\n" if urls else ""))
-    f.flush()
-
-
-def load_and_claim_urls() -> tuple[list[str], list[str]]:
-    """
-    Laad adhoc.txt, claim de eerste MAX_PER_RUN URLs, schrijf de rest terug.
-
-    Retourneert (te_verwerken_urls, resterende_urls).
-    Gebruikt fcntl.LOCK_EX om race conditions te voorkomen.
-    """
-    if not ADHOC_FILE.exists():
-        return [], []
-
-    try:
-        with open(ADHOC_FILE, "r+", encoding="utf-8") as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            try:
-                all_urls = _read_urls_locked(f)
-                if not all_urls:
-                    return [], []
-
-                to_process = all_urls[:MAX_PER_RUN]
-                remaining = all_urls[MAX_PER_RUN:]
-
-                # Backup vóór schrijven
-                shutil.copy2(ADHOC_FILE, ADHOC_BACKUP)
-                logger.info("Backup geschreven naar: %s", ADHOC_BACKUP)
-
-                # Schrijf resterende URLs terug
-                _write_urls_locked(f, remaining)
-                logger.info(
-                    "adhoc.txt: %d URL(s) geclaimd, %d overgebleven",
-                    len(to_process),
-                    len(remaining),
-                )
-                return to_process, remaining
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
-    except Exception as exc:
-        logger.error("Fout bij lezen/schrijven adhoc.txt: %s", exc)
-        return [], []
-
-
-def restore_urls(urls_to_restore: list[str]) -> None:
-    """
-    Zet gefaalde URLs terug in adhoc.txt (prepend aan bestaande inhoud).
-    Wordt aangeroepen als verwerking mislukt.
-    """
-    try:
-        existing: list[str] = []
-        if ADHOC_FILE.exists():
-            with open(ADHOC_FILE, "r", encoding="utf-8") as f:
-                fcntl.flock(f, fcntl.LOCK_SH)
-                try:
-                    existing = _read_urls_locked(f)
-                finally:
-                    fcntl.flock(f, fcntl.LOCK_UN)
-
-        with open(ADHOC_FILE, "w", encoding="utf-8") as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            try:
-                combined = urls_to_restore + existing
-                _write_urls_locked(f, combined)
-                logger.info("URLs teruggezet in adhoc.txt na mislukte verwerking")
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
-    except Exception as exc:
-        logger.error("Herstellen van URLs mislukt: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +129,7 @@ def fetch_adhoc_article(url: str) -> Optional[object]:
         image_url=image_url,
         source=urlparse(url).netloc,
         full_text=text,
-        source_lang="EN",  # adhoc URLs behandelen als EN tenzij NL-domein
+        source_lang="EN",
     )
 
     # Eenvoudige NL-domein detectie
@@ -240,14 +151,29 @@ def run_adhoc(dry_run: bool = False) -> int:
     Voer de adhoc-verwerking uit. Retourneert 0 bij succes, 1 bij fout.
     """
     _setup_adhoc_logging()
-    logger.info("=== Adhoc-verwerking gestart (dry_run=%s) ===", dry_run)
+    start = time.monotonic()
+    logger.info("=== Adhoc check gestart (dry_run=%s) ===", dry_run)
 
-    # Stap 1: URLs laden uit adhoc.txt
-    to_process, _ = load_and_claim_urls()
+    # Stap 1: URLs laden van Nextcloud
+    from nextcloud_client import read_adhoc, write_adhoc
 
-    if not to_process:
-        logger.info("adhoc.txt is leeg of niet aanwezig — niets te doen")
+    try:
+        all_urls = read_adhoc()
+    except Exception as exc:
+        logger.error("Nextcloud lezen mislukt — stop: %s", exc)
+        return 1
+
+    if not all_urls:
+        logger.info("Adhoc check: leeg — skip")
         return 0
+
+    to_process = all_urls[:MAX_PER_RUN]
+    to_keep    = all_urls[MAX_PER_RUN:]
+
+    logger.info(
+        "Nextcloud gelezen: %d URL(s) — verwerk %d, bewaar %d",
+        len(all_urls), len(to_process), len(to_keep),
+    )
 
     # Stap 2: Valideer URLs
     valid_urls = []
@@ -258,13 +184,13 @@ def run_adhoc(dry_run: bool = False) -> int:
             logger.warning("Ongeldige URL overgeslagen: %s", url)
 
     if not valid_urls:
-        logger.warning("Geen geldige URLs in adhoc.txt")
+        logger.warning("Geen geldige URLs — skip")
         return 0
 
-    logger.info("Verwerken: %d URL(s)", len(valid_urls))
+    logger.info("Te verwerken: %s", ", ".join(valid_urls))
 
     # Stap 3: Artikelen ophalen
-    articles = []
+    articles    = []
     failed_urls = []
     for url in valid_urls:
         article = fetch_adhoc_article(url)
@@ -273,15 +199,19 @@ def run_adhoc(dry_run: bool = False) -> int:
         else:
             failed_urls.append(url)
 
-    # Zet mislukte fetches terug
+    # Mislukte fetches terug aan het begin van de queue
     if failed_urls:
-        restore_urls(failed_urls)
+        to_keep = failed_urls + to_keep
 
     if not articles:
         logger.error("Geen artikelen succesvol opgehaald")
+        try:
+            write_adhoc(to_keep)
+        except Exception as exc:
+            logger.error("Nextcloud schrijven mislukt: %s", exc)
         return 1
 
-    # Stap 4: AI-verwerking (zelfde pipeline als main.py)
+    # Stap 4: AI-verwerking
     from ai_processor import process_article
     import anthropic
     from config import ANTHROPIC_API_KEY
@@ -296,10 +226,14 @@ def run_adhoc(dry_run: bool = False) -> int:
             processed_articles.append(result)
         else:
             logger.warning("AI-verwerking mislukt voor: %s", article.url)
+            to_keep.insert(0, article.url)
 
     if not processed_articles:
         logger.error("Geen artikelen succesvol verwerkt door AI")
-        restore_urls(valid_urls)
+        try:
+            write_adhoc(to_keep)
+        except Exception as exc:
+            logger.error("Nextcloud schrijven mislukt: %s", exc)
         return 1
 
     # Stap 5: Afbeeldingen
@@ -319,7 +253,6 @@ def run_adhoc(dry_run: bool = False) -> int:
                 logger.warning("Afbeelding genereren mislukt voor '%s' — doorgaan zonder", processed.titel1)
     else:
         from scraper import extract_image_from_page, download_image, _make_session
-        from urllib.parse import urlparse as _urlparse
         session = _make_session()
         for i, processed in enumerate(processed_articles):
             dest = f"/tmp/tnv_adhoc_image_{i}.jpg"
@@ -338,23 +271,34 @@ def run_adhoc(dry_run: bool = False) -> int:
         for result in results:
             save_posted_url(result["article"].original.url)
             logger.info(
-                "Adhoc URL gepost: %s → draft: %s",
+                "Verwerkt: %s → WordPress draft ID %s",
                 result["article"].original.url,
-                result["post"]["preview_url"],
+                result["post"].get("id", "?"),
             )
     else:
         for result in results:
             logger.info("[DRY RUN] Adhoc draft: %s", result["post"]["preview_url"])
 
-    # Stap 7: Social media
+    # Stap 7: Nextcloud bijwerken (resterende URLs)
+    try:
+        write_adhoc(to_keep)
+        logger.info("Nextcloud bijgewerkt: %d URL(s) resterend", len(to_keep))
+    except Exception as exc:
+        logger.error("Nextcloud schrijven mislukt: %s", exc)
+
+    # Stap 8: Social media
     from social_poster import post_articles_to_social
     post_articles_to_social(results, dry_run=dry_run)
 
-    # Stap 8: Notificatiemail met [ADHOC] prefix
+    # Stap 9: Notificatiemail
     from mailer import send_notification
     send_notification(results, subject_prefix="[ADHOC]", dry_run=dry_run)
 
-    logger.info("=== Adhoc-verwerking klaar: %d artikel(en) gepost ===", len(results))
+    elapsed = time.monotonic() - start
+    logger.info(
+        "=== Adhoc check voltooid in %.1fs: %d artikel(en) gepost ===",
+        elapsed, len(results),
+    )
     return 0
 
 
@@ -364,7 +308,6 @@ def run_adhoc(dry_run: bool = False) -> int:
 
 if __name__ == "__main__":
     import argparse
-    # Basislogging activeren (main.py doet dit normaal)
     from config import LOGS_DIR as _LOGS_DIR
     _LOGS_DIR.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
@@ -373,7 +316,7 @@ if __name__ == "__main__":
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
-    parser = argparse.ArgumentParser(description="Adhoc URL verwerker")
+    parser = argparse.ArgumentParser(description="Adhoc URL verwerker via Nextcloud")
     parser.add_argument("--dry-run", action="store_true",
                         help="Simuleer — geen WordPress posts of mails")
     args = parser.parse_args()
