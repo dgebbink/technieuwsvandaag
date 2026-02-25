@@ -25,7 +25,7 @@ SMTP_USERNAME: str = os.environ.get("SMTP_USERNAME", "")
 SMTP_PASSWORD: str = os.environ.get("SMTP_PASSWORD", "")
 SMTP_FROM: str = os.environ.get("SMTP_FROM", "noreply@technieuwsvandaag.nl")
 SMTP_DISPLAY_NAME: str = os.environ.get("SMTP_DISPLAY_NAME", "Redactie TechNieuwsVandaag")
-NOTIFICATION_EMAIL: str = os.environ.get("NOTIFICATION_EMAIL", "dennis@gebbink.nl")
+NOTIFICATION_EMAIL: str = os.environ.get("NOTIFICATION_EMAIL", "info@technieuwsvandaag.nl")
 
 # Paden
 SOURCES_FILE: Path = BASE_DIR / "sources.txt"
