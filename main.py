@@ -124,10 +124,23 @@ def main() -> int:
             return 1
         _p = _posts[0]
         _excerpt = BeautifulSoup(_p.get("excerpt", {}).get("rendered", ""), "html.parser").get_text()
+        # Haal tag namen op (API geeft alleen IDs terug)
+        _tag_ids = _p.get("tags", [])
+        _tag_names: list[str] = []
+        for _tid in _tag_ids[:5]:
+            try:
+                _tr = _req.get(
+                    f"{WP_URL.rstrip('/')}/wp-json/wp/v2/tags/{_tid}",
+                    headers={"Authorization": f"Basic {_token}"},
+                    timeout=10,
+                )
+                _tag_names.append(_tr.json().get("name", ""))
+            except Exception:
+                pass
         _success = post_to_bluesky(
             title=_p["title"]["rendered"],
             summary=_excerpt,
-            keywords=", ".join(str(t) for t in _p.get("tags", [])),
+            keywords=", ".join(_tag_names),
             post_url=_p["link"],
             dry_run=args.dry_run,
         )
