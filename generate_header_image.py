@@ -172,7 +172,7 @@ def generate_pillow_logo() -> Path:
         if Path(fp).exists():
             try:
                 font_large = ImageFont.truetype(fp, 30)
-                font_small = ImageFont.truetype(fp, 10)
+                font_small = ImageFont.truetype(fp, 13)
                 break
             except Exception:
                 continue
