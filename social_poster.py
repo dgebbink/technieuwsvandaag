@@ -2,11 +2,13 @@
 Social media publicatie: post nieuwe artikelen naar Bluesky (AT Protocol).
 Wordt alleen uitgevoerd wanneer ENABLE_SOCIAL_POSTING=true.
 
-Implementeert rich link cards via app.bsky.embed.external:
-- Post body bevat titel + excerpt + hashtags (geen URL in tekst)
-- Embed toont link card met titel, beschrijving en thumbnail
+Embed-strategie:
+- Afbeelding wordt groot getoond via app.bsky.embed.images
+- Artikel URL staat als klikbare link facet in de posttekst
+- Fallback naar app.bsky.embed.external als geen afbeelding beschikbaar
 """
 import logging
+import os
 import re
 import time
 import unicodedata
@@ -14,23 +16,24 @@ from datetime import datetime, timezone
 
 import requests
 from bs4 import BeautifulSoup
+from PIL import Image
 
 from config import BLUESKY_APP_PASSWORD, BLUESKY_HANDLE, BLUESKY_POST_DELAY_SECONDS, ENABLE_SOCIAL_POSTING
 
 logger = logging.getLogger(__name__)
 
-BLUESKY_HOST = "https://bsky.social"
+BLUESKY_HOST        = "https://bsky.social"
 BLUESKY_MAX_GRAPHEMES = 300
+_IMAGE_TMP          = "/tmp/tnv_bluesky_image.jpg"
+_IMAGE_READY        = "/tmp/tnv_bluesky_ready.jpg"
 
 
 # ---------------------------------------------------------------------------
-# Grapheme-count helper (Bluesky telt Unicode graphemes, niet bytes/chars)
+# Grapheme-count helper
 # ---------------------------------------------------------------------------
 
 def _grapheme_len(text: str) -> int:
     """Return the number of Unicode grapheme clusters in text."""
-    # Voor de meeste tekst geldt: graphemes ≈ len(text).
-    # NFC-normalisatie zorgt voor consistente telling.
     return len(unicodedata.normalize("NFC", text))
 
 
@@ -93,40 +96,134 @@ def fetch_og_data(url: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Thumbnail uploaden
+# Afbeelding downloaden, voorbereiden en uploaden
 # ---------------------------------------------------------------------------
 
-def _upload_thumbnail(image_url: str, session: dict) -> dict | None:
-    """Upload een thumbnail naar Bluesky als blob.
+def _fetch_article_image(wp_url: str) -> str | None:
+    """Downloadt de featured image van het WordPress artikel.
 
-    Pre:  image_url is bereikbaar; session bevat accessJwt en host
-    Post: Bluesky blob object, of None bij fout
+    Pre:  wp_url is een geldige gepubliceerde WordPress URL
+    Post: geeft lokaal bestandspad terug of None bij fout
+    """
+    headers = {"User-Agent": "TechNieuwsVandaag-Bot/1.0"}
+    try:
+        resp = requests.get(wp_url, timeout=10, headers=headers)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Probeer og:image eerst
+        og_tag = soup.find("meta", property="og:image")
+        if og_tag and og_tag.get("content"):
+            image_url = og_tag["content"]
+        else:
+            img_tag = soup.select_one("article img")
+            if not img_tag:
+                return None
+            image_url = img_tag.get("src", "")
+
+        if not image_url:
+            return None
+
+        img_resp = requests.get(image_url, timeout=15, headers=headers)
+        img_resp.raise_for_status()
+        with open(_IMAGE_TMP, "wb") as f:
+            f.write(img_resp.content)
+
+        logger.info("Artikelafbeelding gedownload: %s (%d bytes)", image_url, len(img_resp.content))
+        return _IMAGE_TMP
+
+    except Exception as exc:
+        logger.warning("Artikelafbeelding downloaden mislukt voor %s: %s", wp_url, exc)
+        return None
+
+
+def _prepare_image_for_bluesky(filepath: str) -> str:
+    """Resizet en comprimeert afbeelding voor Bluesky upload (max 1MB, max 2000px breed).
+
+    Pre:  filepath is een geldig afbeeldingsbestand
+    Post: geeft pad naar geoptimaliseerd JPEG terug
+    """
+    img = Image.open(filepath).convert("RGB")
+
+    if img.width > 2000:
+        ratio = 2000 / img.width
+        img = img.resize((2000, int(img.height * ratio)), Image.LANCZOS)
+
+    quality = 88
+    while quality > 40:
+        img.save(_IMAGE_READY, "JPEG", quality=quality)
+        if os.path.getsize(_IMAGE_READY) < 950_000:
+            break
+        quality -= 10
+
+    size_kb = os.path.getsize(_IMAGE_READY) // 1024
+    logger.info("Afbeelding klaar voor Bluesky: %d KB (quality=%d)", size_kb, quality)
+    return _IMAGE_READY
+
+
+def _upload_image_blob(filepath: str, session: dict) -> dict | None:
+    """Upload afbeelding als blob naar Bluesky.
+
+    Pre:  filepath bestaat en is onder 1MB; session is actief
+    Post: geeft blob dict terug of None bij fout
     """
     try:
-        img_resp = requests.get(image_url, timeout=15)
-        img_resp.raise_for_status()
-        content_type = img_resp.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+        with open(filepath, "rb") as f:
+            data = f.read()
 
-        upload_resp = requests.post(
+        resp = requests.post(
             f"{session['host']}/xrpc/com.atproto.repo.uploadBlob",
             headers={
                 "Authorization": f"Bearer {session['accessJwt']}",
-                "Content-Type":  content_type,
+                "Content-Type":  "image/jpeg",
             },
-            data=img_resp.content,
+            data=data,
             timeout=30,
         )
-        upload_resp.raise_for_status()
-        blob = upload_resp.json().get("blob")
-        logger.info("Thumbnail geüpload naar Bluesky (%s, %d bytes)", content_type, len(img_resp.content))
+        resp.raise_for_status()
+        blob = resp.json().get("blob")
+        logger.info("Afbeelding geüpload als blob naar Bluesky (%d bytes)", len(data))
         return blob
     except Exception as exc:
-        logger.warning("Thumbnail upload mislukt: %s", exc)
+        logger.warning("Blob upload mislukt: %s", exc)
         return None
 
 
 # ---------------------------------------------------------------------------
-# Hashtag facets bouwen
+# Embed bouwen
+# ---------------------------------------------------------------------------
+
+def _build_embed(article_url: str, og_data: dict, image_blob: dict | None) -> dict:
+    """Bouwt het Bluesky embed object.
+
+    Pre:  article_url is geldig; og_data heeft title/description
+    Post: app.bsky.embed.images als image_blob aanwezig,
+          anders app.bsky.embed.external als fallback
+    """
+    if image_blob:
+        # Afbeelding groot in de post; URL-link loopt via facet in tekst
+        return {
+            "$type": "app.bsky.embed.images",
+            "images": [{
+                "image":       image_blob,
+                "alt":         (og_data.get("title") or "Afbeelding bij artikel")[:1000],
+                "aspectRatio": {"width": 16, "height": 9},
+            }],
+        }
+    else:
+        # Fallback: link card
+        return {
+            "$type": "app.bsky.embed.external",
+            "external": {
+                "uri":         article_url,
+                "title":       (og_data.get("title") or "")[:300],
+                "description": (og_data.get("description") or "")[:300],
+            },
+        }
+
+
+# ---------------------------------------------------------------------------
+# Facets bouwen (hashtags + URL-link)
 # ---------------------------------------------------------------------------
 
 def _build_hashtag_facets(text: str) -> list[dict]:
@@ -147,8 +244,25 @@ def _build_hashtag_facets(text: str) -> list[dict]:
     return facets
 
 
+def _build_url_facet(text: str, url: str) -> dict | None:
+    """Bouwt een link facet voor de URL in de tekst.
+
+    Pre:  url komt exact voor in text
+    Post: geeft facet dict terug met correcte byte-offsets, of None als URL niet gevonden
+    """
+    text_bytes = text.encode("utf-8")
+    url_bytes  = url.encode("utf-8")
+    start = text_bytes.find(url_bytes)
+    if start == -1:
+        return None
+    return {
+        "index": {"byteStart": start, "byteEnd": start + len(url_bytes)},
+        "features": [{"$type": "app.bsky.richtext.facet#link", "uri": url}],
+    }
+
+
 # ---------------------------------------------------------------------------
-# Post tekst bouwen (URL NIET in tekst)
+# Post tekst bouwen (URL IN tekst als klikbare link)
 # ---------------------------------------------------------------------------
 
 def _format_hashtags(keywords: str) -> str:
@@ -160,11 +274,11 @@ def _format_hashtags(keywords: str) -> str:
     )
 
 
-def _build_post_text(title: str, summary: str, hashtags: str) -> str:
-    """Bouw post tekst zonder URL; kap af op zingrens als > 300 graphemes.
+def _build_post_text(title: str, summary: str, url: str, hashtags: str) -> str:
+    """Bouw post tekst met URL als klikbare link op aparte regel.
 
-    Pre:  title, summary, hashtags zijn strings
-    Post: tekst <= BLUESKY_MAX_GRAPHEMES graphemes; URL staat er NIET in
+    Pre:  title, summary, url, hashtags zijn strings
+    Post: tekst <= BLUESKY_MAX_GRAPHEMES graphemes; URL staat op aparte regel
     """
     # Eerste 2 zinnen als intro
     sentences = summary.split(". ")
@@ -172,19 +286,21 @@ def _build_post_text(title: str, summary: str, hashtags: str) -> str:
     if intro and not intro.endswith("."):
         intro += "."
 
-    text = f"{title}\n\n{intro}\n\n{hashtags}"
+    url_line  = f"\n\n{url}"
+    hash_line = f"\n\n{hashtags}" if hashtags else ""
+    reserved  = _grapheme_len(url_line) + _grapheme_len(hash_line)
+    max_base  = BLUESKY_MAX_GRAPHEMES - reserved
 
-    if _grapheme_len(text) <= BLUESKY_MAX_GRAPHEMES:
-        return text
+    base = f"{title}\n\n{intro}"
+    if _grapheme_len(base) <= max_base:
+        return f"{base}{url_line}{hash_line}"
 
-    # Te lang: bereken budget voor intro
-    base = f"{title}\n\n\n\n{hashtags}"
-    budget = BLUESKY_MAX_GRAPHEMES - _grapheme_len(base) - 1  # -1 voor "…"
+    # Te lang: kap intro af op woordgrens
+    title_part = f"{title}\n\n"
+    budget = max_base - _grapheme_len(title_part) - 1  # -1 voor "…"
     if budget <= 0:
-        # Zelfs zonder intro te lang: kap titel af
-        return (title + "\n\n" + hashtags)[: BLUESKY_MAX_GRAPHEMES]
+        return f"{title}{url_line}{hash_line}"
 
-    # Kap intro af op woordgrens
     words = intro.split()
     trimmed = ""
     for word in words:
@@ -194,41 +310,29 @@ def _build_post_text(title: str, summary: str, hashtags: str) -> str:
         trimmed = candidate
 
     intro = (trimmed + "…").strip()
-    return f"{title}\n\n{intro}\n\n{hashtags}"
+    return f"{title}\n\n{intro}{url_line}{hash_line}"
 
 
 # ---------------------------------------------------------------------------
-# Post aanmaken met embed
+# Post aanmaken
 # ---------------------------------------------------------------------------
 
 def _create_post(
-    session: dict,
-    text: str,
-    article_url: str,
-    og_data: dict,
-    thumbnail_blob: dict | None,
+    session:     dict,
+    text:        str,
+    facets:      list[dict],
+    embed:       dict,
 ) -> dict:
-    """Maakt een Bluesky post aan met rich link embed.
+    """Maakt een Bluesky post aan.
 
-    Pre:  session is actief; text is max 300 graphemes; URL staat NIET in text
+    Pre:  session is actief; text is max 300 graphemes
     Post: API response dict met 'uri' key bij succes; raises op HTTP-fout
     """
-    embed: dict = {
-        "$type": "app.bsky.embed.external",
-        "external": {
-            "uri":         article_url,
-            "title":       (og_data.get("title") or "")[:300],
-            "description": (og_data.get("description") or "")[:300],
-        },
-    }
-    if thumbnail_blob:
-        embed["external"]["thumb"] = thumbnail_blob
-
     record: dict = {
         "$type":     "app.bsky.feed.post",
         "text":      text,
         "createdAt": datetime.now(timezone.utc).isoformat(),
-        "facets":    _build_hashtag_facets(text),
+        "facets":    facets,
         "embed":     embed,
         "langs":     ["nl"],
     }
@@ -261,10 +365,10 @@ def post_to_bluesky(
     post_url: str,
     dry_run: bool = False,
 ) -> bool:
-    """Post one article announcement to Bluesky with rich link card.
+    """Post one article announcement to Bluesky with inline image.
 
     Pre:  BLUESKY_HANDLE and BLUESKY_APP_PASSWORD are set when ENABLE_SOCIAL_POSTING=true
-          post_url is the WordPress article URL (used for OG fetch + embed)
+          post_url is the WordPress article URL
     Post: returns True on success; False on failure or when disabled
     """
     if not ENABLE_SOCIAL_POSTING:
@@ -275,20 +379,16 @@ def post_to_bluesky(
         return False
 
     hashtags = _format_hashtags(keywords)
-    text = _build_post_text(title, summary, hashtags)
-
-    # OG data ophalen (mislukt → lege card, geen crashl)
-    og_data = fetch_og_data(post_url)
+    text     = _build_post_text(title, summary, post_url, hashtags)
+    og_data  = fetch_og_data(post_url)
 
     if dry_run:
         logger.info(
             "[DRY RUN] Bluesky post (%d graphemes):\n%s\n\n"
-            "[DRY RUN] Embed URL : %s\n"
-            "[DRY RUN] OG title  : %s\n"
-            "[DRY RUN] OG image  : %s",
+            "[DRY RUN] OG title : %s\n"
+            "[DRY RUN] OG image : %s",
             _grapheme_len(text),
             text,
-            post_url,
             og_data.get("title", "(geen)"),
             og_data.get("image", "(geen)"),
         )
@@ -297,11 +397,26 @@ def post_to_bluesky(
     try:
         session = _bluesky_login()
 
-        thumbnail_blob = None
-        if og_data.get("image"):
-            thumbnail_blob = _upload_thumbnail(og_data["image"], session)
+        # Afbeelding downloaden, voorbereiden en uploaden
+        image_blob = None
+        img_path   = _fetch_article_image(post_url)
+        if img_path:
+            ready_path = _prepare_image_for_bluesky(img_path)
+            image_blob = _upload_image_blob(ready_path, session)
 
-        result = _create_post(session, text, post_url, og_data, thumbnail_blob)
+        if not image_blob:
+            logger.info("Geen afbeelding beschikbaar — fallback naar link card embed")
+
+        # Embed opbouwen
+        embed = _build_embed(post_url, og_data, image_blob)
+
+        # Facets: hashtags + URL-link
+        facets = _build_hashtag_facets(text)
+        url_facet = _build_url_facet(text, post_url)
+        if url_facet:
+            facets.append(url_facet)
+
+        result   = _create_post(session, text, facets, embed)
         post_uri = result.get("uri", "")
         logger.info("Bluesky post verstuurd: %s → %s", title, post_uri)
         return bool(post_uri)
