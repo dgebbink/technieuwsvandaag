@@ -346,7 +346,11 @@ def run_adhoc(dry_run: bool = False) -> int:
         for result in results:
             logger.info("[DRY RUN] Adhoc draft: %s", result["post"]["preview_url"])
 
-    # Stap 7: Notificatiemail met [ADHOC] prefix
+    # Stap 7: Social media
+    from social_poster import post_articles_to_social
+    post_articles_to_social(results, dry_run=dry_run)
+
+    # Stap 8: Notificatiemail met [ADHOC] prefix
     from mailer import send_notification
     send_notification(results, subject_prefix="[ADHOC]", dry_run=dry_run)
 
