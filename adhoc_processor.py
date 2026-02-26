@@ -1,21 +1,9 @@
 """
-adhoc_processor.py — Verwerkt handmatig opgegeven URLs uit adhoc.txt.
+adhoc_processor.py — Verwerkt een enkele URL naar een WordPress draft.
 
-Werking:
-  - Leest adhoc.txt (één URL per regel)
-  - Verwerkt maximaal 2 URLs per run via dezelfde pipeline als main.py
-  - Verwijdert verwerkte URLs uit adhoc.txt na succesvolle post
-  - Schrijft backup adhoc.txt.bak vóór elke mutatie
-  - Logt naar logs/adhoc_{datum}.log
-
-Gebruik:
-  python adhoc_processor.py
-  python adhoc_processor.py --dry-run
+Gebruikt door de Telegram bot (telegram_bot.py) via process_single_url().
 """
-import fcntl
 import logging
-import shutil
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -24,14 +12,7 @@ from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 import requests
 
-# ---------------------------------------------------------------------------
-# Constanten
-# ---------------------------------------------------------------------------
-PROJECT_DIR = Path(__file__).parent
-ADHOC_FILE = PROJECT_DIR / "adhoc.txt"
-ADHOC_BACKUP = PROJECT_DIR / "adhoc.txt.bak"
-LOGS_DIR = PROJECT_DIR / "logs"
-MAX_PER_RUN = 2
+LOGS_DIR = Path(__file__).parent / "logs"
 
 logger = logging.getLogger(__name__)
 
@@ -45,92 +26,6 @@ def _setup_adhoc_logging() -> None:
     fh = logging.FileHandler(log_file, encoding="utf-8")
     fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)-8s] %(name)s: %(message)s"))
     logging.getLogger().addHandler(fh)
-
-
-# ---------------------------------------------------------------------------
-# adhoc.txt beheer (met file locking)
-# ---------------------------------------------------------------------------
-
-def _read_urls_locked(f) -> list[str]:
-    """Lees en retourneer alle geldige URLs uit een al-geopend bestand."""
-    f.seek(0)
-    lines = f.read().splitlines()
-    return [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
-
-
-def _write_urls_locked(f, urls: list[str]) -> None:
-    """Overschrijf het bestand met de gegeven URL-lijst (bestand al geopend)."""
-    f.seek(0)
-    f.truncate()
-    f.write("\n".join(urls) + ("\n" if urls else ""))
-    f.flush()
-
-
-def load_and_claim_urls() -> tuple[list[str], list[str]]:
-    """
-    Laad adhoc.txt, claim de eerste MAX_PER_RUN URLs, schrijf de rest terug.
-
-    Retourneert (te_verwerken_urls, resterende_urls).
-    Gebruikt fcntl.LOCK_EX om race conditions te voorkomen.
-    """
-    if not ADHOC_FILE.exists():
-        return [], []
-
-    try:
-        with open(ADHOC_FILE, "r+", encoding="utf-8") as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            try:
-                all_urls = _read_urls_locked(f)
-                if not all_urls:
-                    return [], []
-
-                to_process = all_urls[:MAX_PER_RUN]
-                remaining = all_urls[MAX_PER_RUN:]
-
-                # Backup vóór schrijven
-                shutil.copy2(ADHOC_FILE, ADHOC_BACKUP)
-                logger.info("Backup geschreven naar: %s", ADHOC_BACKUP)
-
-                # Schrijf resterende URLs terug
-                _write_urls_locked(f, remaining)
-                logger.info(
-                    "adhoc.txt: %d URL(s) geclaimd, %d overgebleven",
-                    len(to_process),
-                    len(remaining),
-                )
-                return to_process, remaining
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
-    except Exception as exc:
-        logger.error("Fout bij lezen/schrijven adhoc.txt: %s", exc)
-        return [], []
-
-
-def restore_urls(urls_to_restore: list[str]) -> None:
-    """
-    Zet gefaalde URLs terug in adhoc.txt (prepend aan bestaande inhoud).
-    Wordt aangeroepen als verwerking mislukt.
-    """
-    try:
-        existing: list[str] = []
-        if ADHOC_FILE.exists():
-            with open(ADHOC_FILE, "r", encoding="utf-8") as f:
-                fcntl.flock(f, fcntl.LOCK_SH)
-                try:
-                    existing = _read_urls_locked(f)
-                finally:
-                    fcntl.flock(f, fcntl.LOCK_UN)
-
-        with open(ADHOC_FILE, "w", encoding="utf-8") as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            try:
-                combined = urls_to_restore + existing
-                _write_urls_locked(f, combined)
-                logger.info("URLs teruggezet in adhoc.txt na mislukte verwerking")
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
-    except Exception as exc:
-        logger.error("Herstellen van URLs mislukt: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -232,133 +127,6 @@ def fetch_adhoc_article(url: str) -> Optional[object]:
 
 
 # ---------------------------------------------------------------------------
-# Hoofdfunctie
-# ---------------------------------------------------------------------------
-
-def run_adhoc(dry_run: bool = False) -> int:
-    """
-    Voer de adhoc-verwerking uit. Retourneert 0 bij succes, 1 bij fout.
-    """
-    _setup_adhoc_logging()
-    logger.info("=== Adhoc-verwerking gestart (dry_run=%s) ===", dry_run)
-
-    # Stap 1: URLs laden uit adhoc.txt
-    to_process, _ = load_and_claim_urls()
-
-    if not to_process:
-        logger.info("adhoc.txt is leeg of niet aanwezig — niets te doen")
-        return 0
-
-    # Stap 2: Valideer URLs
-    valid_urls = []
-    for url in to_process:
-        if validate_url(url):
-            valid_urls.append(url)
-        else:
-            logger.warning("Ongeldige URL overgeslagen: %s", url)
-
-    if not valid_urls:
-        logger.warning("Geen geldige URLs in adhoc.txt")
-        return 0
-
-    logger.info("Verwerken: %d URL(s)", len(valid_urls))
-
-    # Stap 3: Artikelen ophalen
-    articles = []
-    failed_urls = []
-    for url in valid_urls:
-        article = fetch_adhoc_article(url)
-        if article:
-            articles.append(article)
-        else:
-            failed_urls.append(url)
-
-    # Zet mislukte fetches terug
-    if failed_urls:
-        restore_urls(failed_urls)
-
-    if not articles:
-        logger.error("Geen artikelen succesvol opgehaald")
-        return 1
-
-    # Stap 4: AI-verwerking (zelfde pipeline als main.py)
-    from ai_processor import process_article
-    import anthropic
-    from config import ANTHROPIC_API_KEY
-
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    processed_articles = []
-
-    for article in articles:
-        logger.info("AI verwerkt: %s", article.title)
-        result = process_article(article, client)
-        if result:
-            processed_articles.append(result)
-        else:
-            logger.warning("AI-verwerking mislukt voor: %s", article.url)
-
-    if not processed_articles:
-        logger.error("Geen artikelen succesvol verwerkt door AI")
-        restore_urls(valid_urls)
-        return 1
-
-    # Stap 5: Afbeeldingen
-    from config import IMAGE_STRATEGY
-
-    if IMAGE_STRATEGY == "generate":
-        from image_generator import generate_image_for_article
-        for i, processed in enumerate(processed_articles):
-            dest = f"/tmp/tnv_adhoc_image_{i}.jpg"
-            processed.image_path = generate_image_for_article(
-                title=processed.titel1,
-                article_text=processed.samenvatting,
-                dest_path=dest,
-                dry_run=dry_run,
-            )
-            if not processed.image_path:
-                logger.warning("Afbeelding genereren mislukt voor '%s' — doorgaan zonder", processed.titel1)
-    else:
-        from scraper import extract_image_from_page, download_image, _make_session
-        from urllib.parse import urlparse as _urlparse
-        session = _make_session()
-        for i, processed in enumerate(processed_articles):
-            dest = f"/tmp/tnv_adhoc_image_{i}.jpg"
-            img_url = processed.original.image_url
-            if not img_url:
-                img_url = extract_image_from_page(processed.original.url, session)
-            if img_url:
-                processed.image_path = download_image(img_url, dest)
-
-    # Stap 6: WordPress drafts
-    from wordpress_client import publish_articles
-    results = publish_articles(processed_articles, dry_run=dry_run)
-
-    if not dry_run:
-        from scraper import save_posted_url
-        for result in results:
-            save_posted_url(result["article"].original.url)
-            logger.info(
-                "Adhoc URL gepost: %s → draft: %s",
-                result["article"].original.url,
-                result["post"]["preview_url"],
-            )
-    else:
-        for result in results:
-            logger.info("[DRY RUN] Adhoc draft: %s", result["post"]["preview_url"])
-
-    # Stap 7: Social media
-    from social_poster import post_articles_to_social
-    post_articles_to_social(results, dry_run=dry_run)
-
-    # Stap 8: Notificatiemail met [ADHOC] prefix
-    from mailer import send_notification
-    send_notification(results, subject_prefix="[ADHOC]", dry_run=dry_run)
-
-    logger.info("=== Adhoc-verwerking klaar: %d artikel(en) gepost ===", len(results))
-    return 0
-
-
-# ---------------------------------------------------------------------------
 # Telegram bot API — verwerkt één URL direct naar WordPress draft
 # ---------------------------------------------------------------------------
 
@@ -434,25 +202,3 @@ def process_single_url(url: str) -> dict | None:
         "post_id": post.get("id"),
         "success": True,
     }
-
-
-# ---------------------------------------------------------------------------
-# CLI entry point
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    import argparse
-    # Basislogging activeren (main.py doet dit normaal)
-    from config import LOGS_DIR as _LOGS_DIR
-    _LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)-8s] %(name)s: %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)],
-    )
-
-    parser = argparse.ArgumentParser(description="Adhoc URL verwerker")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Simuleer — geen WordPress posts of mails")
-    args = parser.parse_args()
-    sys.exit(run_adhoc(dry_run=args.dry_run))
