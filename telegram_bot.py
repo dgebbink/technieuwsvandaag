@@ -4,6 +4,7 @@ Telegram bot voor TechNieuwsVandaag adhoc artikel aanvragen.
 Verwerkt URLs die als bericht worden gestuurd naar de bot.
 """
 
+import asyncio
 import os
 import logging
 from pathlib import Path
@@ -17,6 +18,7 @@ from telegram.ext import (
     ContextTypes,
 )
 from adhoc_processor import process_single_url
+from social_poster import post_to_bluesky
 
 load_dotenv()
 
@@ -120,16 +122,64 @@ async def handle_url(
             wp_url   = result["wp_url"]
             titel    = result.get("title", "Geen titel")
             draft_id = result.get("post_id", "?")
+            delay    = int(os.getenv("BLUESKY_POST_DELAY_SECONDS", "60"))
 
             await processing_msg.edit_text(
                 f"✅ Artikel aangemaakt!\n\n"
                 f"📰 *{titel}*\n\n"
                 f"🔗 Preview:\n{wp_url}\n\n"
                 f"📝 Draft ID: {draft_id}\n"
-                f"_(Publiceer via WordPress admin)_",
+                f"⏳ Bluesky post volgt over {delay} seconden...",
                 parse_mode="Markdown",
             )
             log.info("Succesvol verwerkt: %s → %s", url, wp_url)
+            log.info("Bluesky post gestart voor Telegram artikel: %s (delay: %ds)", url, delay)
+
+            await asyncio.sleep(delay)
+
+            try:
+                bsky_success = post_to_bluesky(
+                    title=result.get("title", ""),
+                    summary=result.get("summary", ""),
+                    keywords=result.get("keywords", ""),
+                    post_url=wp_url,
+                )
+                log.info(
+                    "Bluesky post resultaat voor %s: %s",
+                    url,
+                    "geslaagd" if bsky_success else "mislukt",
+                )
+
+                if bsky_success:
+                    await processing_msg.edit_text(
+                        f"✅ Artikel aangemaakt!\n\n"
+                        f"📰 *{titel}*\n\n"
+                        f"🔗 WordPress preview:\n{wp_url}\n\n"
+                        f"🦋 Gepost op Bluesky\n\n"
+                        f"📝 Draft ID: {draft_id}\n"
+                        f"_(Publiceer via WordPress admin)_",
+                        parse_mode="Markdown",
+                    )
+                else:
+                    await processing_msg.edit_text(
+                        f"✅ Artikel aangemaakt!\n\n"
+                        f"📰 *{titel}*\n\n"
+                        f"🔗 WordPress preview:\n{wp_url}\n\n"
+                        f"⚠️ Bluesky post mislukt — controleer logs/social_*.log\n\n"
+                        f"📝 Draft ID: {draft_id}",
+                        parse_mode="Markdown",
+                    )
+
+            except Exception as e:
+                log.error("Bluesky fout na Telegram artikel: %s", e)
+                await processing_msg.edit_text(
+                    f"✅ Artikel aangemaakt!\n\n"
+                    f"📰 *{titel}*\n\n"
+                    f"🔗 WordPress preview:\n{wp_url}\n\n"
+                    f"⚠️ Bluesky fout: {str(e)[:100]}\n\n"
+                    f"📝 Draft ID: {draft_id}",
+                    parse_mode="Markdown",
+                )
 
         else:
             await processing_msg.edit_text(

@@ -197,8 +197,10 @@ def process_single_url(url: str) -> dict | None:
     logger.info("process_single_url klaar: %s → %s", url, post.get("preview_url"))
 
     return {
-        "wp_url":  post.get("preview_url", ""),
-        "title":   processed.titel1,
-        "post_id": post.get("id"),
-        "success": True,
+        "wp_url":   post.get("preview_url", ""),
+        "title":    processed.titel1,
+        "summary":  processed.samenvatting,
+        "keywords": processed.trefwoorden,
+        "post_id":  post.get("id"),
+        "success":  True,
     }
