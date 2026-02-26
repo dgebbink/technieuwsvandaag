@@ -359,6 +359,84 @@ def run_adhoc(dry_run: bool = False) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Telegram bot API — verwerkt één URL direct naar WordPress draft
+# ---------------------------------------------------------------------------
+
+def process_single_url(url: str) -> dict | None:
+    """Verwerkt één URL naar een WordPress draft.
+    Pre:  url is een geldige https URL
+    Post: geeft dict terug met wp_url, title, post_id, success=True
+          of None als verwerking volledig mislukt
+    """
+    _setup_adhoc_logging()
+    logger.info("process_single_url gestart: %s", url)
+
+    if not validate_url(url):
+        logger.error("Ongeldige URL: %s", url)
+        return None
+
+    # Stap 1: Artikel ophalen
+    article = fetch_adhoc_article(url)
+    if not article:
+        logger.error("Artikel ophalen mislukt: %s", url)
+        return None
+
+    # Stap 2: AI-verwerking
+    from ai_processor import process_article
+    import anthropic
+    from config import ANTHROPIC_API_KEY
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    processed = process_article(article, client)
+    if not processed:
+        logger.error("AI-verwerking mislukt: %s", url)
+        return None
+
+    # Stap 3: Afbeelding
+    from config import IMAGE_STRATEGY
+
+    if IMAGE_STRATEGY == "generate":
+        from image_generator import generate_image_for_article
+        processed.image_path = generate_image_for_article(
+            title=processed.titel1,
+            article_text=processed.samenvatting,
+            dest_path="/tmp/tnv_telegram_image.jpg",
+            dry_run=False,
+        )
+    else:
+        from scraper import extract_image_from_page, download_image, _make_session
+        session = _make_session()
+        img_url = processed.original.image_url
+        if not img_url:
+            img_url = extract_image_from_page(processed.original.url, session)
+        if img_url:
+            processed.image_path = download_image(img_url, "/tmp/tnv_telegram_image.jpg")
+
+    # Stap 4: WordPress draft
+    from wordpress_client import publish_articles
+    results = publish_articles([processed], dry_run=False)
+
+    if not results:
+        logger.error("WordPress publicatie mislukt: %s", url)
+        return None
+
+    result = results[0]
+    post   = result["post"]
+
+    from scraper import save_posted_url
+    save_posted_url(url)
+
+    logger.info("process_single_url klaar: %s → %s", url, post.get("preview_url"))
+
+    return {
+        "wp_url":  post.get("preview_url", ""),
+        "title":   processed.titel1,
+        "post_id": post.get("id"),
+        "success": True,
+    }
+
+
+# ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
