@@ -45,7 +45,7 @@ from config import LOGS_DIR  # noqa: E402
 
 logger = _setup_logging(LOGS_DIR)
 
-from ai_processor import InsufficientCreditsError, process_articles  # noqa: E402
+from ai_processor import InsufficientCreditsError, process_articles, save_posted_title  # noqa: E402
 from config import IMAGE_STRATEGY  # noqa: E402
 from mailer import send_balance_warning, send_fal_balance_warning, send_notification  # noqa: E402
 from scraper import download_image, fetch_article_text, save_posted_url, scrape_all_sources  # noqa: E402
@@ -268,8 +268,10 @@ def main() -> int:
 
     if not args.dry_run:
         for result in results:
-            url = result["article"].original.url
+            article = result["article"]
+            url = article.original.url
             save_posted_url(url)
+            save_posted_title(article.titel1, url)
             logger.info(
                 "URL opgeslagen als gepost: %s → draft: %s",
                 url,

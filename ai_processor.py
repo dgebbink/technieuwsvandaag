@@ -1,18 +1,22 @@
 """
 AI-verwerking via de Anthropic Claude API:
-- Selecteer de 2 meest relevante artikelen
+- Selecteer het 1 meest relevante artikel
 - Genereer Nederlandse samenvattingen, titels, trefwoorden en categorie
 """
 import json
 import logging
 import re
 from dataclasses import dataclass
+from datetime import date
+from pathlib import Path
 from typing import Optional
 
 import anthropic
 
 from config import ANTHROPIC_API_KEY
 from scraper import Article, fetch_article_text
+
+POSTED_TITLES_FILE = Path(__file__).parent / "posted_titles.txt"
 
 logger = logging.getLogger(__name__)
 
@@ -74,13 +78,115 @@ def _extract_json(text: str) -> object:
 
 
 # ---------------------------------------------------------------------------
+# Deduplicatie helpers
+# ---------------------------------------------------------------------------
+
+def deduplicate_articles(
+    articles: list[Article],
+    client: anthropic.Anthropic,
+) -> list[Article]:
+    """Removes near-duplicate articles covering the same topic.
+    Pre:  articles is a list of Article objects
+    Post: returns filtered list — when duplicates found,
+          keeps the single highest-quality article per topic
+          (prefers NL source, then most detailed excerpt)
+    """
+    if len(articles) <= 1:
+        return articles
+
+    numbered = "\n".join([
+        f"{i+1}. [{a.source}] {a.title} — {a.excerpt[:100]}"
+        for i, a in enumerate(articles)
+    ])
+
+    prompt = (
+        "You are a news editor reviewing today's article candidates from multiple sources.\n\n"
+        f"{numbered}\n\n"
+        "Identify groups of articles that cover the SAME news event or announcement "
+        "(even if worded differently or from different sources). "
+        "For each duplicate group keep only the single best article — prefer: "
+        "NL source over EN, most detailed excerpt, most authoritative source.\n\n"
+        "Return ONLY a JSON array of article numbers to KEEP.\n"
+        "Example: [1, 3, 5, 7, 9, 11]\n"
+        "No explanation. Only the JSON array."
+    )
+
+    try:
+        message = client.messages.create(
+            model=MODEL,
+            max_tokens=100,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        response = message.content[0].text  # type: ignore[union-attr]
+        match = re.search(r'\[[\d,\s]+\]', response)
+        if match:
+            keep_indices = [
+                i for i in json.loads(match.group())
+                if 0 < i <= len(articles)
+            ]
+            kept = [articles[i - 1] for i in keep_indices]
+            removed = len(articles) - len(kept)
+            if removed > 0:
+                logger.info("Deduplicatie: %d duplicaat/duplicaten verwijderd", removed)
+            return kept if kept else articles
+    except Exception as e:
+        logger.warning("Dedup parsing mislukt: %s — originele lijst gebruikt", e)
+
+    return articles
+
+
+def is_similar_to_posted_today(
+    title: str,
+    threshold: float = 0.6,
+) -> bool:
+    """Checks if a similar article was already posted today.
+    Pre:  title is a non-empty string; threshold in (0, 1)
+    Post: True if a title with >threshold word overlap
+          was posted today, False otherwise
+    """
+    if not POSTED_TITLES_FILE.exists():
+        return False
+
+    today = date.today().isoformat()
+    title_words = set(title.lower().split())
+
+    with open(POSTED_TITLES_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            if not line.startswith(today):
+                continue
+            posted_title = line.split("|", 2)[-1].strip().lower()
+            posted_words = set(posted_title.split())
+            combined = title_words | posted_words
+            if not combined:
+                continue
+            ratio = len(title_words & posted_words) / len(combined)
+            if ratio > threshold:
+                logger.info(
+                    "Vergelijkbaar artikel vandaag al gepost (overlap %.0f%%): %s",
+                    ratio * 100,
+                    posted_title,
+                )
+                return True
+    return False
+
+
+def save_posted_title(title: str, url: str) -> None:
+    """Saves a posted article title for future dedup checks.
+    Pre:  title and url are non-empty strings
+    Post: line appended to posted_titles.txt: YYYY-MM-DD|url|title
+    """
+    with open(POSTED_TITLES_FILE, "a", encoding="utf-8") as f:
+        f.write(f"{date.today().isoformat()}|{url}|{title}\n")
+
+
+# ---------------------------------------------------------------------------
 # Stap 2a: Artikel-selectie
 # ---------------------------------------------------------------------------
 
 def select_articles(articles: list[Article], client: anthropic.Anthropic) -> list[int]:
-    """Ask Claude to pick the 2 most newsworthy articles; return 0-based indices."""
-    # pre: len(articles) >= 2; client is authenticated
-    # post: returns 1–2 valid indices; raises InsufficientCreditsError on low balance
+    """Ask Claude to pick the 1 most newsworthy article; return 0-based indices."""
+    # pre: len(articles) >= 1; client is authenticated
+    # post: returns 1 valid index; raises InsufficientCreditsError on low balance
     article_list = "\n".join(
         f"{i + 1}. [{_domain(a.source)}] [{getattr(a, 'source_lang', 'EN')}] {a.title}\n   {a.excerpt[:250]}"
         for i, a in enumerate(articles)
@@ -89,22 +195,22 @@ def select_articles(articles: list[Article], client: anthropic.Anthropic) -> lis
     prompt = (
         "Je bent redacteur van een Nederlandse tech-nieuwswebsite. "
         "Hieronder een lijst met vandaag gepubliceerde tech-artikelen. "
-        "Selecteer de 2 meest relevante en impactvolle artikelen voor een Nederlands publiek. "
+        "Selecteer het 1 meest relevante en impactvolle artikel voor een Nederlands publiek. "
         "Overweeg: breedte van impact, innovatie, relevantie voor consument én professional, "
         "en nieuwswaarde. "
         "Geef een lichte voorkeur aan artikelen van Nederlandse bronnen "
         "(gemarkeerd als [NL]) boven Engelstalige bronnen, mits de "
         "nieuwswaarde vergelijkbaar is. Geef elke NL-bron een gewicht "
         "van 1.3x ten opzichte van EN-bronnen bij gelijke relevantie. "
-        "Geef als output ALLEEN de nummers van de 2 gekozen artikelen als JSON array, "
-        "bijv: [3, 7]\n\n"
+        "Geef als output ALLEEN het nummer van het gekozen artikel als JSON array, "
+        "bijv: [3]\n\n"
         f"Artikelen:\n{article_list}"
     )
 
     try:
         message = client.messages.create(
             model=MODEL,
-            max_tokens=50,
+            max_tokens=20,
             messages=[{"role": "user", "content": prompt}],
         )
     except anthropic.APIError as exc:
@@ -120,7 +226,7 @@ def select_articles(articles: list[Article], client: anthropic.Anthropic) -> lis
 
     # Converteer van 1-gebaseerd naar 0-gebaseerd en valideer
     indices = []
-    for i in result[:2]:
+    for i in result[:1]:
         idx = int(i) - 1
         if 0 <= idx < len(articles):
             indices.append(idx)
@@ -240,9 +346,9 @@ def process_article(article: Article, client: anthropic.Anthropic) -> Optional[P
 # ---------------------------------------------------------------------------
 
 def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
-    """Select top 2 articles and generate full Dutch processing for each."""
+    """Select top 1 article and generate full Dutch processing for it."""
     # pre: ANTHROPIC_API_KEY is set; len(articles) >= 1
-    # post: returns at most 2 ProcessedArticle objects
+    # post: returns at most 1 ProcessedArticle object
     if not ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY is niet ingesteld in .env")
 
@@ -252,22 +358,39 @@ def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
         logger.warning("Geen artikelen beschikbaar voor verwerking")
         return []
 
+    # Stap A: semantische deduplicatie over alle kandidaten
+    logger.info("Deduplicatie: %d kandidaten controleren op duplicaten", len(articles))
+    articles = deduplicate_articles(articles, client)
+    logger.info("Na deduplicatie: %d artikel(en) over", len(articles))
+
+    # Stap B: filter artikelen die vandaag al gepost zijn (title overlap)
+    before_filter = len(articles)
+    articles = [a for a in articles if not is_similar_to_posted_today(a.title)]
+    filtered = before_filter - len(articles)
+    if filtered:
+        logger.info("%d artikel(en) gefilterd wegens overlap met vandaag al geposte titels", filtered)
+
+    if not articles:
+        logger.warning("Alle kandidaten gefilterd (duplicaten of al gepost vandaag)")
+        return []
+
+    # Stap C: Claude selecteert het beste artikel
     if len(articles) < 2:
-        logger.warning("Slechts %d artikel(en) beschikbaar, selectie overgeslagen", len(articles))
-        selected_indices = list(range(len(articles)))
+        logger.info("Slechts %d artikel(en) beschikbaar, selectie overgeslagen", len(articles))
+        selected_indices = [0]
     else:
-        logger.info("AI selecteert 2 artikelen uit %d kandidaten", len(articles))
+        logger.info("AI selecteert 1 artikel uit %d kandidaten", len(articles))
         try:
             selected_indices = select_articles(articles, client)
             logger.info("Claude selecteerde indices: %s", selected_indices)
         except InsufficientCreditsError:
             raise  # doorsturen naar aanroeper voor urgente melding
         except Exception as exc:
-            logger.error("Artikel-selectie mislukt, val terug op eerste twee: %s", exc)
-            selected_indices = [0, 1]
+            logger.error("Artikel-selectie mislukt, val terug op eerste: %s", exc)
+            selected_indices = [0]
 
     processed: list[ProcessedArticle] = []
-    for idx in selected_indices[:2]:
+    for idx in selected_indices[:1]:
         if 0 <= idx < len(articles):
             article = articles[idx]
             lang = getattr(article, "source_lang", "EN")

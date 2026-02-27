@@ -6,3 +6,4 @@ venv/
 *.swp
 *.swo
 /tmp/
+posted_titles.txt
