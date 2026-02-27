@@ -107,6 +107,26 @@ def build_crontab(
             f"  # slot {i}: {ch:02d}:{cm:02d} CET"
         )
 
+    # Log cleanup altijd om 00:00 UTC (vóór scheduler-regeneratie)
+    lines += [
+        "",
+        "# Log cleanup om middernacht (vóór schema-regeneratie)",
+        f"0 0 * * * cd {project_path} && "
+        f"{PYTHON} log_cleaner.py "
+        f">> {project_path}/logs/log_cleaner.log 2>&1",
+    ]
+
+    # Dagrapport om 19:00 CET (DST-aware)
+    report_cet = (19, 0)
+    report_utc = cet_to_utc([report_cet])[0]
+    lines += [
+        "",
+        "# Dagrapport om 19:00 CET (Bluesky + tegoed)",
+        f"{report_utc[1]} {report_utc[0]} * * * cd {project_path} && "
+        f"{PYTHON} daily_report.py "
+        f">> {project_path}/logs/cron_report.log 2>&1",
+    ]
+
     # Digest altijd om 20:00 CET (19:00 UTC winter / 18:00 UTC zomer — DST-aware)
     digest_cet = (20, 0)
     digest_utc = cet_to_utc([digest_cet])[0]

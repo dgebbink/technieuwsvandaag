@@ -376,3 +376,164 @@ def send_notification(
     # Fallback
     print(f"\nMail kon niet verstuurd worden. Onderwerp: {subject}")
     _save_email_to_file(subject, html_body, date_str)
+
+
+# ---------------------------------------------------------------------------
+# Generieke e-mailhelper (voor dagrapport en andere modules)
+# ---------------------------------------------------------------------------
+
+def send_email(to: str, subject: str, html_body: str) -> None:
+    """Send an HTML email to an arbitrary recipient.
+    Pre:  SMTP settings configured in .env
+    Post: email sent; falls back to file on SMTP failure
+    """
+    date_str = datetime.now().strftime("%d-%m-%Y %H:%M")
+
+    if SMTP_HOST:
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"]    = formataddr((SMTP_DISPLAY_NAME, SMTP_USERNAME))
+            msg["To"]      = to
+            msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
+                server.ehlo()
+                server.starttls()
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                server.sendmail(SMTP_USERNAME, [to], msg.as_string())
+
+            logger.info("Mail verstuurd naar %s — %s", to, subject)
+            return
+
+        except smtplib.SMTPAuthenticationError as exc:
+            logger.error("SMTP authenticatie mislukt: %s", exc)
+        except smtplib.SMTPException as exc:
+            logger.error("SMTP-fout: %s", exc)
+        except Exception as exc:
+            logger.error("Onverwachte mail-fout: %s", exc)
+    else:
+        logger.warning("SMTP_HOST niet geconfigureerd — fallback naar bestand")
+
+    _save_email_to_file(subject, html_body, date_str)
+
+
+# ---------------------------------------------------------------------------
+# HTML-secties voor het dagrapport
+# ---------------------------------------------------------------------------
+
+def render_bluesky_section(data: dict) -> str:
+    """Renders Bluesky daily activity as HTML email block.
+    Pre:  data is output of collect_daily_bluesky_report()
+    Post: self-contained HTML div string
+    """
+    if not data.get("success"):
+        return (
+            "<div style='background:#fff3cd;padding:12px;"
+            "border-radius:4px;margin:16px 0'>"
+            "<b>⚠️ Bluesky ophalen mislukt:</b> "
+            f"{data.get('error', 'onbekend')}</div>"
+        )
+
+    new_f = data["new_followers"]
+    if new_f:
+        items = "".join(
+            f"<li><b>{f['displayName']}</b> (@{f['handle']})</li>"
+            for f in new_f
+        )
+        followers_html = (
+            f"<h3 style='color:#0085ff;margin:12px 0 4px'>"
+            f"Nieuwe volgers vandaag ({len(new_f)})</h3>"
+            f"<ul style='margin:4px 0'>{items}</ul>"
+        )
+    else:
+        followers_html = (
+            "<p style='color:#888;margin:4px 0'>Geen nieuwe volgers vandaag.</p>"
+        )
+
+    posts_html = ""
+    for p in data["posts"]:
+        replies_html = ""
+        if p["replies"]:
+            reply_items = "".join(
+                f"<li><b>{r['displayName']}</b>: {r['text']}</li>"
+                for r in p["replies"]
+            )
+            replies_html = (
+                f"<ul style='margin:6px 0 0 16px;color:#333;font-size:13px'>"
+                f"{reply_items}</ul>"
+            )
+        posts_html += (
+            "<div style='border-left:3px solid #0085ff;padding:8px 12px;"
+            "margin:8px 0;background:#fff'>"
+            f"<p style='margin:0 0 4px;font-size:13px'>{p['text']}…</p>"
+            "<span style='font-size:11px;color:#888'>"
+            f"❤️ {p['likeCount']} &nbsp;"
+            f"🔁 {p['repostCount']} &nbsp;"
+            f"💬 {p['replyCount']}</span>"
+            f"{replies_html}</div>"
+        )
+
+    if not posts_html:
+        posts_html = "<p style='color:#888'>Geen posts vandaag.</p>"
+
+    handle = data.get("handle", "technieuwsvandaag.bsky.social")
+    return (
+        "<div style='background:#f0f7ff;padding:16px;border-radius:6px;"
+        "margin:20px 0;border:1px solid #cce0ff'>"
+        f"<h2 style='margin-top:0;color:#0085ff'>🦋 Bluesky — @{handle}</h2>"
+        f"<p><b>Totaal volgers:</b> {data['total_followers']}</p>"
+        f"{followers_html}"
+        "<h3 style='color:#0085ff;margin:12px 0 4px'>Posts vandaag</h3>"
+        f"{posts_html}</div>"
+    )
+
+
+def render_funds_section(data: dict) -> str:
+    """Renders available API fund balances as HTML block.
+    Pre:  data is output of collect_funds_report()
+    Post: self-contained HTML div with colour-coded balances;
+          red warning shown when balance drops below $1.00
+    """
+    def row(name: str, d: dict, icon: str, link: str) -> str:
+        if not d.get("success") or d.get("available") is None:
+            return (
+                "<tr style='border-bottom:1px solid #e0e0e0'>"
+                f"<td style='padding:10px 8px'>{icon} <b>{name}</b></td>"
+                "<td style='padding:10px 8px;color:#999'>"
+                f"Niet beschikbaar &mdash; "
+                f"<a href='{link}' style='color:#CC0000'>controleer handmatig</a>"
+                "</td></tr>"
+            )
+        amount = d["available"]
+        color  = "#28a745" if amount > 5.00 else "#ffc107" if amount > 1.00 else "#dc3545"
+        warn   = "&nbsp;⚠️ <b>Tegoed bijna op!</b>" if amount < 1.00 else ""
+        return (
+            "<tr style='border-bottom:1px solid #e0e0e0'>"
+            f"<td style='padding:10px 8px'>{icon} <b>{name}</b></td>"
+            f"<td style='padding:10px 8px;color:{color};font-size:16px;font-weight:700'>"
+            f"${amount:.2f} USD{warn}</td></tr>"
+        )
+
+    anthropic_row = row(
+        "Claude (Anthropic)", data["anthropic"], "🤖",
+        "https://console.anthropic.com/settings/billing",
+    )
+    fal_row = row(
+        "FAL.ai (beeldgeneratie)", data["fal"], "🎨",
+        "https://fal.ai/dashboard/billing",
+    )
+    return (
+        "<div style='background:#f9f9f9;padding:16px;border-radius:6px;"
+        "margin:20px 0;border:1px solid #e0e0e0'>"
+        "<h2 style='margin-top:0;font-size:16px;text-transform:uppercase;"
+        "letter-spacing:0.5px'>💳 Beschikbaar tegoed</h2>"
+        "<table style='width:100%;border-collapse:collapse'>"
+        "<tr style='background:#1A1A1A'>"
+        "<th style='text-align:left;padding:8px;color:#fff;font-size:11px;"
+        "text-transform:uppercase;letter-spacing:0.8px;width:50%'>Service</th>"
+        "<th style='text-align:left;padding:8px;color:#fff;font-size:11px;"
+        "text-transform:uppercase;letter-spacing:0.8px'>Tegoed</th></tr>"
+        f"{anthropic_row}{fal_row}"
+        "</table></div>"
+    )
