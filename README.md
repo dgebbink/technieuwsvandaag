@@ -1,7 +1,8 @@
 # TechNieuwsVandaag — Automatiseringsscript
 
-Dagelijks script dat tech-nieuwsbronnen scant, de 2 meest relevante artikelen selecteert,
-Nederlandse samenvattingen genereert via Claude AI, en deze als draft klaarzet op WordPress.
+Geautomatiseerd script dat vijf keer per dag tech-nieuwsbronnen scant, het meest relevante
+artikel selecteert, een Nederlandse samenvatting genereert via Claude AI, en dit als draft
+klaarzet op WordPress. Een dagelijkse digest-mail geeft een overzicht van alle concepten.
 
 ---
 
@@ -73,11 +74,17 @@ technieuwsvandaag/
 ├── ai_processor.py      # Claude AI: selectie + samenvatting
 ├── wordpress_client.py  # WordPress REST API: categorieën, media, drafts
 ├── mailer.py            # SMTP-notificatiemail + fallback
-├── sources.txt          # Lijst van te scrapen bronnen
+├── daily_digest.py      # Dagelijks overzichtsmail van alle drafts
+├── scheduler.py         # Genereert dagelijks een willekeurig cron-schema
+├── log_cleaner.py       # Dagelijkse log-rotatie en opruiming
+├── social_poster.py     # Bluesky-posting na publicatie
+├── backfill.py          # Terugvullen van artikelen voor een datumbereik
+├── adhoc_processor.py   # Losse verwerking van één URL
+├── sources.txt          # Lijst van te scrapen bronnen (NL + EN, ~21 bronnen)
 ├── posted_urls.txt      # Bijgehouden geposte URLs (auto-aangemaakt)
 ├── .env                 # Credentials (nooit committen!)
 ├── requirements.txt
-└── logs/                # Logbestanden (auto-aangemaakt)
+└── logs/                # Logbestanden (auto-aangemaakt, dagelijks opgeschoond)
 ```
 
 ---
@@ -111,20 +118,28 @@ De volledige lijst staat in `ai_processor.py` onder `CATEGORIES`.
 
 ## Cron-installatie
 
-Voer het script dagelijks om 06:00 UTC (07:00 CET) uit:
+Het schema wordt dagelijks automatisch opnieuw gegenereerd door `scheduler.py`, zodat
+de vijf dagelijkse runs op wisselende tijdstippen plaatsvinden. Stel éénmalig in:
 
 ```bash
-# Crontab bewerken
 crontab -e
 ```
 
-Voeg de volgende regel toe:
+Minimale crontab (scheduler genereert de rest):
 
 ```
-0 6 * * * cd /pad/naar/technieuwsvandaag && /usr/bin/python3 main.py >> logs/cron.log 2>&1
+PATH=/usr/bin:/bin:/usr/local/bin
+
+# Dagelijks om middernacht: logs opschonen en nieuw schema genereren
+0 0 * * * cd /pad/naar/technieuwsvandaag && python3 log_cleaner.py >> logs/log_cleaner.log 2>&1
+0 0 * * * cd /pad/naar/technieuwsvandaag && python3 scheduler.py >> logs/scheduler.log 2>&1
+
+# Dagelijks overzichtsmail om 20:00 CET (19:00 UTC)
+0 19 * * * cd /pad/naar/technieuwsvandaag && python3 daily_digest.py >> logs/cron_digest.log 2>&1
 ```
 
-Controleer het pad naar Python met `which python3`.
+Na de eerste `scheduler.py`-run worden de vijf dagelijkse `main.py`-regels automatisch
+toegevoegd aan de crontab. Controleer het pad naar Python met `which python3`.
 
 ---
 
@@ -139,7 +154,7 @@ print(f"{len(articles)} artikelen gevonden")
 # AI-verwerking testen (vereist ANTHROPIC_API_KEY in .env)
 from ai_processor import process_articles
 processed = process_articles(articles)
-print(processed[0].titel1)
+print(processed[0].titel)
 
 # WordPress-verbinding testen
 from wordpress_client import WordPressClient
@@ -344,7 +359,7 @@ add_action('init', function () {
   (bijv. "Wat is een LLM?" of "GPU's uitgelegd voor beginners")
 
 **Contentfrequentie:**
-- 2 artikelen per dag (via dit script) is een goede basis
+- Het script draait 5× per dag en plaatst elke run 1 artikel — tot 5 artikelen per dag
 - Google Discover beloont consistentie: mis liever geen dag dan meer posten
 
 **Interne linkstrategie:**
