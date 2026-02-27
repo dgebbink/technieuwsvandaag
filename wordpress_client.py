@@ -252,9 +252,6 @@ class WordPressClient:
                 )
 
             content_parts += [f"<p>{p.strip()}</p>" for p in paragraphs if p.strip()]
-            content_parts.append(
-                f'<p><a href="{article.original.url}">Bron</a></p>'
-            )
 
             content_html = "\n".join(content_parts)
 
