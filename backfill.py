@@ -240,7 +240,7 @@ def main() -> int:
         if args.dry_run:
             logger.info(
                 "[DRY RUN] Zou publiceren: '%s' met datum %s",
-                processed.titel1,
+                processed.titel,
                 best.pub_date.strftime("%Y-%m-%d"),
             )
             published += 1
@@ -251,12 +251,12 @@ def main() -> int:
                 published += 1
                 logger.info(
                     "Gepubliceerd: '%s' (ID %d, datum %s)",
-                    processed.titel1,
+                    processed.titel,
                     post["id"],
                     best.pub_date.strftime("%Y-%m-%d"),
                 )
             else:
-                logger.error("WordPress publiceren mislukt voor '%s'", processed.titel1)
+                logger.error("WordPress publiceren mislukt voor '%s'", processed.titel)
                 skipped += 1
 
         # Korte pauze — beleefd naar API's

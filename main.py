@@ -225,13 +225,13 @@ def main() -> int:
         for i, processed in enumerate(processed_articles):
             dest = f"/tmp/tnv_image_{i}.jpg"
             processed.image_path = generate_image_for_article(
-                title=processed.titel1,
+                title=processed.titel,
                 article_text=processed.samenvatting,
                 dest_path=dest,
                 dry_run=args.dry_run,
             )
             if not processed.image_path:
-                logger.warning("FAL.ai afbeelding mislukt voor '%s' — doorgaan zonder", processed.titel1)
+                logger.warning("FAL.ai afbeelding mislukt voor '%s' — doorgaan zonder", processed.titel)
     else:
         # Scrape-modus: og:image van bronpagina
         from scraper import extract_image_from_page, _make_session  # type: ignore[attr-defined]  # noqa: PLC0415
@@ -242,7 +242,7 @@ def main() -> int:
             img_url = processed.original.image_url
 
             if not img_url:
-                logger.info("Geen afbeelding in feed voor '%s', probeer artikelpagina", processed.titel1)
+                logger.info("Geen afbeelding in feed voor '%s', probeer artikelpagina", processed.titel)
                 img_url = extract_image_from_page(processed.original.url, session)
 
             if img_url:
@@ -256,9 +256,9 @@ def main() -> int:
                     )
                     processed.bron_image_url = img_url
                 else:
-                    logger.warning("Afbeelding downloaden mislukt voor '%s' — doorgaan zonder", processed.titel1)
+                    logger.warning("Afbeelding downloaden mislukt voor '%s' — doorgaan zonder", processed.titel)
             else:
-                logger.warning("Geen afbeelding gevonden voor: %s", processed.titel1)
+                logger.warning("Geen afbeelding gevonden voor: %s", processed.titel)
 
     # ------------------------------------------------------------------
     # Stap 4: WordPress drafts aanmaken
@@ -271,7 +271,7 @@ def main() -> int:
             article = result["article"]
             url = article.original.url
             save_posted_url(url)
-            save_posted_title(article.titel1, url)
+            save_posted_title(article.titel, url)
             logger.info(
                 "URL opgeslagen als gepost: %s → draft: %s",
                 url,

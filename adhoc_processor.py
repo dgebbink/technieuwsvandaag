@@ -166,7 +166,7 @@ def process_single_url(url: str) -> dict | None:
     if IMAGE_STRATEGY == "generate":
         from image_generator import generate_image_for_article
         processed.image_path = generate_image_for_article(
-            title=processed.titel1,
+            title=processed.titel,
             article_text=processed.samenvatting,
             dest_path="/tmp/tnv_telegram_image.jpg",
             dry_run=False,
@@ -198,7 +198,7 @@ def process_single_url(url: str) -> dict | None:
 
     return {
         "wp_url":   post.get("preview_url", ""),
-        "title":    processed.titel1,
+        "title":    processed.titel,
         "summary":  processed.samenvatting,
         "keywords": processed.trefwoorden,
         "post_id":  post.get("id"),

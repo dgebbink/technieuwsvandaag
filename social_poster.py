@@ -426,14 +426,14 @@ def post_articles_to_social(results: list[dict], dry_run: bool = False) -> None:
         post_url = post.get("link") or post.get("preview_url", "")
 
         if dry_run:
-            logger.info("[DRY RUN] Zou %ds wachten voor Bluesky post van: %s", delay, article.titel1)
+            logger.info("[DRY RUN] Zou %ds wachten voor Bluesky post van: %s", delay, article.titel)
         else:
-            logger.info("Bluesky delay gestart (%ds) voor artikel: %s", delay, article.titel1)
+            logger.info("Bluesky delay gestart (%ds) voor artikel: %s", delay, article.titel)
             time.sleep(delay)
             logger.info("Bluesky delay voltooid, post wordt verstuurd")
 
         post_to_bluesky(
-            title=article.titel1,
+            title=article.titel,
             summary=article.samenvatting,
             keywords=article.trefwoorden,
             post_url=post_url,

@@ -205,11 +205,11 @@ class WordPressClient:
         # pre: article.original.url and pub_date are valid
         # post: returns None on any WordPress API failure
         if dry_run:
-            logger.info("[DRY RUN] Zou draft aanmaken: %s", article.titel1)
+            logger.info("[DRY RUN] Zou draft aanmaken: %s", article.titel)
             return {
                 "id": 0,
                 "preview_url": f"{WP_URL.rstrip('/')}/?p=0&preview=true",
-                "title": article.titel1,
+                "title": article.titel,
             }
 
         try:
@@ -224,14 +224,14 @@ class WordPressClient:
             tag_ids = self.get_or_create_tags(article.trefwoorden)
 
             # Afbeelding uploaden
-            alt_text = f"{article.focus_keyword} {article.titel1}".strip()
+            alt_text = f"{article.focus_keyword} {article.titel}".strip()
             media: Optional[dict] = None
             if article.image_path:
                 media = self.upload_image(article.image_path, alt_text=alt_text)
                 if not media:
                     logger.warning(
                         "Afbeelding upload mislukt, artikel '%s' wordt zonder afbeelding geplaatst",
-                        article.titel1,
+                        article.titel,
                     )
 
             # Inhoud als HTML: afbeelding bovenaan, tekst, bron-knop onderaan
@@ -262,7 +262,7 @@ class WordPressClient:
             pub_date_gmt = article.original.pub_date.strftime("%Y-%m-%dT%H:%M:%S")
 
             post_data: dict = {
-                "title": article.titel1,
+                "title": article.titel,
                 "content": content_html,
                 "status": "publish",
                 "date_gmt": pub_date_gmt,
@@ -320,16 +320,16 @@ class WordPressClient:
             preview_url = f"{WP_URL.rstrip('/')}/?p={post_id}&preview=true"
             post_link: str = post.get("link", preview_url)
 
-            logger.info("Artikel gepubliceerd: '%s' (ID %d)", article.titel1, post_id)
+            logger.info("Artikel gepubliceerd: '%s' (ID %d)", article.titel, post_id)
             return {
                 "id": post_id,
                 "preview_url": preview_url,
                 "link": post_link,
-                "title": article.titel1,
+                "title": article.titel,
             }
 
         except Exception as exc:
-            logger.error("WordPress draft aanmaken mislukt voor '%s': %s", article.titel1, exc)
+            logger.error("WordPress draft aanmaken mislukt voor '%s': %s", article.titel, exc)
             return None
 
 
@@ -352,6 +352,6 @@ def publish_articles(
         if post:
             results.append({"article": article, "post": post})
         else:
-            logger.error("Draft aanmaken mislukt voor: %s", article.titel1)
+            logger.error("Draft aanmaken mislukt voor: %s", article.titel)
 
     return results

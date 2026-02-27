@@ -117,6 +117,36 @@ def _resolve_terms(ids: list[int], endpoint: str, headers: dict) -> list[str]:
     return [n for n in names if n]
 
 
+def fetch_old_drafts() -> list[dict]:
+    """Haalt alle ongelezen WordPress drafts op van vóór vandaag.
+    Pre:  WP_URL, WP_USERNAME, WP_APP_PASSWORD zijn geconfigureerd
+    Post: gesorteerde lijst van draft post-dicts, nieuwste eerst
+    """
+    today = date.today()
+    before = f"{today.isoformat()}T00:00:00"
+
+    headers = _wp_auth_header()
+    try:
+        resp = requests.get(
+            f"{WP_URL.rstrip('/')}/wp-json/wp/v2/posts",
+            params={
+                "before":   before,
+                "status":   "draft",
+                "per_page": 50,
+                "orderby":  "date",
+                "order":    "desc",
+                "_fields":  "id,title,link,status,date,categories,tags,meta",
+            },
+            headers=headers,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as exc:
+        logger.warning("Oude drafts ophalen mislukt: %s", exc)
+        return []
+
+
 def enrich_posts(posts: list[dict]) -> list[dict]:
     """Voegt categorie- en tagnamen toe aan elke post.
     Pre:  posts is een lijst van WP post-dicts met categories/tags als ID-lijsten
@@ -150,7 +180,7 @@ def _status_badge(status: str) -> str:
     )
 
 
-def _post_card(index: int, post: dict) -> str:
+def _post_card(index: int, post: dict, show_date: bool = False) -> str:
     title = post["title"].get("rendered", "(geen titel)")
     link  = post.get("link", "#")
     status = post.get("status", "draft")
@@ -159,13 +189,13 @@ def _post_card(index: int, post: dict) -> str:
     cats   = ", ".join(post.get("category_names", [])) or "—"
     tags   = ", ".join(post.get("tag_names", [])) or "—"
 
-    # Tijdstip in CET
+    # Datum/tijdstip in CET
     time_str = ""
     if dt_raw:
         try:
             dt_utc = datetime.fromisoformat(dt_raw).replace(tzinfo=timezone.utc)
             dt_cet = dt_utc.astimezone(CET)
-            time_str = dt_cet.strftime("%H:%M")
+            time_str = dt_cet.strftime("%-d %b %Y  %H:%M") if show_date else dt_cet.strftime("%H:%M")
         except Exception:
             time_str = dt_raw[:16]
 
@@ -212,22 +242,34 @@ def _post_card(index: int, post: dict) -> str:
     </div>"""
 
 
-def build_digest_html(posts: list[dict], date_str: str) -> str:
+def build_digest_html(today_posts: list[dict], old_drafts: list[dict], date_str: str) -> str:
     """Bouwt de volledige HTML-digest op basis van de post-lijst."""
     today_nl = datetime.now(CET).strftime("%-d %B %Y")
 
-    published = sum(1 for p in posts if p.get("status") == "publish")
-    concepts  = len(posts) - published
+    published = sum(1 for p in today_posts if p.get("status") == "publish")
+    concepts  = len(today_posts) - published
 
     stats = (
-        f"{len(posts)} artikel{'en' if len(posts) != 1 else ''} vandaag"
+        f"{len(today_posts)} artikel{'en' if len(today_posts) != 1 else ''} vandaag"
         f" &nbsp;·&nbsp; {published} gepubliceerd"
         f" &nbsp;·&nbsp; {concepts} concept{'en' if concepts != 1 else ''}"
     )
 
-    cards = "".join(_post_card(i, p) for i, p in enumerate(posts, 1))
-
+    today_cards = "".join(_post_card(i, p, show_date=False) for i, p in enumerate(today_posts, 1))
     empty = '<p style="color:#888; padding:20px 0;">Geen artikelen gepost vandaag.</p>'
+
+    old_drafts_section = ""
+    if old_drafts:
+        old_cards = "".join(_post_card(i, p, show_date=True) for i, p in enumerate(old_drafts, 1))
+        old_drafts_section = f"""
+    <hr style="border:none; border-top:1px solid #e8e8e8; margin:28px 0 20px;">
+    <h2 style="font-size:16px; color:#555; margin:0 0 4px;">
+      Openstaande concepten
+    </h2>
+    <p style="font-size:13px; color:#888; margin:0 0 8px;">
+      {len(old_drafts)} concept{'en' if len(old_drafts) != 1 else ''} van vóór vandaag
+    </p>
+    {old_cards}"""
 
     return f"""<!DOCTYPE html>
 <html lang="nl">
@@ -254,7 +296,9 @@ def build_digest_html(posts: list[dict], date_str: str) -> str:
 
   <div style="background:#ffffff; padding:24px 28px; border-radius:0 0 8px 8px;
               box-shadow:0 1px 3px rgba(0,0,0,.08);">
-    {cards if posts else empty}
+    <h2 style="font-size:16px; color:#555; margin:0 0 4px;">Vandaag gepost</h2>
+    {today_cards if today_posts else empty}
+    {old_drafts_section}
     <hr style="border:none; border-top:1px solid #e8e8e8; margin:28px 0 16px;">
     <p style="color:#aaa; font-size:12px; text-align:center; margin:0;">
       Automatisch gegenereerd door TechNieuwsVandaag-Bot · {date_str}
@@ -279,14 +323,21 @@ def send_digest(dry_run: bool = False) -> None:
     subject  = f"📋 [TechNieuwsVandaag] Dagelijks overzicht — {today_nl}"
 
     logger.info("Dagelijkse digest ophalen voor %s", date.today().isoformat())
-    posts = fetch_todays_posts()
-    logger.info("%d post(s) gevonden", len(posts))
+    today_posts = fetch_todays_posts()
+    logger.info("%d post(s) vandaag gevonden", len(today_posts))
 
-    if posts:
-        logger.info("Categorieën en tags ophalen...")
-        posts = enrich_posts(posts)
+    old_drafts = fetch_old_drafts()
+    logger.info("%d openstaand(e) concept(en) van vóór vandaag gevonden", len(old_drafts))
 
-    html_body = build_digest_html(posts, date_str)
+    if today_posts:
+        logger.info("Categorieën en tags ophalen voor vandaag...")
+        today_posts = enrich_posts(today_posts)
+
+    if old_drafts:
+        logger.info("Categorieën en tags ophalen voor oude drafts...")
+        old_drafts = enrich_posts(old_drafts)
+
+    html_body = build_digest_html(today_posts, old_drafts, date_str)
 
     if dry_run:
         LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -295,7 +346,8 @@ def send_digest(dry_run: bool = False) -> None:
         logger.info("[DRY RUN] Digest niet verstuurd — opgeslagen als: %s", path)
         print(f"\n[DRY RUN] Onderwerp : {subject}")
         print(f"[DRY RUN] Ontvanger : {NOTIFICATION_EMAIL}")
-        print(f"[DRY RUN] Posts     : {len(posts)}")
+        print(f"[DRY RUN] Posts vandaag : {len(today_posts)}")
+        print(f"[DRY RUN] Oude drafts   : {len(old_drafts)}")
         return
 
     if SMTP_HOST:
@@ -312,7 +364,8 @@ def send_digest(dry_run: bool = False) -> None:
                 server.login(SMTP_USERNAME, SMTP_PASSWORD)
                 server.sendmail(SMTP_USERNAME, [NOTIFICATION_EMAIL], msg.as_string())
 
-            logger.info("Digest verstuurd naar %s (%d posts)", NOTIFICATION_EMAIL, len(posts))
+            logger.info("Digest verstuurd naar %s (%d posts vandaag, %d oude drafts)",
+                        NOTIFICATION_EMAIL, len(today_posts), len(old_drafts))
             return
 
         except smtplib.SMTPAuthenticationError as exc:

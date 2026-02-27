@@ -40,8 +40,7 @@ MODEL = "claude-sonnet-4-6"
 @dataclass
 class ProcessedArticle:
     original: Article
-    titel1: str
-    titel2: str
+    titel: str
     samenvatting: str
     trefwoorden: str
     categorieen: list[str]
@@ -259,7 +258,7 @@ def process_article(article: Article, client: anthropic.Anthropic) -> Optional[P
         "Vat de inhoud samen in ongeveer 300 woorden, 2 - 4 paragrafen en in foutloos Nederlands "
         "op taalniveau 2F. "
         "Zorg dat de samenvatting de kernboodschap van het artikel duidelijk overbrengt. "
-        "Suggereer daarnaast twee aantrekkelijke en relevante titels van maximaal 5 - 8 woorden "
+        "Suggereer daarnaast één aantrekkelijke en relevante titel van maximaal 5 - 8 woorden "
         "die nieuwsgierigheid opwekt en het artikel uitnodigend maakt voor lezers. "
         "Houd rekening met SEO "
         "- Probeer de passieve stemscore te verbeteren zodat de tekst leesbaarder wordt. "
@@ -272,8 +271,7 @@ def process_article(article: Article, client: anthropic.Anthropic) -> Optional[P
         f"Kies maximaal 3 meest passende categorieën uit deze lijst: {categories_str}\n\n"
         "Geef je antwoord als JSON in dit exacte formaat:\n"
         "{\n"
-        '  "titel1": "...",\n'
-        '  "titel2": "...",\n'
+        '  "titel": "...",\n'
         '  "samenvatting": "...",\n'
         '  "trefwoorden": "woord1, woord2, woord3, woord4, woord5",\n'
         '  "categorieen": ["cat1", "cat2"],\n'
@@ -307,7 +305,7 @@ def process_article(article: Article, client: anthropic.Anthropic) -> Optional[P
             raise ValueError(f"Verwachtte een dict, kreeg: {type(data)}")
 
         # Valideer verplichte velden
-        for field in ("titel1", "titel2", "samenvatting", "trefwoorden", "categorieen"):
+        for field in ("titel", "samenvatting", "trefwoorden", "categorieen"):
             if field not in data:
                 raise ValueError(f"Veld '{field}' ontbreekt in Claude-antwoord")
 
@@ -326,8 +324,7 @@ def process_article(article: Article, client: anthropic.Anthropic) -> Optional[P
 
         return ProcessedArticle(
             original=article,
-            titel1=str(data["titel1"]).strip(),
-            titel2=str(data["titel2"]).strip(),
+            titel=str(data["titel"]).strip(),
             samenvatting=str(data["samenvatting"]).strip(),
             trefwoorden=str(data["trefwoorden"]).strip(),
             categorieen=categorieen,

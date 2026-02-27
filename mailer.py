@@ -46,9 +46,7 @@ def _article_section(index: int, data: dict) -> str:
                 margin:20px 0; background:#ffffff;">
       <h2 style="color:#1a73e8; margin:0 0 16px;">Artikel {index}</h2>
 
-      <h3 style="color:#333; margin:0 0 8px; font-size:15px;">Titel suggesties</h3>
-      <p style="margin:4px 0;"><strong>Optie 1:</strong> {article.titel1}</p>
-      <p style="margin:4px 0 16px;"><strong>Optie 2:</strong> {article.titel2}</p>
+      <p style="margin:0 0 12px;"><strong>Titel:</strong> {article.titel}</p>
 
       <h3 style="color:#333; margin:0 0 8px; font-size:15px;">Samenvatting preview</h3>
       <p style="color:#555; line-height:1.7; margin:0 0 16px;">{preview}</p>
