@@ -107,6 +107,17 @@ def build_crontab(
             f"  # slot {i}: {ch:02d}:{cm:02d} CET"
         )
 
+    # Digest altijd om 20:00 CET (19:00 UTC winter / 18:00 UTC zomer — DST-aware)
+    digest_cet = (20, 0)
+    digest_utc = cet_to_utc([digest_cet])[0]
+    lines += [
+        "",
+        "# Dagelijks overzicht om 20:00 CET",
+        f"{digest_utc[1]} {digest_utc[0]} * * * cd {project_path} && "
+        f"{PYTHON} daily_digest.py "
+        f">> {project_path}/logs/cron_digest.log 2>&1",
+    ]
+
     return "\n".join(lines) + "\n"
 
 
