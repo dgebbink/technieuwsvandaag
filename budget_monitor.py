@@ -115,7 +115,7 @@ def get_fal_funds() -> dict:
         "currency":  "USD",
         "source":    "unavailable",
         "error":     "Endpoint niet bereikbaar",
-        "link":      "https://fal.ai/dashboard/billing",
+        "link":      "https://fal.ai/dashboard/usage-billing/credits",
     }
 
 

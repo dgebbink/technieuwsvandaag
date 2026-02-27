@@ -264,7 +264,7 @@ def send_fal_balance_warning(balance: float) -> None:
     </p>
     <p style="color:#555;">
       Herlaad het tegoed via
-      <a href="https://fal.ai/dashboard/billing" style="color:#1a73e8;">
+      <a href="https://fal.ai/dashboard/usage-billing/credits" style="color:#1a73e8;">
         fal.ai → Dashboard → Billing
       </a>
       om de afbeeldingsgeneratie te hervatten.
@@ -451,6 +451,34 @@ def render_bluesky_section(data: dict) -> str:
             "<p style='color:#888;margin:4px 0'>Geen nieuwe volgers vandaag.</p>"
         )
 
+    recent_f = data.get("recent_followers", [])
+    if recent_f:
+        rows = "".join(
+            "<tr style='border-bottom:1px solid #dde8ff'>"
+            f"<td style='padding:8px 10px;font-weight:700'>{f['displayName']}</td>"
+            f"<td style='padding:8px 10px;color:#555;font-size:12px'>@{f['handle']}</td>"
+            f"<td style='padding:8px 10px;color:#666;font-size:12px'>"
+            f"{f['description'][:80] + '…' if len(f['description']) > 80 else f['description'] or '—'}"
+            "</td></tr>"
+            for f in recent_f
+        )
+        recent_html = (
+            f"<h3 style='color:#0085ff;margin:16px 0 6px'>"
+            f"Nieuwste volgers (laatste {len(recent_f)})</h3>"
+            "<table style='width:100%;border-collapse:collapse;font-size:13px;"
+            "background:#fff;border-radius:4px;overflow:hidden'>"
+            "<tr style='background:#0085ff'>"
+            "<th style='text-align:left;padding:6px 10px;color:#fff;font-size:11px;"
+            "text-transform:uppercase;letter-spacing:0.6px'>Naam</th>"
+            "<th style='text-align:left;padding:6px 10px;color:#fff;font-size:11px;"
+            "text-transform:uppercase;letter-spacing:0.6px'>Handle</th>"
+            "<th style='text-align:left;padding:6px 10px;color:#fff;font-size:11px;"
+            "text-transform:uppercase;letter-spacing:0.6px'>Bio</th></tr>"
+            f"{rows}</table>"
+        )
+    else:
+        recent_html = ""
+
     posts_html = ""
     for p in data["posts"]:
         replies_html = ""
@@ -484,7 +512,8 @@ def render_bluesky_section(data: dict) -> str:
         f"<h2 style='margin-top:0;color:#0085ff'>🦋 Bluesky — @{handle}</h2>"
         f"<p><b>Totaal volgers:</b> {data['total_followers']}</p>"
         f"{followers_html}"
-        "<h3 style='color:#0085ff;margin:12px 0 4px'>Posts vandaag</h3>"
+        f"{recent_html}"
+        "<h3 style='color:#0085ff;margin:16px 0 4px'>Posts vandaag</h3>"
         f"{posts_html}</div>"
     )
 
@@ -521,7 +550,7 @@ def render_funds_section(data: dict) -> str:
     )
     fal_row = row(
         "FAL.ai (beeldgeneratie)", data["fal"], "🎨",
-        "https://fal.ai/dashboard/billing",
+        "https://fal.ai/dashboard/usage-billing/credits",
     )
     return (
         "<div style='background:#f9f9f9;padding:16px;border-radius:6px;"

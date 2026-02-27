@@ -53,29 +53,54 @@ def _get_follower_count(session: dict) -> int:
     return resp.json().get("followersCount", 0)
 
 
-def _get_new_followers(session: dict) -> list[dict]:
-    """Fetches followers who joined today.
-    Pre:  session is active
-    Post: list of dicts — handle, displayName, createdAt
-          only entries where createdAt starts with today
+def _parse_follower(f: dict) -> dict:
+    """Normalises a raw Bluesky actor object into a follower dict.
+    Pre:  f is a raw actor dict from the getFollowers response
+    Post: dict with handle, displayName, description, createdAt
     """
-    today = date.today().isoformat()
+    return {
+        "handle":      f.get("handle", ""),
+        "displayName": f.get("displayName", "") or f.get("handle", ""),
+        "description": (f.get("description", "") or "").strip(),
+        "createdAt":   f.get("createdAt", ""),
+    }
+
+
+def _get_followers_raw(session: dict, limit: int = 100) -> list[dict]:
+    """Fetches up to `limit` most recent followers (raw actor dicts).
+    Pre:  session is active
+    Post: list of raw follower dicts, most recent first
+    """
     resp = requests.get(
         f"{HOST}/xrpc/app.bsky.graph.getFollowers",
         headers=_auth(session),
-        params={"actor": BLUESKY_HANDLE, "limit": 100},
+        params={"actor": BLUESKY_HANDLE, "limit": limit},
         timeout=15,
     )
     resp.raise_for_status()
+    return resp.json().get("followers", [])
+
+
+def _get_new_followers(session: dict) -> list[dict]:
+    """Fetches followers whose account was created today.
+    Pre:  session is active
+    Post: list of follower dicts — handle, displayName,
+          description, createdAt — filtered to today only
+    """
+    today = date.today().isoformat()
     return [
-        {
-            "handle":      f.get("handle", ""),
-            "displayName": f.get("displayName", "") or f.get("handle", ""),
-            "createdAt":   f.get("createdAt", ""),
-        }
-        for f in resp.json().get("followers", [])
+        _parse_follower(f)
+        for f in _get_followers_raw(session)
         if f.get("createdAt", "").startswith(today)
     ]
+
+
+def _get_recent_followers(session: dict, n: int = 5) -> list[dict]:
+    """Returns the n most recent followers with full details.
+    Pre:  session is active; n >= 1
+    Post: list of up to n follower dicts, most recent first
+    """
+    return [_parse_follower(f) for f in _get_followers_raw(session)[:n]]
 
 
 def _get_todays_posts(session: dict) -> list[dict]:
@@ -145,10 +170,16 @@ def collect_daily_bluesky_report() -> dict:
           new_followers, posts (each with replies list), error
     """
     try:
-        session         = _login()
-        total_followers = _get_follower_count(session)
-        new_followers   = _get_new_followers(session)
-        todays_posts    = _get_todays_posts(session)
+        session          = _login()
+        total_followers  = _get_follower_count(session)
+        raw_followers    = _get_followers_raw(session)
+        today            = date.today().isoformat()
+        new_followers    = [
+            _parse_follower(f) for f in raw_followers
+            if f.get("createdAt", "").startswith(today)
+        ]
+        recent_followers = [_parse_follower(f) for f in raw_followers[:5]]
+        todays_posts     = _get_todays_posts(session)
 
         posts_with_replies = []
         for post in todays_posts:
@@ -156,23 +187,25 @@ def collect_daily_bluesky_report() -> dict:
             posts_with_replies.append({**post, "replies": replies})
 
         return {
-            "success":         True,
-            "handle":          BLUESKY_HANDLE,
-            "total_followers": total_followers,
-            "new_followers":   new_followers,
-            "posts":           posts_with_replies,
-            "error":           None,
+            "success":          True,
+            "handle":           BLUESKY_HANDLE,
+            "total_followers":  total_followers,
+            "new_followers":    new_followers,
+            "recent_followers": recent_followers,
+            "posts":            posts_with_replies,
+            "error":            None,
         }
 
     except Exception as exc:
         logger.error("Bluesky rapport mislukt: %s", exc)
         return {
-            "success":         False,
-            "handle":          BLUESKY_HANDLE,
-            "total_followers": 0,
-            "new_followers":   [],
-            "posts":           [],
-            "error":           str(exc),
+            "success":          False,
+            "handle":           BLUESKY_HANDLE,
+            "total_followers":  0,
+            "new_followers":    [],
+            "recent_followers": [],
+            "posts":            [],
+            "error":            str(exc),
         }
 
 
