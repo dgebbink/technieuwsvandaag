@@ -7,3 +7,4 @@ venv/
 *.swo
 /tmp/
 posted_titles.txt
+posted_urls.txt
