@@ -180,27 +180,37 @@ def process_single_url(url: str) -> dict | None:
         if img_url:
             processed.image_path = download_image(img_url, "/tmp/tnv_telegram_image.jpg")
 
-    # Stap 4: WordPress draft
-    from wordpress_client import publish_articles
+    # Stap 4: WordPress draft aanmaken
+    from wordpress_client import publish_articles, publish_post
     results = publish_articles([processed], dry_run=False)
 
     if not results:
         logger.error("WordPress publicatie mislukt: %s", url)
         return None
 
-    result = results[0]
-    post   = result["post"]
+    result  = results[0]
+    post    = result["post"]
+    post_id = post.get("id")
+
+    # Stap 5: Draft direct publiceren (Telegram bypasses approval flow)
+    try:
+        pub_result = publish_post(post_id)
+        public_url = pub_result.get("link", post.get("preview_url", ""))
+        logger.info("Post direct gepubliceerd (Telegram): %s", public_url)
+    except Exception as exc:
+        logger.error("Publiceren mislukt voor post %s: %s — preview URL gebruikt", post_id, exc)
+        public_url = post.get("preview_url", "")
 
     from scraper import save_posted_url
     save_posted_url(url)
 
-    logger.info("process_single_url klaar: %s → %s", url, post.get("preview_url"))
+    logger.info("process_single_url klaar: %s → %s", url, public_url)
 
     return {
-        "wp_url":   post.get("preview_url", ""),
+        "wp_url":   public_url,
         "title":    processed.titel,
         "summary":  processed.samenvatting,
         "keywords": processed.trefwoorden,
-        "post_id":  post.get("id"),
+        "post_id":  post_id,
         "success":  True,
     }

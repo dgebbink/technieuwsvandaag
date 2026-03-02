@@ -49,7 +49,6 @@ from ai_processor import InsufficientCreditsError, process_articles, save_posted
 from config import IMAGE_STRATEGY  # noqa: E402
 from mailer import send_balance_warning, send_fal_balance_warning, send_notification  # noqa: E402
 from scraper import download_image, fetch_article_text, save_posted_url, scrape_all_sources  # noqa: E402
-from social_poster import post_articles_to_social  # noqa: E402
 from wordpress_client import publish_articles  # noqa: E402
 
 
@@ -291,15 +290,9 @@ def main() -> int:
         )
 
     # ------------------------------------------------------------------
-    # Stap 5: Social media
+    # Stap 5: Notificatiemail met Accept/Decline knoppen
     # ------------------------------------------------------------------
-    logger.info("── Stap 5: Social media publicatie ──")
-    post_articles_to_social(results, dry_run=args.dry_run)
-
-    # ------------------------------------------------------------------
-    # Stap 6: Notificatiemail
-    # ------------------------------------------------------------------
-    logger.info("── Stap 6: Notificatiemail versturen ──")
+    logger.info("── Stap 5: Notificatiemail versturen ──")
     send_notification(results, warning_message=warning_message, dry_run=args.dry_run)
 
     # ------------------------------------------------------------------

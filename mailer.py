@@ -11,6 +11,7 @@ from email.utils import formataddr
 from pathlib import Path
 
 from ai_processor import ProcessedArticle
+from approval_store import create_tokens
 from config import (
     LOGS_DIR,
     NOTIFICATION_EMAIL,
@@ -23,6 +24,56 @@ from config import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Approval knoppen
+# ---------------------------------------------------------------------------
+
+def _build_approval_buttons(
+    post_id:    int,
+    post_title: str,
+    wp_url:     str,
+    meta:       dict | None = None,
+) -> str:
+    """Builds Accept, Decline and New Image HTML buttons for the notification email.
+    Pre:  post_id is a valid WordPress draft ID
+    Post: HTML string with three buttons linking to the Flask approval server
+          meta dict stored in tokens for reimage use (e.g. article_text)
+    """
+    import os
+    base = os.getenv("APPROVAL_BASE_URL", "http://localhost:5055")
+    accept_token, decline_token, reimage_token = create_tokens(
+        post_id, post_title, wp_url, meta
+    )
+    accept_url  = f"{base}/approve/{accept_token}"
+    decline_url = f"{base}/decline/{decline_token}"
+    reimage_url = f"{base}/reimage/{reimage_token}"
+
+    return f"""
+    <div style="margin:24px 0;text-align:center">
+      <a href="{accept_url}"
+         style="display:inline-block;background:#28a745;color:#fff;
+                padding:12px 24px;border-radius:4px;font-size:15px;
+                font-weight:700;text-decoration:none;margin:4px">
+        ✅ Accept
+      </a>
+      <a href="{decline_url}"
+         style="display:inline-block;background:#dc3545;color:#fff;
+                padding:12px 24px;border-radius:4px;font-size:15px;
+                font-weight:700;text-decoration:none;margin:4px">
+        ❌ Decline
+      </a>
+      <a href="{reimage_url}"
+         style="display:inline-block;background:#e67e22;color:#fff;
+                padding:12px 24px;border-radius:4px;font-size:15px;
+                font-weight:700;text-decoration:none;margin:4px">
+        🖼 Nieuwe afbeelding
+      </a>
+    </div>
+    <p style="font-size:11px;color:#999;text-align:center">
+      Links geldig voor 24 uur
+    </p>"""
 
 
 # ---------------------------------------------------------------------------
@@ -41,12 +92,30 @@ def _article_section(index: int, data: dict) -> str:
     if len(words) > 150:
         preview += " …"
 
+    image_html = ""
+    if post.get("image_url"):
+        image_html = (
+            f'<img src="{post["image_url"]}" alt="{article.titel}" '
+            f'style="width:100%;border-radius:4px;margin-bottom:16px;'
+            f'display:block;">'
+        )
+
+    meta = {
+        "article_text":  article.samenvatting,
+        "categorieen":   article.categorieen,
+        "trefwoorden":   article.trefwoorden,
+        "source_url":    article.original.url,
+        "image_url":     post.get("image_url", ""),
+    }
+
     return f"""
     <div style="border:1px solid #e0e0e0; border-radius:8px; padding:24px;
                 margin:20px 0; background:#ffffff;">
       <h2 style="color:#1a73e8; margin:0 0 16px;">Artikel {index}</h2>
 
       <p style="margin:0 0 12px;"><strong>Titel:</strong> {article.titel}</p>
+
+      {image_html}
 
       <h3 style="color:#333; margin:0 0 8px; font-size:15px;">Samenvatting preview</h3>
       <p style="color:#555; line-height:1.7; margin:0 0 16px;">{preview}</p>
@@ -70,14 +139,13 @@ def _article_section(index: int, data: dict) -> str:
         </tr>
       </table>
 
-      <p style="margin:20px 0 0;">
+      <p style="margin:16px 0 4px;">
         <a href="{post['preview_url']}"
-           style="background:#1a73e8; color:#ffffff; padding:10px 22px;
-                  text-decoration:none; border-radius:4px; display:inline-block;
-                  font-weight:bold;">
-          Bekijk WordPress Draft →
+           style="color:#1a73e8;font-size:13px;">
+          Bekijk draft preview →
         </a>
       </p>
+      {_build_approval_buttons(post['id'], article.titel, post['preview_url'], meta)}
     </div>
     """
 
@@ -148,6 +216,133 @@ def _save_email_to_file(subject: str, html_body: str, date_str: str) -> None:
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(f"<!-- Subject: {subject} -->\n\n{html_body}")
     logger.info("Mail-fallback opgeslagen als: %s", filepath)
+
+
+# ---------------------------------------------------------------------------
+# Reimage-notificatiemail
+# ---------------------------------------------------------------------------
+
+def send_reimage_email(
+    post_id:    int,
+    post_title: str,
+    wp_url:     str,
+    image_url:  str,
+    meta:       dict,
+) -> None:
+    """Send a notification email with a freshly generated image and new approval buttons.
+    Pre:  post_id is a valid WP draft post ID
+    Post: email sent (or saved to LOGS_DIR as fallback)
+          fresh accept/decline/reimage tokens created and embedded in buttons
+    """
+    date_str = datetime.now().strftime("%d-%m-%Y %H:%M")
+    subject  = (
+        f"🖼 [TechNieuwsVandaag] Nieuwe afbeelding klaar: "
+        f"{post_title[:50]} — {date_str}"
+    )
+
+    img_html = (
+        f'<img src="{image_url}" alt="{post_title}" '
+        f'style="width:100%;border-radius:4px;margin-bottom:16px;display:block;">'
+        if image_url else
+        '<p style="color:#888;font-size:13px;">Afbeelding kon niet worden gegenereerd.</p>'
+    )
+
+    updated_meta = {**meta, "image_url": image_url}
+    buttons_html = _build_approval_buttons(post_id, post_title, wp_url, updated_meta)
+
+    preview_url_html = (
+        f'<p style="margin:12px 0 4px;">'
+        f'<a href="{wp_url}" style="color:#1a73e8;font-size:13px;">'
+        f'Bekijk draft preview →</a></p>'
+    )
+
+    categorieen = ", ".join(meta.get("categorieen", []))
+    trefwoorden = meta.get("trefwoorden", "")
+    source_url  = meta.get("source_url", "")
+
+    html_body = f"""<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nieuwe afbeelding — {post_title}</title>
+</head>
+<body style="font-family:Arial,Helvetica,sans-serif; max-width:780px; margin:0 auto;
+             padding:20px; background:#f0f2f5;">
+
+  <div style="background:#e67e22; color:#ffffff; padding:24px 28px;
+              border-radius:8px 8px 0 0;">
+    <h1 style="margin:0; font-size:22px;">🖼 Nieuwe afbeelding gegenereerd</h1>
+    <p style="margin:6px 0 0; opacity:0.85;">{post_title} — {date_str}</p>
+  </div>
+
+  <div style="background:#ffffff; padding:24px 28px; border-radius:0 0 8px 8px;
+              box-shadow:0 1px 3px rgba(0,0,0,.08);">
+
+    <div style="border:1px solid #e0e0e0; border-radius:8px; padding:24px; margin:20px 0;">
+      <h2 style="color:#1a73e8; margin:0 0 16px;">{post_title}</h2>
+
+      {img_html}
+
+      <table style="width:100%; border-collapse:collapse; font-size:14px;">
+        <tr>
+          <td style="padding:6px 0; color:#888; width:110px;">Categorieën</td>
+          <td style="padding:6px 0;">{categorieen}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0; color:#888;">Trefwoorden</td>
+          <td style="padding:6px 0;">{trefwoorden}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0; color:#888;">Bron</td>
+          <td style="padding:6px 0;">
+            <a href="{source_url}" style="color:#1a73e8; word-break:break-all;">
+              {source_url}
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      {preview_url_html}
+      {buttons_html}
+    </div>
+
+    <hr style="border:none; border-top:1px solid #e8e8e8; margin:28px 0 16px;">
+    <p style="color:#aaa; font-size:12px; text-align:center; margin:0;">
+      Automatisch gegenereerd door TechNieuwsVandaag-Bot op {date_str}
+    </p>
+  </div>
+
+</body>
+</html>"""
+
+    if SMTP_HOST:
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"]    = formataddr((SMTP_DISPLAY_NAME, SMTP_USERNAME))
+            msg["To"]      = NOTIFICATION_EMAIL
+            msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
+                server.ehlo()
+                server.starttls()
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                server.sendmail(SMTP_USERNAME, [NOTIFICATION_EMAIL], msg.as_string())
+
+            logger.info("Reimage-mail verstuurd naar %s", NOTIFICATION_EMAIL)
+            return
+
+        except smtplib.SMTPAuthenticationError as exc:
+            logger.error("SMTP authenticatie mislukt: %s", exc)
+        except smtplib.SMTPException as exc:
+            logger.error("SMTP-fout: %s", exc)
+        except Exception as exc:
+            logger.error("Onverwachte mail-fout: %s", exc)
+    else:
+        logger.warning("SMTP_HOST niet geconfigureerd — fallback naar bestand")
+
+    _save_email_to_file(subject, html_body, date_str)
 
 
 # ---------------------------------------------------------------------------
@@ -332,7 +527,7 @@ def send_notification(
     if count == 0:
         subject = f"⚠ {prefix}[TechNieuwsVandaag] Geen nieuwe artikelen — {date_str}"
     else:
-        subject = f"✅ {prefix}[TechNieuwsVandaag] {count} nieuwe artikel(en) gepubliceerd — {date_str}"
+        subject = f"📝 {prefix}[TechNieuwsVandaag] {count} nieuwe draft(s) wachten op goedkeuring — {date_str}"
 
     html_body = build_html_email(articles_data, date_str, warning_message)
 

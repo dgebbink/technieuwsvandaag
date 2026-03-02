@@ -261,7 +261,7 @@ class WordPressClient:
             post_data: dict = {
                 "title": article.titel,
                 "content": content_html,
-                "status": "publish",
+                "status": "draft",
                 "date_gmt": pub_date_gmt,
                 "categories": categories,
                 "tags": tag_ids,
@@ -317,12 +317,13 @@ class WordPressClient:
             preview_url = f"{WP_URL.rstrip('/')}/?p={post_id}&preview=true"
             post_link: str = post.get("link", preview_url)
 
-            logger.info("Artikel gepubliceerd: '%s' (ID %d)", article.titel, post_id)
+            logger.info("Draft aangemaakt: '%s' (ID %d)", article.titel, post_id)
             return {
                 "id": post_id,
                 "preview_url": preview_url,
                 "link": post_link,
                 "title": article.titel,
+                "image_url": media["url"] if media else "",
             }
 
         except Exception as exc:
@@ -352,3 +353,57 @@ def publish_articles(
             logger.error("Draft aanmaken mislukt voor: %s", article.titel)
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Publiceren / verwijderen van individuele posts
+# ---------------------------------------------------------------------------
+
+def publish_post(post_id: int) -> dict:
+    """Publishes a WordPress draft post.
+    Pre:  post_id is a valid draft post ID
+    Post: post status changed to publish; returns updated post dict with link
+    """
+    client = WordPressClient()
+    resp = client.session.post(
+        f"{client.base_url}/posts/{post_id}",
+        json={"status": "publish"},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    logger.info("Post %d gepubliceerd", post_id)
+    return resp.json()
+
+
+def update_featured_image(post_id: int, image_path: str, alt_text: str = "") -> str:
+    """Uploads a new image and sets it as the featured image for an existing post.
+    Pre:  post_id is a valid WP post ID, image_path exists on disk
+    Post: new image uploaded and set as featured_media; returns new image URL or ""
+    """
+    client = WordPressClient()
+    media  = client.upload_image(image_path, alt_text=alt_text)
+    if not media:
+        return ""
+    resp = client.session.post(
+        f"{client.base_url}/posts/{post_id}",
+        json={"featured_media": media["id"]},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    logger.info("Featured image bijgewerkt voor post %d (media %d)", post_id, media["id"])
+    return media["url"]
+
+
+def delete_post(post_id: int) -> None:
+    """Permanently deletes a WordPress post (bypasses trash).
+    Pre:  post_id is a valid post ID
+    Post: post deleted from WordPress
+    """
+    client = WordPressClient()
+    resp = client.session.delete(
+        f"{client.base_url}/posts/{post_id}",
+        params={"force": True},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    logger.info("Post %d verwijderd", post_id)
