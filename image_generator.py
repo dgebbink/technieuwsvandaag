@@ -72,28 +72,23 @@ def is_fal_balance_low() -> bool:
     return False
 
 
-def generate_image_prompt(title: str, article_text: str) -> tuple[str, str | None]:
-    """Ask Claude for an image prompt and the primary brand domain if applicable.
+def generate_image_prompt(title: str, article_text: str) -> str:
+    """Ask Claude for an image prompt.
 
     Pre:  ANTHROPIC_API_KEY is set; title is non-empty
-    Post: returns (prompt_text, brand_domain_or_none)
-          brand_domain is used to fetch the real logo via Clearbit
+    Post: returns prompt_text
     """
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     instruction = (
-        "Return a JSON object with exactly two fields:\n"
-        "1. \"prompt\": A 2-sentence English prompt for a photorealistic AI image "
+        "Return a single JSON field:\n"
+        "\"prompt\": A 2-sentence English prompt for a photorealistic AI image "
         "matching this tech news article. Use bright, warm lighting and an optimistic "
         "mood. Avoid dark backgrounds. Choose light, modern environments: daylit "
         "offices, crisp interfaces, futuristic but accessible settings. "
         "Subtly use actual logos, text, lettering, or brand names in the image as if "
         "it were their office, building, outfit, or similar. Convey the brand identity "
         "through the color palette, product design, or the associated scene. "
-        "Do not create a logo yourself.\n"
-        "2. \"brand_domain\": The primary well-known tech brand's domain "
-        "(e.g. \"google.com\", \"microsoft.com\", \"openai.com\", "
-        "\"whatsapp.com\", \"apple.com\", \"nvidia.com\") if a major brand "
-        "is central to the article, otherwise null.\n\n"
+        "Do not create a logo yourself.\n\n"
         f"Article title: {title}\n"
         f"Article text:\n{article_text[:1000]}\n\n"
         "Respond with only valid JSON, no markdown fences."
@@ -106,10 +101,10 @@ def generate_image_prompt(title: str, article_text: str) -> tuple[str, str | Non
     raw = message.content[0].text.strip()  # type: ignore[union-attr]
     try:
         data = json.loads(raw)
-        return data.get("prompt", raw), data.get("brand_domain") or None
+        return data.get("prompt", raw)
     except Exception:
         logger.warning("Claude returned non-JSON for image prompt, using raw text")
-        return raw, None
+        return raw
 
 
 def fetch_brand_logo(brand_domain: str, dest_path: str) -> str | None:
@@ -238,19 +233,10 @@ def generate_image_for_article(
         return None
     try:
         logger.info("Afbeeldingsprompt genereren via Claude voor: %s", title)
-        image_prompt, brand_domain = generate_image_prompt(title, article_text)
+        image_prompt = generate_image_prompt(title, article_text)
         logger.info("Gegenereerde prompt: %s", image_prompt)
-        if brand_domain:
-            logger.info("Brand domain gedetecteerd: %s", brand_domain)
 
-        result_path = generate_fal_image(image_prompt, dest_path)
-
-        if result_path and brand_domain:
-            logo_path = dest_path + ".logo.png"
-            if fetch_brand_logo(brand_domain, logo_path):
-                composite_logo(result_path, logo_path)
-
-        return result_path
+        return generate_fal_image(image_prompt, dest_path)
     except Exception as exc:
         logger.error("Afbeelding genereren mislukt voor '%s': %s", title, exc)
         return None
