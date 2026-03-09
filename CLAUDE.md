@@ -55,9 +55,9 @@ scraper.py → ai_processor.py → image_generator.py → wordpress_client.py �
 
 - `approval_store.py` — JSON token store (`approval_tokens.json`), 24u expiry, replay-beveiliging; `create_tokens()` geeft `(accept_token, decline_token, reimage_token)` terug
 - `approval_server.py` — Flask server op `APPROVAL_HOST:APPROVAL_PORT` (standaard `0.0.0.0:5055`):
-  - `GET /approve/<token>` — publiceert WP draft → wacht `BLUESKY_POST_DELAY_SECONDS` → post naar Bluesky
+  - `GET /approve/<token>` — publiceert WP draft direct → retourneert succespagina → post naar Bluesky na `BLUESKY_POST_DELAY_SECONDS` in achtergrondthread
   - `GET /decline/<token>` — verwijdert WP draft permanent (`force=True`)
-  - `GET /reimage/<token>` — genereert nieuwe FAL.ai afbeelding → uploadt naar WP → verstuurt nieuwe mail met nieuwe tokens
+  - `GET /reimage/<token>` — retourneert bevestigingspagina direct → genereert FAL.ai afbeelding, uploadt naar WP en verstuurt nieuwe mail in achtergrondthread
   - `GET /health` — health check + cleanup verlopen tokens
 - Draait als **supervisord** service (`/etc/supervisor/conf.d/user/tnv-approval-server.conf`)
 
@@ -94,6 +94,16 @@ Claude genereert een JSON met:
 FAL.ai krijgt ook een `negative_prompt` mee: `"logo, text, letters, words, brand name, watermark, ..."`.
 
 Daarna: echt logo ophalen via `https://www.google.com/s2/favicons?domain={brand_domain}&sz=128` (fallback: DuckDuckGo icons), dan PIL-compositing bottom-right met witte pill-achtergrond.
+
+## Server (WordPress)
+
+- **SSH:** `ssh -i ~/.ssh/ssh-key-oracle-web.key ubuntu@141.144.195.65`
+- WordPress installatiepad: `/var/www/technieuwsvandaag/wordpress/`
+- Actief theme: `tnv-news` (`wp-content/themes/tnv-news/`)
+- Theme-bestanden zijn eigendom van `www-data` — gebruik `sudo` om te schrijven
+- DB: `wpdbtech` op `localhost`, user `dgebbink`
+- WP-CLI beschikbaar: `sudo -u www-data wp ...` (vanuit de WordPress root)
+- Thema templates: `index.php` (homepage), `archive.php` (categorie/tag), `template-nieuws.php` (alle nieuws, pagina ID 778)
 
 ## WordPress auth
 
