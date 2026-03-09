@@ -16,6 +16,7 @@ Gebruik:
 import argparse
 import logging
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -46,9 +47,11 @@ from config import LOGS_DIR  # noqa: E402
 logger = _setup_logging(LOGS_DIR)
 
 from ai_processor import InsufficientCreditsError, process_articles, save_posted_title  # noqa: E402
-from config import IMAGE_STRATEGY  # noqa: E402
-from mailer import send_balance_warning, send_fal_balance_warning, send_notification  # noqa: E402
+from approval_store import update_bluesky_uri  # noqa: E402
+from config import BLUESKY_POST_DELAY_SECONDS, ENABLE_SOCIAL_POSTING, IMAGE_STRATEGY  # noqa: E402
+from mailer import build_action_buttons, send_balance_warning, send_fal_balance_warning, send_notification  # noqa: E402
 from scraper import download_image, fetch_article_text, save_posted_url, scrape_all_sources  # noqa: E402
+from social_poster import post_to_bluesky  # noqa: E402
 from wordpress_client import publish_articles  # noqa: E402
 
 
@@ -98,7 +101,6 @@ def main() -> int:
         import requests as _req  # noqa: PLC0415
         from bs4 import BeautifulSoup  # noqa: PLC0415
         from config import WP_APP_PASSWORD, WP_URL, WP_USERNAME  # noqa: PLC0415
-        from social_poster import post_to_bluesky  # noqa: PLC0415
 
         _token = _b64.b64encode(f"{WP_USERNAME}:{WP_APP_PASSWORD}".encode()).decode()
         _resp = _req.get(
@@ -260,9 +262,9 @@ def main() -> int:
                 logger.warning("Geen afbeelding gevonden voor: %s", processed.titel)
 
     # ------------------------------------------------------------------
-    # Stap 4: WordPress drafts aanmaken
+    # Stap 4: WordPress artikelen publiceren
     # ------------------------------------------------------------------
-    logger.info("── Stap 4: WordPress drafts aanmaken ──")
+    logger.info("── Stap 4: WordPress artikelen publiceren ──")
     results = publish_articles(processed_articles, dry_run=args.dry_run)
 
     if not args.dry_run:
@@ -272,35 +274,91 @@ def main() -> int:
             save_posted_url(url)
             save_posted_title(article.titel, url)
             logger.info(
-                "URL opgeslagen als gepost: %s → draft: %s",
+                "URL opgeslagen als gepost: %s → %s",
                 url,
-                result["post"]["preview_url"],
+                result["post"].get("link", result["post"]["preview_url"]),
             )
     else:
         for result in results:
             logger.info(
-                "[DRY RUN] Draft preview URL: %s", result["post"]["preview_url"]
+                "[DRY RUN] Gepubliceerd: %s", result["post"]["preview_url"]
             )
 
     if not results and processed_articles:
         warning_message = (
-            warning_message + " WordPress upload mislukt voor alle artikelen."
+            warning_message + " WordPress publiceren mislukt voor alle artikelen."
             if warning_message
-            else "WordPress upload mislukt voor alle artikelen."
+            else "WordPress publiceren mislukt voor alle artikelen."
         )
 
     # ------------------------------------------------------------------
-    # Stap 5: Notificatiemail met Accept/Decline knoppen
+    # Stap 5: Actie-knoppen aanmaken en notificatiemail versturen
     # ------------------------------------------------------------------
     logger.info("── Stap 5: Notificatiemail versturen ──")
+
+    # Bouw tokens per artikel en sla decline_token op voor Bluesky-koppeling
+    decline_tokens: dict[int, str] = {}
+    if not args.dry_run:
+        for result in results:
+            post    = result["post"]
+            article = result["article"]
+            meta    = {
+                "article_text": article.samenvatting,
+                "categorieen":  article.categorieen,
+                "trefwoorden":  article.trefwoorden,
+                "source_url":   article.original.url,
+                "image_url":    post.get("image_url", ""),
+            }
+            buttons_html, decline_token, _ = build_action_buttons(
+                post["id"], article.titel,
+                post.get("link", post["preview_url"]), meta,
+            )
+            result["buttons_html"] = buttons_html
+            decline_tokens[post["id"]] = decline_token
+
     send_notification(results, warning_message=warning_message, dry_run=args.dry_run)
+
+    # ------------------------------------------------------------------
+    # Stap 6: Bluesky publiceren (met vertraging) en URI opslaan
+    # ------------------------------------------------------------------
+    if not args.dry_run and ENABLE_SOCIAL_POSTING and results:
+        logger.info(
+            "── Stap 6: Bluesky publiceren (%ds vertraging per artikel) ──",
+            BLUESKY_POST_DELAY_SECONDS,
+        )
+        for result in results:
+            article  = result["article"]
+            post     = result["post"]
+            post_url = post.get("link", post.get("preview_url", ""))
+
+            logger.info(
+                "Wacht %ds voor Bluesky post: %s",
+                BLUESKY_POST_DELAY_SECONDS, article.titel,
+            )
+            time.sleep(BLUESKY_POST_DELAY_SECONDS)
+
+            bsky_uri = post_to_bluesky(
+                title=article.titel,
+                summary=article.samenvatting,
+                keywords=article.trefwoorden,
+                post_url=post_url,
+                dry_run=False,
+            )
+            logger.info("Bluesky URI: %s", bsky_uri or "MISLUKT")
+
+            post_id = post["id"]
+            if bsky_uri and post_id in decline_tokens:
+                update_bluesky_uri(decline_tokens[post_id], bsky_uri)
+                logger.info(
+                    "Bluesky URI opgeslagen voor decline token (post %d)", post_id
+                )
 
     # ------------------------------------------------------------------
     # Samenvatting
     # ------------------------------------------------------------------
     logger.info("=== TechNieuwsVandaag Bot klaar ===")
     logger.info(
-        "Verwerkt: %d artikel(en) | Drafts aangemaakt: %d",
+        "Verwerkt: %d artikel(en) | Gepubliceerd: %d",
         len(processed_articles),
         len(results),
     )
