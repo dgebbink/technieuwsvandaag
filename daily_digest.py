@@ -23,6 +23,8 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+from bluesky_monitor import collect_daily_bluesky_report
+from budget_monitor import collect_funds_report
 from config import (
     LOGS_DIR,
     NOTIFICATION_EMAIL,
@@ -36,6 +38,7 @@ from config import (
     WP_URL,
     WP_USERNAME,
 )
+from mailer import render_bluesky_section, render_funds_section
 
 logging.basicConfig(
     level=logging.INFO,
@@ -242,7 +245,13 @@ def _post_card(index: int, post: dict, show_date: bool = False) -> str:
     </div>"""
 
 
-def build_digest_html(today_posts: list[dict], old_drafts: list[dict], date_str: str) -> str:
+def build_digest_html(
+    today_posts: list[dict],
+    old_drafts: list[dict],
+    date_str: str,
+    bluesky_data: dict | None = None,
+    funds_data: dict | None = None,
+) -> str:
     """Bouwt de volledige HTML-digest op basis van de post-lijst."""
     today_nl = datetime.now(CET).strftime("%-d %B %Y")
 
@@ -270,6 +279,18 @@ def build_digest_html(today_posts: list[dict], old_drafts: list[dict], date_str:
       {len(old_drafts)} concept{'en' if len(old_drafts) != 1 else ''} van vóór vandaag
     </p>
     {old_cards}"""
+
+    report_section = ""
+    if bluesky_data is not None or funds_data is not None:
+        bluesky_html = render_bluesky_section(bluesky_data) if bluesky_data is not None else ""
+        funds_html   = render_funds_section(funds_data)     if funds_data   is not None else ""
+        report_section = f"""
+    <hr style="border:none; border-top:1px solid #e8e8e8; margin:28px 0 20px;">
+    <h2 style="font-size:16px; color:#333; margin:0 0 16px;">
+      📊 Dagrapport
+    </h2>
+    {bluesky_html}
+    {funds_html}"""
 
     return f"""<!DOCTYPE html>
 <html lang="nl">
@@ -299,6 +320,7 @@ def build_digest_html(today_posts: list[dict], old_drafts: list[dict], date_str:
     <h2 style="font-size:16px; color:#555; margin:0 0 4px;">Vandaag gepost</h2>
     {today_cards if today_posts else empty}
     {old_drafts_section}
+    {report_section}
     <hr style="border:none; border-top:1px solid #e8e8e8; margin:28px 0 16px;">
     <p style="color:#aaa; font-size:12px; text-align:center; margin:0;">
       Automatisch gegenereerd door TechNieuwsVandaag-Bot · {date_str}
@@ -320,7 +342,7 @@ def send_digest(dry_run: bool = False) -> None:
     """
     date_str = datetime.now(CET).strftime("%d-%m-%Y %H:%M")
     today_nl = datetime.now(CET).strftime("%-d %B %Y")
-    subject  = f"📋 [TechNieuwsVandaag] Dagelijks overzicht — {today_nl}"
+    subject  = f"📋 [TechNieuwsVandaag] Dagoverzicht — {today_nl}"
 
     logger.info("Dagelijkse digest ophalen voor %s", date.today().isoformat())
     today_posts = fetch_todays_posts()
@@ -337,7 +359,13 @@ def send_digest(dry_run: bool = False) -> None:
         logger.info("Categorieën en tags ophalen voor oude drafts...")
         old_drafts = enrich_posts(old_drafts)
 
-    html_body = build_digest_html(today_posts, old_drafts, date_str)
+    logger.info("Bluesky activiteit ophalen...")
+    bluesky_data = collect_daily_bluesky_report()
+
+    logger.info("Tegoed ophalen...")
+    funds_data = collect_funds_report()
+
+    html_body = build_digest_html(today_posts, old_drafts, date_str, bluesky_data, funds_data)
 
     if dry_run:
         LOGS_DIR.mkdir(parents=True, exist_ok=True)
