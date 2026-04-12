@@ -382,7 +382,7 @@ def send_digest(dry_run: bool = False) -> None:
         try:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
-            msg["From"]    = formataddr((SMTP_DISPLAY_NAME, SMTP_USERNAME))
+            msg["From"]    = formataddr((SMTP_DISPLAY_NAME, SMTP_FROM))
             msg["To"]      = NOTIFICATION_EMAIL
             msg.attach(MIMEText(html_body, "html", "utf-8"))
 
