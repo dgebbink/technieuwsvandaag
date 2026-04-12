@@ -350,19 +350,19 @@ def post_to_bluesky(
     keywords: str,
     post_url: str,
     dry_run: bool = False,
-) -> bool:
+) -> str:
     """Post one article announcement to Bluesky with inline image.
 
     Pre:  BLUESKY_HANDLE and BLUESKY_APP_PASSWORD are set when ENABLE_SOCIAL_POSTING=true
           post_url is the WordPress article URL
-    Post: returns True on success; False on failure or when disabled
+    Post: returns AT Protocol URI string on success; "" on failure or when disabled
     """
     if not ENABLE_SOCIAL_POSTING:
-        return False
+        return ""
 
     if not BLUESKY_HANDLE or not BLUESKY_APP_PASSWORD:
         logger.warning("Bluesky credentials niet geconfigureerd (BLUESKY_HANDLE / BLUESKY_APP_PASSWORD)")
-        return False
+        return ""
 
     hashtags = _format_hashtags(keywords)
     text     = _build_post_text(title, summary, hashtags)
@@ -378,7 +378,7 @@ def post_to_bluesky(
             og_data.get("title", "(geen)"),
             og_data.get("image", "(geen)"),
         )
-        return True
+        return "at://did:plc:dryrun/app.bsky.feed.post/dryrun"
 
     try:
         session = _bluesky_login()
@@ -402,10 +402,63 @@ def post_to_bluesky(
         result   = _create_post(session, text, facets, embed)
         post_uri = result.get("uri", "")
         logger.info("Bluesky post verstuurd: %s → %s", title, post_uri)
-        return bool(post_uri)
+        return post_uri
 
     except Exception as exc:
         logger.error("Bluesky post mislukt voor '%s': %s", title, exc)
+        return ""
+
+
+def delete_bluesky_post(post_uri: str) -> bool:
+    """Deletes a Bluesky post by its AT Protocol URI.
+
+    Pre:  post_uri is a valid AT URI: at://did:plc:xxx/app.bsky.feed.post/rkey
+          BLUESKY_HANDLE and BLUESKY_APP_PASSWORD are configured
+    Post: returns True on success; False on failure or when disabled/unconfigured
+    """
+    if not ENABLE_SOCIAL_POSTING:
+        return False
+
+    if not BLUESKY_HANDLE or not BLUESKY_APP_PASSWORD:
+        logger.warning("Bluesky credentials niet geconfigureerd — verwijderen overgeslagen")
+        return False
+
+    if not post_uri:
+        logger.warning("Lege post_uri meegegeven aan delete_bluesky_post")
+        return False
+
+    # Parse: at://did:plc:xxx/app.bsky.feed.post/rkey
+    try:
+        parts = post_uri.split("/")
+        # at:// → parts[0]='at:', parts[1]='', parts[2]=repo, parts[3]=collection, parts[4]=rkey
+        repo       = parts[2]
+        collection = parts[3]
+        rkey       = parts[4]
+    except IndexError:
+        logger.error("Ongeldige AT URI voor delete: %s", post_uri)
+        return False
+
+    try:
+        session = _bluesky_login()
+        resp = requests.post(
+            f"{session['host']}/xrpc/com.atproto.repo.deleteRecord",
+            headers={
+                "Authorization": f"Bearer {session['accessJwt']}",
+                "Content-Type":  "application/json",
+            },
+            json={
+                "repo":       repo,
+                "collection": collection,
+                "rkey":       rkey,
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+        logger.info("Bluesky post verwijderd: %s", post_uri)
+        return True
+
+    except Exception as exc:
+        logger.error("Bluesky post verwijderen mislukt (%s): %s", post_uri, exc)
         return False
 
 
@@ -432,10 +485,11 @@ def post_articles_to_social(results: list[dict], dry_run: bool = False) -> None:
             time.sleep(delay)
             logger.info("Bluesky delay voltooid, post wordt verstuurd")
 
-        post_to_bluesky(
+        uri = post_to_bluesky(
             title=article.titel,
             summary=article.samenvatting,
             keywords=article.trefwoorden,
             post_url=post_url,
             dry_run=dry_run,
         )
+        logger.info("Bluesky post: %s", uri or "MISLUKT")

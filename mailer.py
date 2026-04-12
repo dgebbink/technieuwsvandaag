@@ -27,63 +27,61 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Approval knoppen
+# Actie knoppen
 # ---------------------------------------------------------------------------
 
-def _build_approval_buttons(
+def build_action_buttons(
     post_id:    int,
     post_title: str,
     wp_url:     str,
     meta:       dict | None = None,
-) -> str:
-    """Builds Accept, Decline and New Image HTML buttons for the notification email.
-    Pre:  post_id is a valid WordPress draft ID
-    Post: HTML string with three buttons linking to the Flask approval server
+) -> tuple[str, str, str]:
+    """Builds Decline and New Image HTML buttons for the notification email.
+    Pre:  post_id is a valid WordPress post ID
+    Post: returns (buttons_html, decline_token, new_image_token)
           meta dict stored in tokens for reimage use (e.g. article_text)
     """
     import os
     base = os.getenv("APPROVAL_BASE_URL", "http://localhost:5055")
-    accept_token, decline_token, reimage_token = create_tokens(
+    decline_token, new_image_token = create_tokens(
         post_id, post_title, wp_url, meta
     )
-    accept_url  = f"{base}/approve/{accept_token}"
-    decline_url = f"{base}/decline/{decline_token}"
-    reimage_url = f"{base}/reimage/{reimage_token}"
+    new_image_url = f"{base}/new-image/{new_image_token}"
+    decline_url   = f"{base}/decline/{decline_token}"
 
-    return f"""
+    buttons_html = f"""
     <div style="margin:24px 0;text-align:center">
-      <a href="{accept_url}"
-         style="display:inline-block;background:#28a745;color:#fff;
+      <a href="{new_image_url}"
+         style="display:inline-block;background:#1a73e8;color:#fff;
                 padding:12px 24px;border-radius:4px;font-size:15px;
                 font-weight:700;text-decoration:none;margin:4px">
-        ✅ Accept
+        Nieuwe afbeelding
       </a>
       <a href="{decline_url}"
          style="display:inline-block;background:#dc3545;color:#fff;
                 padding:12px 24px;border-radius:4px;font-size:15px;
                 font-weight:700;text-decoration:none;margin:4px">
-        ❌ Decline
-      </a>
-      <a href="{reimage_url}"
-         style="display:inline-block;background:#e67e22;color:#fff;
-                padding:12px 24px;border-radius:4px;font-size:15px;
-                font-weight:700;text-decoration:none;margin:4px">
-        🖼 Nieuwe afbeelding
+        Decline
       </a>
     </div>
     <p style="font-size:11px;color:#999;text-align:center">
-      Links geldig voor 24 uur
+      Decline verwijdert het artikel en de Bluesky post.
+      Geldig voor 4 uur na publicatie.
     </p>"""
+
+    return buttons_html, decline_token, new_image_token
 
 
 # ---------------------------------------------------------------------------
 # HTML-mail bouwen
 # ---------------------------------------------------------------------------
 
-def _article_section(index: int, data: dict) -> str:
-    """Render one article as an HTML email card."""
-    # pre: data contains 'article' (ProcessedArticle) and 'post' (dict with preview_url)
-    # post: returns a valid HTML string
+def _article_section(index: int, data: dict, buttons_html: str | None = None) -> str:
+    """Render one article as an HTML email card.
+    Pre:  data contains 'article' (ProcessedArticle) and 'post' (dict with preview_url)
+          buttons_html: pre-built button HTML (if None, build_action_buttons is called)
+    Post: returns a valid HTML string
+    """
     article: ProcessedArticle = data["article"]
     post: dict = data["post"]
 
@@ -100,13 +98,19 @@ def _article_section(index: int, data: dict) -> str:
             f'display:block;">'
         )
 
-    meta = {
-        "article_text":  article.samenvatting,
-        "categorieen":   article.categorieen,
-        "trefwoorden":   article.trefwoorden,
-        "source_url":    article.original.url,
-        "image_url":     post.get("image_url", ""),
-    }
+    if buttons_html is None:
+        meta = {
+            "article_text": article.samenvatting,
+            "categorieen":  article.categorieen,
+            "trefwoorden":  article.trefwoorden,
+            "source_url":   article.original.url,
+            "image_url":    post.get("image_url", ""),
+        }
+        buttons_html, _, _ = build_action_buttons(
+            post["id"], article.titel, post.get("link", post["preview_url"]), meta
+        )
+
+    post_link = post.get("link", post["preview_url"])
 
     return f"""
     <div style="border:1px solid #e0e0e0; border-radius:8px; padding:24px;
@@ -122,7 +126,7 @@ def _article_section(index: int, data: dict) -> str:
 
       <table style="width:100%; border-collapse:collapse; font-size:14px;">
         <tr>
-          <td style="padding:6px 0; color:#888; width:110px;">Categorieën</td>
+          <td style="padding:6px 0; color:#888; width:110px;">Categorieen</td>
           <td style="padding:6px 0;">{", ".join(article.categorieen)}</td>
         </tr>
         <tr>
@@ -140,12 +144,12 @@ def _article_section(index: int, data: dict) -> str:
       </table>
 
       <p style="margin:16px 0 4px;">
-        <a href="{post['preview_url']}"
+        <a href="{post_link}"
            style="color:#1a73e8;font-size:13px;">
-          Bekijk draft preview →
+          Bekijk artikel →
         </a>
       </p>
-      {_build_approval_buttons(post['id'], article.titel, post['preview_url'], meta)}
+      {buttons_html}
     </div>
     """
 
@@ -158,7 +162,8 @@ def build_html_email(
     """Assemble the full HTML email body from article sections."""
     # post: always returns a complete HTML document string
     sections = "".join(
-        _article_section(i, data) for i, data in enumerate(articles_data, start=1)
+        _article_section(i, data, data.get("buttons_html"))
+        for i, data in enumerate(articles_data, start=1)
     )
 
     warning_html = ""
@@ -166,11 +171,11 @@ def build_html_email(
         warning_html = f"""
         <div style="background:#fff3cd; border:1px solid #ffc107; padding:14px 18px;
                     border-radius:4px; margin:20px 0; font-size:14px;">
-          <strong>⚠ Waarschuwing:</strong> {warning_message}
+          <strong>Waarschuwing:</strong> {warning_message}
         </div>
         """
 
-    count_label = f"{len(articles_data)} nieuwe draft(s)" if articles_data else "Geen nieuwe drafts"
+    count_label = f"{len(articles_data)} nieuw(e) artikel(en)" if articles_data else "Geen nieuwe artikelen"
 
     return f"""<!DOCTYPE html>
 <html lang="nl">
@@ -229,10 +234,10 @@ def send_reimage_email(
     image_url:  str,
     meta:       dict,
 ) -> None:
-    """Send a notification email with a freshly generated image and new approval buttons.
-    Pre:  post_id is a valid WP draft post ID
+    """Send a notification email with a freshly generated image and new action buttons.
+    Pre:  post_id is a valid WP post ID
     Post: email sent (or saved to LOGS_DIR as fallback)
-          fresh accept/decline/reimage tokens created and embedded in buttons
+          fresh decline/new_image tokens created and embedded in buttons
     """
     date_str = datetime.now().strftime("%d-%m-%Y %H:%M")
     subject  = (
@@ -248,12 +253,12 @@ def send_reimage_email(
     )
 
     updated_meta = {**meta, "image_url": image_url}
-    buttons_html = _build_approval_buttons(post_id, post_title, wp_url, updated_meta)
+    buttons_html, _, _ = build_action_buttons(post_id, post_title, wp_url, updated_meta)
 
     preview_url_html = (
         f'<p style="margin:12px 0 4px;">'
         f'<a href="{wp_url}" style="color:#1a73e8;font-size:13px;">'
-        f'Bekijk draft preview →</a></p>'
+        f'Bekijk artikel →</a></p>'
     )
 
     categorieen = ", ".join(meta.get("categorieen", []))
@@ -320,7 +325,7 @@ def send_reimage_email(
         try:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
-            msg["From"]    = formataddr((SMTP_DISPLAY_NAME, SMTP_USERNAME))
+            msg["From"]    = formataddr((SMTP_DISPLAY_NAME, SMTP_FROM))
             msg["To"]      = NOTIFICATION_EMAIL
             msg.attach(MIMEText(html_body, "html", "utf-8"))
 
@@ -328,7 +333,7 @@ def send_reimage_email(
                 server.ehlo()
                 server.starttls()
                 server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                server.sendmail(SMTP_USERNAME, [NOTIFICATION_EMAIL], msg.as_string())
+                server.sendmail(SMTP_FROM, [NOTIFICATION_EMAIL], msg.as_string())
 
             logger.info("Reimage-mail verstuurd naar %s", NOTIFICATION_EMAIL)
             return
@@ -397,7 +402,7 @@ python3 main.py --lookback-days 2</pre>
         try:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
-            msg["From"] = formataddr((SMTP_DISPLAY_NAME, SMTP_USERNAME))
+            msg["From"] = formataddr((SMTP_DISPLAY_NAME, SMTP_FROM))
             msg["To"] = NOTIFICATION_EMAIL
             msg.attach(MIMEText(html_body, "html", "utf-8"))
 
@@ -405,7 +410,7 @@ python3 main.py --lookback-days 2</pre>
                 server.ehlo()
                 server.starttls()
                 server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                server.sendmail(SMTP_USERNAME, [NOTIFICATION_EMAIL], msg.as_string())
+                server.sendmail(SMTP_FROM, [NOTIFICATION_EMAIL], msg.as_string())
 
             logger.info("Balans-waarschuwingsmail verstuurd naar %s", NOTIFICATION_EMAIL)
             return
@@ -482,7 +487,7 @@ IMAGE_STRATEGY=scrape</pre>
         try:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
-            msg["From"] = formataddr((SMTP_DISPLAY_NAME, SMTP_USERNAME))
+            msg["From"] = formataddr((SMTP_DISPLAY_NAME, SMTP_FROM))
             msg["To"] = NOTIFICATION_EMAIL
             msg.attach(MIMEText(html_body, "html", "utf-8"))
 
@@ -490,7 +495,7 @@ IMAGE_STRATEGY=scrape</pre>
                 server.ehlo()
                 server.starttls()
                 server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                server.sendmail(SMTP_USERNAME, [NOTIFICATION_EMAIL], msg.as_string())
+                server.sendmail(SMTP_FROM, [NOTIFICATION_EMAIL], msg.as_string())
 
             logger.info("FAL.ai balans-waarschuwingsmail verstuurd naar %s", NOTIFICATION_EMAIL)
             return
@@ -525,9 +530,9 @@ def send_notification(
     prefix = f"{subject_prefix} " if subject_prefix else ""
 
     if count == 0:
-        subject = f"⚠ {prefix}[TechNieuwsVandaag] Geen nieuwe artikelen — {date_str}"
+        subject = f"[TechNieuwsVandaag] Geen nieuwe artikelen — {date_str}"
     else:
-        subject = f"📝 {prefix}[TechNieuwsVandaag] {count} nieuwe draft(s) wachten op goedkeuring — {date_str}"
+        subject = f"[TechNieuwsVandaag] {count} artikel(en) gepubliceerd — {date_str}"
 
     html_body = build_html_email(articles_data, date_str, warning_message)
 
@@ -546,7 +551,7 @@ def send_notification(
         try:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
-            msg["From"] = formataddr((SMTP_DISPLAY_NAME, SMTP_USERNAME))
+            msg["From"] = formataddr((SMTP_DISPLAY_NAME, SMTP_FROM))
             msg["To"] = NOTIFICATION_EMAIL
             msg.attach(MIMEText(html_body, "html", "utf-8"))
 
@@ -554,7 +559,7 @@ def send_notification(
                 server.ehlo()
                 server.starttls()
                 server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                server.sendmail(SMTP_USERNAME, [NOTIFICATION_EMAIL], msg.as_string())
+                server.sendmail(SMTP_FROM, [NOTIFICATION_EMAIL], msg.as_string())
 
             logger.info("Notificatiemail verstuurd naar %s", NOTIFICATION_EMAIL)
             return
@@ -588,7 +593,7 @@ def send_email(to: str, subject: str, html_body: str) -> None:
         try:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
-            msg["From"]    = formataddr((SMTP_DISPLAY_NAME, SMTP_USERNAME))
+            msg["From"]    = formataddr((SMTP_DISPLAY_NAME, SMTP_FROM))
             msg["To"]      = to
             msg.attach(MIMEText(html_body, "html", "utf-8"))
 
@@ -596,7 +601,7 @@ def send_email(to: str, subject: str, html_body: str) -> None:
                 server.ehlo()
                 server.starttls()
                 server.login(SMTP_USERNAME, SMTP_PASSWORD)
-                server.sendmail(SMTP_USERNAME, [to], msg.as_string())
+                server.sendmail(SMTP_FROM, [to], msg.as_string())
 
             logger.info("Mail verstuurd naar %s — %s", to, subject)
             return

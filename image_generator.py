@@ -8,7 +8,7 @@ from typing import Optional
 
 import anthropic
 import requests
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from config import ANTHROPIC_API_KEY, FAL_API_KEY, FAL_CREDIT_THRESHOLD, REQUEST_TIMEOUT
 
@@ -172,6 +172,58 @@ def composite_logo(image_path: str, logo_path: str) -> None:
         logger.warning("Logo compositing failed: %s", exc)
 
 
+def add_ai_label(image_path: str) -> None:
+    """Overlay a small 'AI gegenereerd' label in the bottom-left corner, in-place.
+
+    Pre:  image_path is a valid image file
+    Post: image_path overwritten with label at bottom-left; silent on failure
+    """
+    try:
+        base = Image.open(image_path).convert("RGBA")
+
+        label = "AI gegenereerd"
+        font_size = 16
+        try:
+            font = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size
+            )
+        except Exception:
+            font = ImageFont.load_default()
+
+        draw_tmp = ImageDraw.Draw(base)
+        bbox = draw_tmp.textbbox((0, 0), label, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+
+        pad_x, pad_y = 10, 6
+        bg_w = text_w + pad_x * 2
+        bg_h = text_h + pad_y * 2
+        margin = 16
+        x = margin
+        y = base.height - bg_h - margin
+
+        # Light grey semi-transparent pill background
+        overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+        ImageDraw.Draw(overlay).rounded_rectangle(
+            [x, y, x + bg_w, y + bg_h],
+            radius=6,
+            fill=(220, 220, 220, 210),
+        )
+        base = Image.alpha_composite(base, overlay)
+
+        ImageDraw.Draw(base).text(
+            (x + pad_x, y + pad_y - bbox[1]),
+            label,
+            font=font,
+            fill=(80, 80, 80, 255),
+        )
+
+        base.convert("RGB").save(image_path, "JPEG", quality=92)
+        logger.info("AI-label toegevoegd aan afbeelding")
+    except Exception as exc:
+        logger.warning("AI-label toevoegen mislukt: %s", exc)
+
+
 def generate_fal_image(prompt: str, dest_path: str) -> Optional[str]:
     """Generate an image via FAL.ai flux/dev and save it to dest_path.
 
@@ -236,7 +288,10 @@ def generate_image_for_article(
         image_prompt = generate_image_prompt(title, article_text)
         logger.info("Gegenereerde prompt: %s", image_prompt)
 
-        return generate_fal_image(image_prompt, dest_path)
+        result = generate_fal_image(image_prompt, dest_path)
+        if result:
+            add_ai_label(dest_path)
+        return result
     except Exception as exc:
         logger.error("Afbeelding genereren mislukt voor '%s': %s", title, exc)
         return None

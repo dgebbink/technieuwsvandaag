@@ -201,15 +201,17 @@ class WordPressClient:
         article: ProcessedArticle,
         dry_run: bool = False,
     ) -> Optional[dict]:
-        """Publish article to WordPress; return {id, preview_url, title} or None."""
+        """Publish article to WordPress; return {id, preview_url, link, title, image_url} or None."""
         # pre: article.original.url and pub_date are valid
         # post: returns None on any WordPress API failure
         if dry_run:
-            logger.info("[DRY RUN] Zou draft aanmaken: %s", article.titel)
+            logger.info("[DRY RUN] Zou artikel publiceren: %s", article.titel)
             return {
                 "id": 0,
                 "preview_url": f"{WP_URL.rstrip('/')}/?p=0&preview=true",
-                "title": article.titel,
+                "link":        f"{WP_URL.rstrip('/')}/?p=0",
+                "title":       article.titel,
+                "image_url":   "",
             }
 
         try:
@@ -261,7 +263,7 @@ class WordPressClient:
             post_data: dict = {
                 "title": article.titel,
                 "content": content_html,
-                "status": "draft",
+                "status": "publish",
                 "date_gmt": pub_date_gmt,
                 "categories": categories,
                 "tags": tag_ids,
@@ -317,7 +319,7 @@ class WordPressClient:
             preview_url = f"{WP_URL.rstrip('/')}/?p={post_id}&preview=true"
             post_link: str = post.get("link", preview_url)
 
-            logger.info("Draft aangemaakt: '%s' (ID %d)", article.titel, post_id)
+            logger.info("Artikel gepubliceerd: '%s' (ID %d)", article.titel, post_id)
             return {
                 "id": post_id,
                 "preview_url": preview_url,
@@ -350,7 +352,7 @@ def publish_articles(
         if post:
             results.append({"article": article, "post": post})
         else:
-            logger.error("Draft aanmaken mislukt voor: %s", article.titel)
+            logger.error("Publiceren mislukt voor: %s", article.titel)
 
     return results
 
