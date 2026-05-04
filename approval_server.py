@@ -6,10 +6,17 @@ Decline deletes the Bluesky post and WordPress post.
 New Image regenerates the featured image without consuming the token.
 """
 
+import html as _html_mod
+import json
 import logging
 import os
+import re
 import threading
 import uuid
+from collections import Counter
+from datetime import date, timedelta
+from pathlib import Path
+from urllib.parse import urlparse
 
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
@@ -222,6 +229,289 @@ def _html_response(title: str, body: str, error: bool = False) -> str:
   <p>{body}</p>
   <hr style="margin:32px 0;border-color:#eee">
   <small style="color:#aaa">TechNieuwsVandaag.nl</small>
+</body>
+</html>"""
+
+
+# ---------------------------------------------------------------------------
+# Analytics helpers
+# ---------------------------------------------------------------------------
+
+_BASE = Path(__file__).parent
+
+
+def _analytics_posts() -> dict:
+    """Parse posted_titles.txt and return stats dict."""
+    entries = []
+    path = _BASE / "posted_titles.txt"
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            parts = line.strip().split("|", 2)
+            if len(parts) == 3:
+                entries.append(parts)  # [date_str, url, title]
+
+    today = date.today()
+    day_counts = Counter(d for d, _, _ in entries)
+
+    labels = [(today - timedelta(days=i)).isoformat() for i in range(89, -1, -1)]
+    counts = [day_counts.get(d, 0) for d in labels]
+
+    src: Counter = Counter()
+    for _, url, _ in entries:
+        domain = urlparse(url).netloc.removeprefix("www.")
+        if domain:
+            src[domain] += 1
+
+    week_ago    = (today - timedelta(days=6)).isoformat()
+    month_start = today.replace(day=1).isoformat()
+    total       = len(entries)
+    active_days = len(set(d for d, _, _ in entries)) or 1
+
+    return {
+        "total":       total,
+        "this_week":   sum(1 for d, _, _ in entries if d >= week_ago),
+        "this_month":  sum(1 for d, _, _ in entries if d >= month_start),
+        "avg":         round(total / active_days, 1),
+        "labels":      labels,
+        "counts":      counts,
+        "src_labels":  [s for s, _ in src.most_common(10)],
+        "src_counts":  [c for _, c in src.most_common(10)],
+        "recent":      list(reversed(entries))[:20],
+    }
+
+
+def _analytics_runs() -> list[tuple[str, int, int, str]]:
+    """Parse run logs; return list of (date, ok, total, last_title) per day, newest first."""
+    per_day: dict[str, dict] = {}
+    for log_path in sorted((_BASE / "logs").glob("run_*.log")):
+        parts = log_path.stem.split("_", 2)
+        if len(parts) < 2:
+            continue
+        day = parts[1]
+        try:
+            content = log_path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        ok = "Gepubliceerd: 1" in content
+        m  = re.search(r"Artikel verwerken \[(?:NL|EN)\]: (.+)", content)
+        title = m.group(1)[:55] if (m and ok) else ""
+        rec = per_day.setdefault(day, {"ok": 0, "total": 0, "title": ""})
+        rec["total"] += 1
+        if ok:
+            rec["ok"] += 1
+            rec["title"] = title
+    return [
+        (d, v["ok"], v["total"], v["title"])
+        for d, v in sorted(per_day.items(), reverse=True)
+    ][:14]
+
+
+@app.route("/analytics")
+def analytics():
+    """Analytics dashboard — post history, top sources, run status."""
+    data = _analytics_posts()
+    runs = _analytics_runs()
+
+    js = json.dumps({
+        "labels":     data["labels"],
+        "counts":     data["counts"],
+        "src_labels": data["src_labels"],
+        "src_counts": data["src_counts"],
+    })
+
+    def _card(value, label):
+        return (
+            f'<div class="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">'
+            f'<div class="text-3xl font-bold text-gray-800">{value}</div>'
+            f'<div class="text-sm text-gray-400 mt-1">{label}</div>'
+            f'</div>'
+        )
+
+    def _recent_row(d, url, title):
+        domain = urlparse(url).netloc.removeprefix("www.")
+        t = _html_mod.escape(title)
+        u = _html_mod.escape(url, quote=True)
+        return (
+            f'<tr class="border-b border-gray-100 hover:bg-gray-50">'
+            f'<td class="py-2 pr-4 text-sm text-gray-400 whitespace-nowrap">{d}</td>'
+            f'<td class="py-2 pr-4 text-sm">'
+            f'<a href="{u}" target="_blank" class="text-gray-800 hover:text-red-600">{t}</a>'
+            f'</td>'
+            f'<td class="py-2 text-sm text-gray-400 whitespace-nowrap">{_html_mod.escape(domain)}</td>'
+            f'</tr>'
+        )
+
+    def _run_row(d, ok, total, title):
+        ratio = f"{ok}/{total}"
+        if ok == total:
+            badge = f'<span class="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">{ratio}</span>'
+        elif ok > 0:
+            badge = f'<span class="text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">{ratio}</span>'
+        else:
+            badge = f'<span class="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700">{ratio}</span>'
+        return (
+            f'<tr class="border-b border-gray-100">'
+            f'<td class="py-2 pr-3 text-sm text-gray-400 whitespace-nowrap">{d}</td>'
+            f'<td class="py-2 pr-3">{badge}</td>'
+            f'<td class="py-2 text-sm text-gray-500 truncate max-w-xs">{_html_mod.escape(title)}</td>'
+            f'</tr>'
+        )
+
+    stats_html  = "".join([
+        _card(data["total"],      "Totaal gepubliceerd"),
+        _card(data["this_week"],  "Deze week"),
+        _card(data["this_month"], "Deze maand"),
+        _card(data["avg"],        "Gem. per actieve dag"),
+    ])
+    recent_html = "".join(_recent_row(d, u, t) for d, u, t in data["recent"])
+    runs_html   = "".join(_run_row(d, ok, tot, title) for d, ok, tot, title in runs)
+    if not runs_html:
+        runs_html = '<tr><td colspan="3" class="py-4 text-sm text-gray-400">Geen run-logs gevonden</td></tr>'
+
+    return f"""<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analyse — TechNieuwsVandaag</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script>const D={js};</script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <header class="bg-red-700 text-white px-6 py-4 shadow">
+    <div class="max-w-6xl mx-auto flex items-center gap-3">
+      <a href="https://technieuwsvandaag.nl" target="_blank"
+         class="text-lg font-bold tracking-tight hover:opacity-80">TechNieuwsVandaag</a>
+      <span class="text-red-400">›</span>
+      <span class="text-red-200 text-sm">Analyse</span>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-6 py-8 space-y-6">
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {stats_html}
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-semibold text-gray-700">Posts per dag</h2>
+        <div class="flex gap-1">
+          <button id="btn-7"  onclick="setPeriod(7)"
+            class="px-3 py-1 text-sm rounded-lg bg-red-700 text-white">7d</button>
+          <button id="btn-30" onclick="setPeriod(30)"
+            class="px-3 py-1 text-sm rounded-lg text-gray-500 hover:bg-gray-100">30d</button>
+          <button id="btn-90" onclick="setPeriod(90)"
+            class="px-3 py-1 text-sm rounded-lg text-gray-500 hover:bg-gray-100">90d</button>
+        </div>
+      </div>
+      <canvas id="postsChart" height="70"></canvas>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <h2 class="text-base font-semibold text-gray-700 mb-4">Top bronnen (all-time)</h2>
+        <canvas id="sourcesChart"></canvas>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <h2 class="text-base font-semibold text-gray-700 mb-4">Dagelijkse runs (laatste 14 dagen)</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="border-b border-gray-200">
+                <th class="text-left text-xs text-gray-400 font-medium pb-2 pr-3">Datum</th>
+                <th class="text-left text-xs text-gray-400 font-medium pb-2 pr-3">OK / runs</th>
+                <th class="text-left text-xs text-gray-400 font-medium pb-2">Laatste artikel</th>
+              </tr>
+            </thead>
+            <tbody>{runs_html}</tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+      <h2 class="text-base font-semibold text-gray-700 mb-4">Recente posts</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>
+            <tr class="border-b border-gray-200">
+              <th class="text-left text-xs text-gray-400 font-medium pb-2 pr-4 w-28">Datum</th>
+              <th class="text-left text-xs text-gray-400 font-medium pb-2 pr-4">Titel</th>
+              <th class="text-left text-xs text-gray-400 font-medium pb-2">Bron</th>
+            </tr>
+          </thead>
+          <tbody>{recent_html}</tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    const postsChart = new Chart(document.getElementById('postsChart'), {{
+      type: 'line',
+      data: {{
+        labels: D.labels.slice(-7),
+        datasets: [{{
+          data: D.counts.slice(-7),
+          borderColor: '#dc2626',
+          backgroundColor: 'rgba(220,38,38,0.07)',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.35,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+        }}]
+      }},
+      options: {{
+        plugins: {{ legend: {{ display: false }} }},
+        scales: {{
+          x: {{ grid: {{ display: false }}, ticks: {{ font: {{ size: 11 }}, maxTicksLimit: 14 }} }},
+          y: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }},
+               grid: {{ color: '#f3f4f6' }} }},
+        }}
+      }}
+    }});
+
+    function setPeriod(days) {{
+      postsChart.data.labels = D.labels.slice(-days);
+      postsChart.data.datasets[0].data = D.counts.slice(-days);
+      postsChart.update();
+      [7, 30, 90].forEach(d => {{
+        const btn = document.getElementById('btn-' + d);
+        btn.className = d === days
+          ? 'px-3 py-1 text-sm rounded-lg bg-red-700 text-white'
+          : 'px-3 py-1 text-sm rounded-lg text-gray-500 hover:bg-gray-100';
+      }});
+    }}
+
+    new Chart(document.getElementById('sourcesChart'), {{
+      type: 'bar',
+      data: {{
+        labels: D.src_labels,
+        datasets: [{{
+          data: D.src_counts,
+          backgroundColor: 'rgba(220,38,38,0.75)',
+          borderRadius: 4,
+        }}]
+      }},
+      options: {{
+        indexAxis: 'y',
+        plugins: {{ legend: {{ display: false }} }},
+        scales: {{
+          x: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }},
+               grid: {{ color: '#f3f4f6' }} }},
+          y: {{ ticks: {{ font: {{ size: 11 }} }}, grid: {{ display: false }} }},
+        }}
+      }}
+    }});
+  </script>
 </body>
 </html>"""
 
