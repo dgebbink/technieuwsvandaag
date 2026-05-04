@@ -6,15 +6,14 @@ import json
 import logging
 from typing import Optional
 
-import anthropic
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
-from config import ANTHROPIC_API_KEY, FAL_API_KEY, FAL_CREDIT_THRESHOLD, REQUEST_TIMEOUT
+from config import FAL_API_KEY, FAL_CREDIT_THRESHOLD, REQUEST_TIMEOUT
+from ai_processor import _call_claude
 
 logger = logging.getLogger(__name__)
 
-MODEL = "claude-sonnet-4-6"
 FAL_ENDPOINT = "https://fal.run/fal-ai/flux/dev"
 FAL_BILLING_ENDPOINT = "https://rest.alpha.fal.ai/billing/user"
 FAL_IMAGE_TIMEOUT = 120  # FAL.ai genereert in 60-90 seconden
@@ -75,10 +74,9 @@ def is_fal_balance_low() -> bool:
 def generate_image_prompt(title: str, article_text: str) -> str:
     """Ask Claude for an image prompt.
 
-    Pre:  ANTHROPIC_API_KEY is set; title is non-empty
+    Pre:  claude CLI is available; title is non-empty
     Post: returns prompt_text
     """
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     instruction = (
         "Return a single JSON field:\n"
         "\"prompt\": A 2-sentence English prompt for a photorealistic AI image "
@@ -93,12 +91,7 @@ def generate_image_prompt(title: str, article_text: str) -> str:
         f"Article text:\n{article_text[:1000]}\n\n"
         "Respond with only valid JSON, no markdown fences."
     )
-    message = client.messages.create(
-        model=MODEL,
-        max_tokens=200,
-        messages=[{"role": "user", "content": instruction}],
-    )
-    raw = message.content[0].text.strip()  # type: ignore[union-attr]
+    raw = _call_claude(instruction, timeout=60)
     try:
         data = json.loads(raw)
         return data.get("prompt", raw)

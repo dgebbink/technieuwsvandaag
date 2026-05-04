@@ -1,7 +1,7 @@
 """
 adhoc_processor.py — Verwerkt een enkele URL naar een WordPress draft.
 
-Gebruikt door de Telegram bot (telegram_bot.py) via process_single_url().
+Gebruikt door de approval server (approval_server.py) via process_single_url().
 """
 import logging
 from datetime import datetime
@@ -126,10 +126,6 @@ def fetch_adhoc_article(url: str) -> Optional[object]:
     return article
 
 
-# ---------------------------------------------------------------------------
-# Telegram bot API — verwerkt één URL direct naar WordPress draft
-# ---------------------------------------------------------------------------
-
 def process_single_url(url: str) -> dict | None:
     """Verwerkt één URL naar een WordPress draft.
     Pre:  url is een geldige https URL
@@ -151,11 +147,8 @@ def process_single_url(url: str) -> dict | None:
 
     # Stap 2: AI-verwerking
     from ai_processor import process_article
-    import anthropic
-    from config import ANTHROPIC_API_KEY
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    processed = process_article(article, client)
+    processed = process_article(article)
     if not processed:
         logger.error("AI-verwerking mislukt: %s", url)
         return None
@@ -192,7 +185,7 @@ def process_single_url(url: str) -> dict | None:
     post    = result["post"]
     post_id = post.get("id")
 
-    # Stap 5: Draft direct publiceren (Telegram bypasses approval flow)
+    # Stap 5: Draft direct publiceren
     try:
         pub_result = publish_post(post_id)
         public_url = pub_result.get("link", post.get("preview_url", ""))

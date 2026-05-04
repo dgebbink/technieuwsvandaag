@@ -1,19 +1,18 @@
 """
-AI-verwerking via de Anthropic Claude API:
+AI-verwerking via de Claude Code CLI:
 - Selecteer het 1 meest relevante artikel
 - Genereer Nederlandse samenvattingen, titels, trefwoorden en categorie
 """
 import json
 import logging
 import re
+import shutil
+import subprocess
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Optional
 
-import anthropic
-
-from config import ANTHROPIC_API_KEY
 from scraper import Article, fetch_article_text
 
 POSTED_TITLES_FILE = Path(__file__).parent / "posted_titles.txt"
@@ -22,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class InsufficientCreditsError(Exception):
-    """Opgegooid wanneer het Anthropic API-tegoed te laag is om een verzoek uit te voeren."""
+    """Opgegooid wanneer het Claude-tegoed te laag is om een verzoek uit te voeren."""
 
 # Beschikbare WordPress-categorieën
 CATEGORIES: list[str] = [
@@ -55,6 +54,36 @@ class ProcessedArticle:
 
 
 # ---------------------------------------------------------------------------
+# Claude CLI helpers
+# ---------------------------------------------------------------------------
+
+def _check_claude_cli() -> None:
+    """Raise RuntimeError if the claude CLI is not available in PATH."""
+    if shutil.which("claude") is None:
+        raise RuntimeError(
+            "De 'claude' CLI is niet beschikbaar in PATH. "
+            "Installeer Claude Code via: npm install -g @anthropic-ai/claude-code"
+        )
+
+
+def _call_claude(prompt: str, timeout: int = 90) -> str:
+    """Invoke the claude CLI with the given prompt; return stdout.
+    Pre:  claude CLI is available in PATH
+    Post: returns response text; raises InsufficientCreditsError or RuntimeError on failure
+    """
+    result = subprocess.run(
+        ["claude", "-p", prompt, "--dangerously-skip-permissions"],
+        capture_output=True, text=True, timeout=timeout,
+    )
+    if result.returncode != 0:
+        err = result.stderr.strip()
+        if "credit" in err.lower():
+            raise InsufficientCreditsError(err)
+        raise RuntimeError(f"claude CLI mislukt (exit {result.returncode}): {err}")
+    return result.stdout.strip()
+
+
+# ---------------------------------------------------------------------------
 # JSON-extractie helper
 # ---------------------------------------------------------------------------
 
@@ -82,7 +111,6 @@ def _extract_json(text: str) -> object:
 
 def deduplicate_articles(
     articles: list[Article],
-    client: anthropic.Anthropic,
 ) -> list[Article]:
     """Removes near-duplicate articles covering the same topic.
     Pre:  articles is a list of Article objects
@@ -111,12 +139,7 @@ def deduplicate_articles(
     )
 
     try:
-        message = client.messages.create(
-            model=MODEL,
-            max_tokens=100,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        response = message.content[0].text  # type: ignore[union-attr]
+        response = _call_claude(prompt, timeout=60)
         match = re.search(r'\[[\d,\s]+\]', response)
         if match:
             keep_indices = [
@@ -182,9 +205,9 @@ def save_posted_title(title: str, url: str) -> None:
 # Stap 2a: Artikel-selectie
 # ---------------------------------------------------------------------------
 
-def select_articles(articles: list[Article], client: anthropic.Anthropic) -> list[int]:
+def select_articles(articles: list[Article]) -> list[int]:
     """Ask Claude to pick the 1 most newsworthy article; return 0-based indices."""
-    # pre: len(articles) >= 1; client is authenticated
+    # pre: len(articles) >= 1
     # post: returns 1 valid index; raises InsufficientCreditsError on low balance
     article_list = "\n".join(
         f"{i + 1}. [{_domain(a.source)}] [{getattr(a, 'source_lang', 'EN')}] {a.title}\n   {a.excerpt[:250]}"
@@ -206,18 +229,7 @@ def select_articles(articles: list[Article], client: anthropic.Anthropic) -> lis
         f"Artikelen:\n{article_list}"
     )
 
-    try:
-        message = client.messages.create(
-            model=MODEL,
-            max_tokens=20,
-            messages=[{"role": "user", "content": prompt}],
-        )
-    except anthropic.APIError as exc:
-        if "credit" in str(exc).lower():
-            raise InsufficientCreditsError(str(exc)) from exc
-        raise
-
-    response_text = message.content[0].text  # type: ignore[union-attr]
+    response_text = _call_claude(prompt, timeout=30)
     result = _extract_json(response_text)
 
     if not isinstance(result, list) or len(result) < 1:
@@ -239,10 +251,11 @@ def select_articles(articles: list[Article], client: anthropic.Anthropic) -> lis
 # Stap 2b + 2c: Samenvatting en categorie genereren
 # ---------------------------------------------------------------------------
 
-def process_article(article: Article, client: anthropic.Anthropic) -> Optional[ProcessedArticle]:
+def process_article(article: Article, client=None) -> Optional[ProcessedArticle]:
     """Generate Dutch summary, titles, keywords and categories for one article."""
-    # pre: article.url is reachable; client is authenticated
-    # post: returns None on any API or parse failure
+    # pre: article.url is reachable
+    # post: returns None on any failure
+    # client param accepted but ignored — kept for call-site compatibility during migration
     categories_str = ", ".join(CATEGORIES)
 
     # Haal artikeltekst op als excerpt te kort is
@@ -287,18 +300,7 @@ def process_article(article: Article, client: anthropic.Anthropic) -> Optional[P
     )
 
     try:
-        try:
-            message = client.messages.create(
-                model=MODEL,
-                max_tokens=1500,
-                messages=[{"role": "user", "content": prompt}],
-            )
-        except anthropic.APIError as exc:
-            if "credit" in str(exc).lower():
-                raise InsufficientCreditsError(str(exc)) from exc
-            raise
-
-        response_text = message.content[0].text  # type: ignore[union-attr]
+        response_text = _call_claude(prompt, timeout=120)
         data = _extract_json(response_text)
 
         if not isinstance(data, dict):
@@ -344,12 +346,9 @@ def process_article(article: Article, client: anthropic.Anthropic) -> Optional[P
 
 def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
     """Select top 1 article and generate full Dutch processing for it."""
-    # pre: ANTHROPIC_API_KEY is set; len(articles) >= 1
+    # pre: claude CLI is available; len(articles) >= 1
     # post: returns at most 1 ProcessedArticle object
-    if not ANTHROPIC_API_KEY:
-        raise ValueError("ANTHROPIC_API_KEY is niet ingesteld in .env")
-
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    _check_claude_cli()
 
     if len(articles) == 0:
         logger.warning("Geen artikelen beschikbaar voor verwerking")
@@ -357,7 +356,7 @@ def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
 
     # Stap A: semantische deduplicatie over alle kandidaten
     logger.info("Deduplicatie: %d kandidaten controleren op duplicaten", len(articles))
-    articles = deduplicate_articles(articles, client)
+    articles = deduplicate_articles(articles)
     logger.info("Na deduplicatie: %d artikel(en) over", len(articles))
 
     # Stap B: filter artikelen die vandaag al gepost zijn (title overlap)
@@ -378,7 +377,7 @@ def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
     else:
         logger.info("AI selecteert 1 artikel uit %d kandidaten", len(articles))
         try:
-            selected_indices = select_articles(articles, client)
+            selected_indices = select_articles(articles)
             logger.info("Claude selecteerde indices: %s", selected_indices)
         except InsufficientCreditsError:
             raise  # doorsturen naar aanroeper voor urgente melding
@@ -392,7 +391,7 @@ def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
             article = articles[idx]
             lang = getattr(article, "source_lang", "EN")
             logger.info("Artikel verwerken [%s]: %s", lang, article.title)
-            result = process_article(article, client)
+            result = process_article(article)
             if result:
                 processed.append(result)
         else:

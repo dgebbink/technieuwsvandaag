@@ -40,13 +40,11 @@ def _setup_logging(logs_dir: Path) -> logging.Logger:
     return logging.getLogger(__name__)
 
 
-from config import ANTHROPIC_API_KEY, LOGS_DIR  # noqa: E402
+from config import LOGS_DIR  # noqa: E402
 
 logger = _setup_logging(LOGS_DIR)
 
-import anthropic  # noqa: E402
-
-from ai_processor import MODEL, ProcessedArticle, process_article  # noqa: E402
+from ai_processor import ProcessedArticle, _call_claude, _check_claude_cli, process_article  # noqa: E402
 from scraper import (  # noqa: E402
     Article,
     _make_session,
@@ -81,12 +79,9 @@ def group_by_interval(articles: list[Article], interval_days: int) -> dict[int, 
 # Beste artikel per blok selecteren
 # ---------------------------------------------------------------------------
 
-def select_best_in_bucket(
-    articles: list[Article],
-    client: anthropic.Anthropic,
-) -> Article:
+def select_best_in_bucket(articles: list[Article]) -> Article:
     """Ask Claude to pick the most newsworthy article from a bucket; fallback to first."""
-    # pre: len(articles) >= 1; client is authenticated
+    # pre: len(articles) >= 1
     # post: always returns a valid Article from the input list
     if len(articles) == 1:
         return articles[0]
@@ -104,12 +99,7 @@ def select_best_in_bucket(
     )
 
     try:
-        message = client.messages.create(
-            model=MODEL,
-            max_tokens=10,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = message.content[0].text.strip()  # type: ignore[union-attr]
+        text = _call_claude(prompt, timeout=30)
         match = re.search(r"\d+", text)
         if match:
             idx = int(match.group()) - 1
@@ -159,8 +149,10 @@ def main() -> int:
     logger.info("Interval : 1 bericht per %d dag(en)", args.interval)
     logger.info("Max posts: %d (verwacht ~%d)", args.max_posts, max_expected)
 
-    if not ANTHROPIC_API_KEY:
-        logger.critical("ANTHROPIC_API_KEY niet ingesteld")
+    try:
+        _check_claude_cli()
+    except RuntimeError as exc:
+        logger.critical("%s", exc)
         return 1
 
     # ------------------------------------------------------------------
@@ -191,7 +183,6 @@ def main() -> int:
     # ------------------------------------------------------------------
     # Stap 3: Per blok: selecteer → verwerk → publiceer
     # ------------------------------------------------------------------
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     wp = WordPressClient()
     http_session = _make_session()
 
@@ -207,7 +198,7 @@ def main() -> int:
 
         # Selecteer beste artikel
         try:
-            best = select_best_in_bucket(bucket_articles, client)
+            best = select_best_in_bucket(bucket_articles)
         except Exception as exc:
             logger.warning("Selectie mislukt: %s — eerste genomen", exc)
             best = bucket_articles[0]
@@ -216,7 +207,7 @@ def main() -> int:
 
         # Samenvatting genereren
         try:
-            processed = process_article(best, client)
+            processed = process_article(best)
         except Exception as exc:
             logger.error("AI-verwerking mislukt voor '%s': %s", best.title, exc)
             skipped += 1
