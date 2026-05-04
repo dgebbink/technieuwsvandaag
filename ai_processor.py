@@ -33,9 +33,6 @@ CATEGORIES: list[str] = [
     "Robotica", "Smartwatch", "Social media", "Software", "Technologie", "Telecom", "Tesla",
 ]
 
-MODEL = "claude-sonnet-4-6"
-
-
 @dataclass
 class ProcessedArticle:
     original: Article
@@ -251,11 +248,10 @@ def select_articles(articles: list[Article]) -> list[int]:
 # Stap 2b + 2c: Samenvatting en categorie genereren
 # ---------------------------------------------------------------------------
 
-def process_article(article: Article, client=None) -> Optional[ProcessedArticle]:
+def process_article(article: Article) -> Optional[ProcessedArticle]:
     """Generate Dutch summary, titles, keywords and categories for one article."""
     # pre: article.url is reachable
     # post: returns None on any failure
-    # client param accepted but ignored — kept for call-site compatibility during migration
     categories_str = ", ".join(CATEGORIES)
 
     # Haal artikeltekst op als excerpt te kort is
