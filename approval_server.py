@@ -239,7 +239,7 @@ def _html_response(title: str, body: str, error: bool = False) -> str:
 # Visitor stats via SSH — cached 1 hour
 # ---------------------------------------------------------------------------
 
-_SSH_KEY    = os.path.expanduser("~/.ssh/ssh-key-oracle-web.key")
+_SSH_KEY    = "/home/dgebbink/.ssh/ssh-key-oracle-web.key"
 _SSH_TARGET = "ubuntu@141.144.195.65"
 _STATS_SCRIPT = "/home/ubuntu/nginx_stats.py"
 
