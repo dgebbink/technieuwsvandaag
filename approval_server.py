@@ -236,23 +236,20 @@ def _html_response(title: str, body: str, error: bool = False) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Visitor stats via SSH — cached 1 hour
+# Visitor stats via SSH — pre-fetched twice daily in background
 # ---------------------------------------------------------------------------
 
-_SSH_KEY    = "/home/dgebbink/.ssh/ssh-key-oracle-web.key"
-_SSH_TARGET = "ubuntu@141.144.195.65"
+_SSH_KEY      = "/home/dgebbink/.ssh/ssh-key-oracle-web.key"
+_SSH_TARGET   = "ubuntu@141.144.195.65"
 _STATS_SCRIPT = "/home/ubuntu/nginx_stats.py"
+_REFRESH_INTERVAL = 12 * 3600  # seconds between scheduled refreshes
 
 _visitor_cache: dict = {"data": None, "ts": 0.0}
 _visitor_lock = threading.Lock()
 
 
-def _fetch_visitor_stats():
-    """SSH into the Oracle server and run nginx_stats.py; cache result for 1 hour."""
-    now = time.monotonic()
-    with _visitor_lock:
-        if _visitor_cache["data"] is not None and now - _visitor_cache["ts"] < 3600:
-            return _visitor_cache["data"]
+def _do_fetch_visitor_stats():
+    """Run nginx_stats.py via SSH and update the cache. Called by background thread."""
     try:
         result = subprocess.run(
             ["ssh", "-i", _SSH_KEY, "-o", "StrictHostKeyChecking=no",
@@ -262,20 +259,36 @@ def _fetch_visitor_stats():
         )
         if result.returncode != 0:
             logging.error("nginx_stats SSH error: %s", result.stderr[:200])
-            return None
+            return
         data = json.loads(result.stdout)
         with _visitor_lock:
             _visitor_cache["data"] = data
             _visitor_cache["ts"]   = time.monotonic()
-        return data
+        logging.info("Bezoekersstatistieken bijgewerkt")
     except Exception as exc:
         logging.error("nginx_stats fetch failed: %s", exc)
-        return None
+
+
+def _visitor_stats_scheduler():
+    """Background thread: fetch at startup, then every 12 hours."""
+    _do_fetch_visitor_stats()
+    while True:
+        time.sleep(_REFRESH_INTERVAL)
+        _do_fetch_visitor_stats()
+
+
+threading.Thread(target=_visitor_stats_scheduler, daemon=True, name="visitor-stats").start()
+
+
+def _fetch_visitor_stats():
+    """Return cached visitor stats; never blocks (returns None if not yet available)."""
+    with _visitor_lock:
+        return _visitor_cache["data"]
 
 
 @app.route("/api/visitor-stats")
 def api_visitor_stats():
-    """JSON endpoint for visitor stats fetched via SSH from the web server."""
+    """JSON endpoint for visitor stats (pre-fetched, served from cache)."""
     data = _fetch_visitor_stats()
     if data is None:
         return jsonify({"error": "Stats niet beschikbaar"}), 503
