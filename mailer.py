@@ -3,6 +3,7 @@ Notificatiemail: bouwt een HTML-mail en verstuurt deze via SMTP.
 Fallback: slaat de mail op als bestand en print naar stdout.
 """
 import logging
+import os
 import smtplib
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
@@ -199,8 +200,12 @@ def build_html_email(
     {sections if sections else
      '<p style="color:#888;">Er zijn geen artikelen verwerkt in deze run.</p>'}
     <hr style="border:none; border-top:1px solid #e8e8e8; margin:28px 0 16px;">
-    <p style="color:#aaa; font-size:12px; text-align:center; margin:0;">
+    <p style="color:#aaa; font-size:12px; text-align:center; margin:0 0 8px;">
       Automatisch gegenereerd door TechNieuwsVandaag-Bot op {date_str}
+    </p>
+    <p style="text-align:center; margin:0;">
+      <a href="{os.getenv('APPROVAL_BASE_URL', 'http://localhost:5055')}/analytics"
+         style="color:#1a73e8; font-size:12px; text-decoration:none;">📊 Analyse</a>
     </p>
   </div>
 
