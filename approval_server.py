@@ -507,6 +507,22 @@ def analytics():
         <canvas id="peakChart" height="60"></canvas>
       </div>
 
+      <!-- Apparaat / OS / Herkomst -->
+      <div id="device-section" class="hidden bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <h2 class="text-base font-semibold text-gray-700 mb-4">Apparaat</h2>
+        <canvas id="deviceChart"></canvas>
+      </div>
+
+      <div id="os-section" class="hidden bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <h2 class="text-base font-semibold text-gray-700 mb-4">Besturingssysteem</h2>
+        <canvas id="osChart"></canvas>
+      </div>
+
+      <div id="country-section" class="hidden bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <h2 class="text-base font-semibold text-gray-700 mb-4">Herkomst (top 10)</h2>
+        <canvas id="countryChart"></canvas>
+      </div>
+
       <!-- Top bronnen + top pagina's -->
       <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
         <h2 class="text-base font-semibold text-gray-700 mb-4">Top bronnen (all-time)</h2>
@@ -713,6 +729,49 @@ def analytics():
         }});
 
         renderTopPages(data.top_pages, 90);
+
+        // Pie chart helper
+        function _pie(canvasId, sectionId, items) {{
+          if (!items || !items.length) return;
+          document.getElementById(sectionId).classList.remove('hidden');
+          const COLORS = ['#dc2626','#3b82f6','#22c55e','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316'];
+          new Chart(document.getElementById(canvasId), {{
+            type: 'doughnut',
+            data: {{
+              labels: items.map(i => i.label),
+              datasets: [{{ data: items.map(i => i.count),
+                backgroundColor: items.map((_, idx) => COLORS[idx % COLORS.length]),
+                borderWidth: 2, borderColor: '#fff' }}]
+            }},
+            options: {{
+              plugins: {{ legend: {{ position: 'bottom', labels: {{ font: {{ size: 11 }}, padding: 10 }} }} }},
+            }}
+          }});
+        }}
+
+        _pie('deviceChart',  'device-section',  data.devices);
+        _pie('osChart',      'os-section',      data.os);
+
+        // Country horizontal bar
+        if (data.countries && data.countries.length) {{
+          document.getElementById('country-section').classList.remove('hidden');
+          new Chart(document.getElementById('countryChart'), {{
+            type: 'bar',
+            data: {{
+              labels: data.countries.map(c => c.label),
+              datasets: [{{ data: data.countries.map(c => c.count),
+                backgroundColor: 'rgba(139,92,246,0.75)', borderRadius: 4 }}]
+            }},
+            options: {{
+              indexAxis: 'y',
+              plugins: {{ legend: {{ display: false }} }},
+              scales: {{
+                x: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }}, grid: {{ color: '#f3f4f6' }} }},
+                y: {{ ticks: {{ font: {{ size: 11 }} }}, grid: {{ display: false }} }},
+              }}
+            }}
+          }});
+        }}
 
         // Peak hours chart
         if (data.peak_weekday && data.peak_weekend) {{
