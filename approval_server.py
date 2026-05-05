@@ -11,7 +11,9 @@ import json
 import logging
 import os
 import re
+import subprocess
 import threading
+import time
 import uuid
 from collections import Counter
 from datetime import date, timedelta
@@ -234,6 +236,53 @@ def _html_response(title: str, body: str, error: bool = False) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Visitor stats via SSH — cached 1 hour
+# ---------------------------------------------------------------------------
+
+_SSH_KEY    = os.path.expanduser("~/.ssh/ssh-key-oracle-web.key")
+_SSH_TARGET = "ubuntu@141.144.195.65"
+_STATS_SCRIPT = "/home/ubuntu/nginx_stats.py"
+
+_visitor_cache: dict = {"data": None, "ts": 0.0}
+_visitor_lock = threading.Lock()
+
+
+def _fetch_visitor_stats():
+    """SSH into the Oracle server and run nginx_stats.py; cache result for 1 hour."""
+    now = time.monotonic()
+    with _visitor_lock:
+        if _visitor_cache["data"] is not None and now - _visitor_cache["ts"] < 3600:
+            return _visitor_cache["data"]
+    try:
+        result = subprocess.run(
+            ["ssh", "-i", _SSH_KEY, "-o", "StrictHostKeyChecking=no",
+             "-o", "ConnectTimeout=10", _SSH_TARGET,
+             f"python3 {_STATS_SCRIPT}"],
+            capture_output=True, text=True, timeout=90,
+        )
+        if result.returncode != 0:
+            logging.error("nginx_stats SSH error: %s", result.stderr[:200])
+            return None
+        data = json.loads(result.stdout)
+        with _visitor_lock:
+            _visitor_cache["data"] = data
+            _visitor_cache["ts"]   = time.monotonic()
+        return data
+    except Exception as exc:
+        logging.error("nginx_stats fetch failed: %s", exc)
+        return None
+
+
+@app.route("/api/visitor-stats")
+def api_visitor_stats():
+    """JSON endpoint for visitor stats fetched via SSH from the web server."""
+    data = _fetch_visitor_stats()
+    if data is None:
+        return jsonify({"error": "Stats niet beschikbaar"}), 503
+    return jsonify(data)
+
+
+# ---------------------------------------------------------------------------
 # Analytics helpers
 # ---------------------------------------------------------------------------
 
@@ -391,10 +440,37 @@ def analytics():
 
   <main class="max-w-6xl mx-auto px-6 py-8 space-y-6">
 
+    <!-- Publicatie stats -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
       {stats_html}
     </div>
 
+    <!-- Bezoekers (async via SSH) -->
+    <div id="visitors-section" class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-semibold text-gray-700">Bezoekers</h2>
+        <div id="visitor-period" class="flex gap-1 hidden">
+          <button id="vbtn-7"  onclick="setVisitorPeriod(7)"
+            class="px-3 py-1 text-sm rounded-lg bg-red-700 text-white">7d</button>
+          <button id="vbtn-30" onclick="setVisitorPeriod(30)"
+            class="px-3 py-1 text-sm rounded-lg text-gray-500 hover:bg-gray-100">30d</button>
+          <button id="vbtn-90" onclick="setVisitorPeriod(90)"
+            class="px-3 py-1 text-sm rounded-lg text-gray-500 hover:bg-gray-100">90d</button>
+        </div>
+      </div>
+      <div id="visitor-loading" class="text-sm text-gray-400 flex items-center gap-2 py-4">
+        <svg class="animate-spin h-4 w-4 text-red-500" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+        </svg>
+        Bezoekersdata laden via SSH…
+      </div>
+      <div id="visitor-error" class="hidden text-sm text-red-500 py-4"></div>
+      <div id="visitor-cards" class="hidden grid grid-cols-2 md:grid-cols-3 gap-4 mb-6"></div>
+      <canvas id="visitorsChart" class="hidden" height="70"></canvas>
+    </div>
+
+    <!-- Posts per dag -->
     <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-base font-semibold text-gray-700">Posts per dag</h2>
@@ -412,10 +488,31 @@ def analytics():
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
+      <!-- Top bronnen + top pagina's -->
       <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
         <h2 class="text-base font-semibold text-gray-700 mb-4">Top bronnen (all-time)</h2>
         <canvas id="sourcesChart"></canvas>
       </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <h2 class="text-base font-semibold text-gray-700 mb-1">Top pagina's</h2>
+        <p id="top-pages-period" class="text-xs text-gray-400 mb-4">laden…</p>
+        <div id="top-pages-loading" class="text-sm text-gray-400">Laden…</div>
+        <table id="top-pages-table" class="hidden w-full">
+          <thead>
+            <tr class="border-b border-gray-200">
+              <th class="text-left text-xs text-gray-400 font-medium pb-2 pr-3">Pagina</th>
+              <th class="text-right text-xs text-gray-400 font-medium pb-2">Pageviews</th>
+            </tr>
+          </thead>
+          <tbody id="top-pages-body"></tbody>
+        </table>
+      </div>
+
+    </div>
+
+    <!-- Dagelijkse runs + recente posts -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
       <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
         <h2 class="text-base font-semibold text-gray-700 mb-4">Dagelijkse runs (laatste 14 dagen)</h2>
@@ -433,27 +530,28 @@ def analytics():
         </div>
       </div>
 
-    </div>
-
-    <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-      <h2 class="text-base font-semibold text-gray-700 mb-4">Recente posts</h2>
-      <div class="overflow-x-auto">
-        <table class="w-full">
-          <thead>
-            <tr class="border-b border-gray-200">
-              <th class="text-left text-xs text-gray-400 font-medium pb-2 pr-4 w-28">Datum</th>
-              <th class="text-left text-xs text-gray-400 font-medium pb-2 pr-4">Titel</th>
-              <th class="text-left text-xs text-gray-400 font-medium pb-2">Bron</th>
-            </tr>
-          </thead>
-          <tbody>{recent_html}</tbody>
-        </table>
+      <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <h2 class="text-base font-semibold text-gray-700 mb-4">Recente posts</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="border-b border-gray-200">
+                <th class="text-left text-xs text-gray-400 font-medium pb-2 pr-4 w-28">Datum</th>
+                <th class="text-left text-xs text-gray-400 font-medium pb-2 pr-4">Titel</th>
+                <th class="text-left text-xs text-gray-400 font-medium pb-2">Bron</th>
+              </tr>
+            </thead>
+            <tbody>{recent_html}</tbody>
+          </table>
+        </div>
       </div>
+
     </div>
 
   </main>
 
   <script>
+    // ── Posts per dag chart ──
     const postsChart = new Chart(document.getElementById('postsChart'), {{
       type: 'line',
       data: {{
@@ -462,19 +560,15 @@ def analytics():
           data: D.counts.slice(-7),
           borderColor: '#dc2626',
           backgroundColor: 'rgba(220,38,38,0.07)',
-          borderWidth: 2,
-          fill: true,
-          tension: 0.35,
-          pointRadius: 2,
-          pointHoverRadius: 5,
+          borderWidth: 2, fill: true, tension: 0.35,
+          pointRadius: 2, pointHoverRadius: 5,
         }}]
       }},
       options: {{
         plugins: {{ legend: {{ display: false }} }},
         scales: {{
           x: {{ grid: {{ display: false }}, ticks: {{ font: {{ size: 11 }}, maxTicksLimit: 14 }} }},
-          y: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }},
-               grid: {{ color: '#f3f4f6' }} }},
+          y: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }}, grid: {{ color: '#f3f4f6' }} }},
         }}
       }}
     }});
@@ -484,33 +578,130 @@ def analytics():
       postsChart.data.datasets[0].data = D.counts.slice(-days);
       postsChart.update();
       [7, 30, 90].forEach(d => {{
-        const btn = document.getElementById('btn-' + d);
-        btn.className = d === days
+        document.getElementById('btn-' + d).className = d === days
           ? 'px-3 py-1 text-sm rounded-lg bg-red-700 text-white'
           : 'px-3 py-1 text-sm rounded-lg text-gray-500 hover:bg-gray-100';
       }});
     }}
 
+    // ── Top bronnen chart ──
     new Chart(document.getElementById('sourcesChart'), {{
       type: 'bar',
       data: {{
         labels: D.src_labels,
-        datasets: [{{
-          data: D.src_counts,
-          backgroundColor: 'rgba(220,38,38,0.75)',
-          borderRadius: 4,
-        }}]
+        datasets: [{{ data: D.src_counts, backgroundColor: 'rgba(220,38,38,0.75)', borderRadius: 4 }}]
       }},
       options: {{
         indexAxis: 'y',
         plugins: {{ legend: {{ display: false }} }},
         scales: {{
-          x: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }},
-               grid: {{ color: '#f3f4f6' }} }},
+          x: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }}, grid: {{ color: '#f3f4f6' }} }},
           y: {{ ticks: {{ font: {{ size: 11 }} }}, grid: {{ display: false }} }},
         }}
       }}
     }});
+
+    // ── Bezoekers via async SSH ──
+    let V = null;
+    let visitorsChart = null;
+
+    function _vcard(value, label) {{
+      return `<div class="bg-gray-50 rounded-lg p-4 border border-gray-100">
+        <div class="text-2xl font-bold text-gray-800">${{value.toLocaleString('nl-NL')}}</div>
+        <div class="text-xs text-gray-400 mt-1">${{label}}</div>
+      </div>`;
+    }}
+
+    function setVisitorPeriod(days) {{
+      if (!V) return;
+      const sl = V.labels.slice(-days);
+      const sv = V.views_series.slice(-days);
+      const su = V.unique_series.slice(-days);
+      visitorsChart.data.labels = sl;
+      visitorsChart.data.datasets[0].data = sv;
+      visitorsChart.data.datasets[1].data = su;
+      visitorsChart.update();
+      [7, 30, 90].forEach(d => {{
+        document.getElementById('vbtn-' + d).className = d === days
+          ? 'px-3 py-1 text-sm rounded-lg bg-red-700 text-white'
+          : 'px-3 py-1 text-sm rounded-lg text-gray-500 hover:bg-gray-100';
+      }});
+    }}
+
+    function renderTopPages(pages, days) {{
+      document.getElementById('top-pages-period').textContent = `afgelopen ${{days}} dagen`;
+      const tbody = document.getElementById('top-pages-body');
+      tbody.innerHTML = pages.map(p => `
+        <tr class="border-b border-gray-100 hover:bg-gray-50">
+          <td class="py-1.5 pr-3 text-sm text-gray-700 font-mono truncate max-w-xs">${{p.path || '/'}}</td>
+          <td class="py-1.5 text-sm text-gray-500 text-right">${{p.views.toLocaleString('nl-NL')}}</td>
+        </tr>`).join('');
+      document.getElementById('top-pages-loading').classList.add('hidden');
+      document.getElementById('top-pages-table').classList.remove('hidden');
+    }}
+
+    fetch('/api/visitor-stats')
+      .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
+      .then(data => {{
+        V = data;
+        document.getElementById('visitor-loading').classList.add('hidden');
+        document.getElementById('visitor-period').classList.remove('hidden');
+
+        // Stat cards
+        const cards = document.getElementById('visitor-cards');
+        cards.innerHTML =
+          _vcard(data.views_today,  'Pageviews vandaag') +
+          _vcard(data.unique_today, 'Uniek vandaag') +
+          _vcard(data.views_7d,     'Pageviews 7 dagen') +
+          _vcard(data.unique_7d,    'Uniek 7 dagen') +
+          _vcard(data.views_30d,    'Pageviews 30 dagen') +
+          _vcard(data.unique_30d,   'Uniek 30 dagen');
+        cards.classList.remove('hidden');
+
+        // Chart
+        const canvas = document.getElementById('visitorsChart');
+        canvas.classList.remove('hidden');
+        visitorsChart = new Chart(canvas, {{
+          type: 'line',
+          data: {{
+            labels: data.labels.slice(-7),
+            datasets: [
+              {{
+                label: 'Pageviews',
+                data: data.views_series.slice(-7),
+                borderColor: '#dc2626',
+                backgroundColor: 'rgba(220,38,38,0.06)',
+                borderWidth: 2, fill: true, tension: 0.35,
+                pointRadius: 2, pointHoverRadius: 5,
+              }},
+              {{
+                label: 'Unieke bezoekers',
+                data: data.unique_series.slice(-7),
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59,130,246,0.06)',
+                borderWidth: 2, fill: true, tension: 0.35,
+                pointRadius: 2, pointHoverRadius: 5,
+              }},
+            ]
+          }},
+          options: {{
+            plugins: {{ legend: {{ labels: {{ font: {{ size: 11 }} }} }} }},
+            scales: {{
+              x: {{ grid: {{ display: false }}, ticks: {{ font: {{ size: 11 }}, maxTicksLimit: 14 }} }},
+              y: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }}, grid: {{ color: '#f3f4f6' }} }},
+            }}
+          }}
+        }});
+
+        renderTopPages(data.top_pages, 90);
+      }})
+      .catch(err => {{
+        document.getElementById('visitor-loading').classList.add('hidden');
+        document.getElementById('visitor-error').textContent = 'Bezoekersdata niet beschikbaar: ' + err;
+        document.getElementById('visitor-error').classList.remove('hidden');
+        document.getElementById('top-pages-loading').textContent = 'Niet beschikbaar';
+        document.getElementById('top-pages-period').textContent = '';
+      }});
   </script>
 </body>
 </html>"""
