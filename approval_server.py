@@ -249,22 +249,22 @@ _visitor_lock = threading.Lock()
 
 
 def _do_fetch_visitor_stats():
-    """Run nginx_stats.py via SSH and update the cache. Called by background thread."""
+    """Read pre-computed nginx_stats_cache.json from Oracle server via SSH."""
     try:
         result = subprocess.run(
             ["ssh", "-i", _SSH_KEY, "-o", "StrictHostKeyChecking=no",
              "-o", "ConnectTimeout=10", _SSH_TARGET,
-             f"python3 {_STATS_SCRIPT}"],
-            capture_output=True, text=True, timeout=90,
+             "cat /home/ubuntu/nginx_stats_cache.json"],
+            capture_output=True, text=True, timeout=15,
         )
         if result.returncode != 0:
-            logging.error("nginx_stats SSH error: %s", result.stderr[:200])
+            logging.error("nginx_stats_cache SSH error: %s", result.stderr[:200])
             return
         data = json.loads(result.stdout)
         with _visitor_lock:
             _visitor_cache["data"] = data
             _visitor_cache["ts"]   = time.monotonic()
-        logging.info("Bezoekersstatistieken bijgewerkt")
+        logging.info("Bezoekersstatistieken bijgewerkt vanuit cache")
     except Exception as exc:
         logging.error("nginx_stats fetch failed: %s", exc)
 
