@@ -501,6 +501,12 @@ def analytics():
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
+      <!-- Piekuren -->
+      <div id="peak-section" class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hidden md:col-span-2">
+        <h2 class="text-base font-semibold text-gray-700 mb-4">Piekuren (werkdagen vs weekend)</h2>
+        <canvas id="peakChart" height="60"></canvas>
+      </div>
+
       <!-- Top bronnen + top pagina's -->
       <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
         <h2 class="text-base font-semibold text-gray-700 mb-4">Top bronnen (all-time)</h2>
@@ -707,6 +713,40 @@ def analytics():
         }});
 
         renderTopPages(data.top_pages, 90);
+
+        // Peak hours chart
+        if (data.peak_weekday && data.peak_weekend) {{
+          document.getElementById('peak-section').classList.remove('hidden');
+          const hours = Array.from({{length: 24}}, (_, i) => i + 'u');
+          new Chart(document.getElementById('peakChart'), {{
+            type: 'bar',
+            data: {{
+              labels: hours,
+              datasets: [
+                {{
+                  label: 'Werkdag',
+                  data: data.peak_weekday,
+                  backgroundColor: 'rgba(59,130,246,0.7)',
+                  borderRadius: 3,
+                }},
+                {{
+                  label: 'Weekend',
+                  data: data.peak_weekend,
+                  backgroundColor: 'rgba(34,197,94,0.7)',
+                  borderRadius: 3,
+                }},
+              ]
+            }},
+            options: {{
+              plugins: {{ legend: {{ labels: {{ font: {{ size: 11 }} }} }} }},
+              scales: {{
+                x: {{ stacked: true, grid: {{ display: false }}, ticks: {{ font: {{ size: 10 }} }} }},
+                y: {{ stacked: true, beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }},
+                     grid: {{ color: '#f3f4f6' }} }},
+              }}
+            }}
+          }});
+        }}
       }})
       .catch(err => {{
         document.getElementById('visitor-loading').classList.add('hidden');

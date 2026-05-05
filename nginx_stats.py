@@ -41,9 +41,9 @@ _SKIP_PATHS = re.compile(
 )
 
 
-def _parse_time(s: str) -> Optional[date]:
+def _parse_dt(s: str) -> Optional[datetime]:
     try:
-        return datetime.strptime(s, "%d/%b/%Y:%H:%M:%S %z").date()
+        return datetime.strptime(s, "%d/%b/%Y:%H:%M:%S %z")
     except Exception:
         return None
 
@@ -70,9 +70,11 @@ def collect(days: int = 90) -> dict:
         log_files.append(f"/var/log/nginx/access.log.{i}.gz")
 
     # Read and parse
-    daily_views: defaultdict[str, int]    = defaultdict(int)
-    daily_unique: defaultdict[str, set]   = defaultdict(set)
-    page_counter: Counter                  = Counter()
+    daily_views: defaultdict[str, int]         = defaultdict(int)
+    daily_unique: defaultdict[str, set]        = defaultdict(set)
+    page_counter: Counter                       = Counter()
+    peak_weekday: List[int]                     = [0] * 24  # mon–fri per hour
+    peak_weekend: List[int]                     = [0] * 24  # sat–sun per hour
 
     for log_path in log_files:
         lines = _read_log(log_path)
@@ -91,16 +93,21 @@ def collect(days: int = 90) -> dict:
                 continue
             if not PAGE_RE.match(path):
                 continue
-            day = _parse_time(m.group("time"))
-            if not day or day < cutoff:
+            dt = _parse_dt(m.group("time"))
+            if not dt or dt.date() < cutoff:
                 continue
             ip = m.group("ip")
-            day_str = day.isoformat()
+            day_str = dt.date().isoformat()
             daily_views[day_str] += 1
             daily_unique[day_str].add(ip)
-            # Normalise path: strip trailing slash and query
             clean = path or "/"
             page_counter[clean] += 1
+            # Peak hours (weekday=0..4, weekend=5..6)
+            hour = dt.hour
+            if dt.weekday() < 5:
+                peak_weekday[hour] += 1
+            else:
+                peak_weekend[hour] += 1
 
     # Build 90-day time series
     labels = [(today - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
@@ -135,6 +142,8 @@ def collect(days: int = 90) -> dict:
         "views_30d":     _sum(views_series,  month_ago),
         "unique_30d":    _sum(unique_series, month_ago),
         "top_pages":     top_pages,
+        "peak_weekday":  peak_weekday,
+        "peak_weekend":  peak_weekend,
     }
 
 
