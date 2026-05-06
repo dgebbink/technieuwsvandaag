@@ -14,20 +14,44 @@ import sys
 from collections import Counter, defaultdict
 from datetime import date, timedelta, datetime
 from typing import List, Optional
+from urllib.parse import urlparse
 
 BOT_PATTERNS = re.compile(
     r"bot|crawler|spider|slurp|bingpreview|applebot|facebookexternalhit|"
     r"meta-external|Googlebot|Baiduspider|YandexBot|SemrushBot|AhrefsBot|"
     r"DotBot|PetalBot|BingBot|mj12bot|DataForSeoBot|GPTBot|ClaudeBot|"
-    r"PerplexityBot|ia_archiver|archive\.org",
+    r"PerplexityBot|ia_archiver|archive\.org|"
+    r"Uptime-Kuma|UptimeRobot|StatusCake|Pingdom|uptimerobot|"
+    r"Jetpack|WordPress\.com|python-requests|curl|wget|libwww|"
+    r"Go-http-client|okhttp|axios|node-fetch|java/",
     re.IGNORECASE,
 )
 
 LOG_RE = re.compile(
     r'(?P<ip>\S+) \S+ \S+ \[(?P<time>[^\]]+)\] '
     r'"(?P<method>\S+) (?P<path>[^ "]+)[^"]*" '
-    r'(?P<status>\d{3}) \S+ "[^"]*" "(?P<ua>[^"]*)"'
+    r'(?P<status>\d{3}) \S+ "(?P<referer>[^"]*)" "(?P<ua>[^"]*)"'
 )
+
+_OWN_DOMAINS = re.compile(r'technieuwsvandaag|gebbink', re.IGNORECASE)
+
+_REFERER_LABELS = {
+    "google":     "Google",
+    "bing":       "Bing",
+    "duckduckgo": "DuckDuckGo",
+    "yahoo":      "Yahoo",
+    "yandex":     "Yandex",
+    "facebook":   "Facebook",
+    "instagram":  "Instagram",
+    "t.co":       "Twitter/X",
+    "twitter":    "Twitter/X",
+    "linkedin":   "LinkedIn",
+    "reddit":     "Reddit",
+    "youtube":    "YouTube",
+    "github":     "GitHub",
+    "nieuws.social": "nieuws.social",
+    "mastodon":   "Mastodon",
+}
 
 PAGE_RE = re.compile(r"^/([a-z0-9][a-z0-9\-/]*)?$")
 
@@ -39,6 +63,24 @@ _SKIP_PATHS = re.compile(
 )
 
 GEOIP_DB = "/home/ubuntu/dbip-country.mmdb"
+
+
+def _referer_label(referer: str) -> str:
+    if not referer or referer == "-":
+        return "Direct"
+    try:
+        host = urlparse(referer).hostname or ""
+    except Exception:
+        return "Direct"
+    host = host.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    if _OWN_DOMAINS.search(host):
+        return None  # skip internal referers
+    for key, label in _REFERER_LABELS.items():
+        if key in host:
+            return label
+    return host or "Direct"
 
 
 # ---------------------------------------------------------------------------
@@ -123,15 +165,16 @@ def collect(days: int = 90) -> dict:
 
     geo_reader = _make_geo_reader()
 
-    daily_views: defaultdict[str, int]   = defaultdict(int)
-    daily_unique: defaultdict[str, set]  = defaultdict(set)
-    page_counter: Counter                 = Counter()
-    peak_weekday: List[int]              = [0] * 24
-    peak_weekend: List[int]              = [0] * 24
-    device_counter: Counter              = Counter()
-    os_counter: Counter                  = Counter()
-    country_counter: Counter             = Counter()
-    seen_ips: dict                       = {}  # ip -> country (cache)
+    daily_views: defaultdict[str, int]        = defaultdict(int)
+    daily_unique: defaultdict[str, set]       = defaultdict(set)
+    page_counter: Counter                      = Counter()
+    peak_weekday_ips: defaultdict               = defaultdict(lambda: defaultdict(set))  # hour -> day -> {ips}
+    peak_weekend_ips: defaultdict               = defaultdict(lambda: defaultdict(set))  # hour -> day -> {ips}
+    device_counter: Counter                    = Counter()
+    os_counter: Counter                        = Counter()
+    country_counter: Counter                   = Counter()
+    referer_counter: Counter                   = Counter()
+    seen_ips: dict                             = {}  # ip -> country (cache)
 
     for log_path in log_files:
         lines = _read_log(log_path)
@@ -159,9 +202,9 @@ def collect(days: int = 90) -> dict:
             page_counter[path or "/"] += 1
 
             if dt.weekday() < 5:
-                peak_weekday[dt.hour] += 1
+                peak_weekday_ips[dt.hour][day_str].add(ip)
             else:
-                peak_weekend[dt.hour] += 1
+                peak_weekend_ips[dt.hour][day_str].add(ip)
 
             device_counter[_device(ua)] += 1
             os_counter[_os(ua)] += 1
@@ -169,6 +212,10 @@ def collect(days: int = 90) -> dict:
             if ip not in seen_ips:
                 seen_ips[ip] = _country(ip, geo_reader)
             country_counter[seen_ips[ip]] += 1
+
+            ref_label = _referer_label(m.group("referer"))
+            if ref_label:
+                referer_counter[ref_label] += 1
 
     if geo_reader:
         geo_reader.close()
@@ -199,11 +246,12 @@ def collect(days: int = 90) -> dict:
         "views_30d":       _sum(views_series,  month_ago),
         "unique_30d":      _sum(unique_series, month_ago),
         "top_pages":       [{"path": p, "views": c} for p, c in page_counter.most_common(10)],
-        "peak_weekday":    peak_weekday,
-        "peak_weekend":    peak_weekend,
+        "peak_weekday":    [sum(len(s) for s in peak_weekday_ips[h].values()) for h in range(24)],
+        "peak_weekend":    [sum(len(s) for s in peak_weekend_ips[h].values()) for h in range(24)],
         "devices":         [{"label": k, "count": v} for k, v in device_counter.most_common()],
         "os":              [{"label": k, "count": v} for k, v in os_counter.most_common()],
         "countries":       [{"label": k, "count": v} for k, v in country_counter.most_common(10)],
+        "referrers":       [{"label": k, "count": v} for k, v in referer_counter.most_common(15)],
     }
 
 

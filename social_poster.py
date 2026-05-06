@@ -18,14 +18,19 @@ import requests
 from bs4 import BeautifulSoup
 from PIL import Image
 
-from config import BLUESKY_APP_PASSWORD, BLUESKY_HANDLE, BLUESKY_POST_DELAY_SECONDS, ENABLE_SOCIAL_POSTING
+from pathlib import Path
+
+from config import BASE_DIR, BLUESKY_APP_PASSWORD, BLUESKY_HANDLE, BLUESKY_POST_DELAY_SECONDS, ENABLE_SOCIAL_POSTING
 
 logger = logging.getLogger(__name__)
 
+_TMP_DIR            = BASE_DIR / "tmp"
+_TMP_DIR.mkdir(exist_ok=True)
+
 BLUESKY_HOST        = "https://bsky.social"
 BLUESKY_MAX_GRAPHEMES = 300
-_IMAGE_TMP          = "/tmp/tnv_bluesky_image.jpg"
-_IMAGE_READY        = "/tmp/tnv_bluesky_ready.jpg"
+_IMAGE_TMP          = str(_TMP_DIR / "tnv_bluesky_image.jpg")
+_IMAGE_READY        = str(_TMP_DIR / "tnv_bluesky_ready.jpg")
 
 
 # ---------------------------------------------------------------------------

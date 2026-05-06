@@ -54,9 +54,26 @@ class ProcessedArticle:
 # Claude CLI helpers
 # ---------------------------------------------------------------------------
 
+_CLAUDE_FALLBACK_DIRS = [
+    Path.home() / ".cursor-server",
+    Path("/home/dgebbink/.cursor-server"),
+    Path("/usr/local/bin"),
+    Path("/opt"),
+]
+
+
+def _find_claude() -> Optional[str]:
+    if path := shutil.which("claude"):
+        return path
+    for base in _CLAUDE_FALLBACK_DIRS:
+        for p in sorted(base.rglob("claude"), reverse=True):
+            if p.is_file() and p.stat().st_mode & 0o111:
+                return str(p)
+    return None
+
+
 def _check_claude_cli() -> None:
-    """Raise RuntimeError if the claude CLI is not available in PATH."""
-    if shutil.which("claude") is None:
+    if _find_claude() is None:
         raise RuntimeError(
             "De 'claude' CLI is niet beschikbaar in PATH. "
             "Installeer Claude Code via: npm install -g @anthropic-ai/claude-code"
@@ -64,13 +81,17 @@ def _check_claude_cli() -> None:
 
 
 def _call_claude(prompt: str, timeout: int = 90) -> str:
-    """Invoke the claude CLI with the given prompt; return stdout.
-    Pre:  claude CLI is available in PATH
-    Post: returns response text; raises InsufficientCreditsError or RuntimeError on failure
-    """
+    """Invoke the claude CLI with the given prompt; return stdout."""
+    import os
+    claude = _find_claude() or "claude"
+    if os.geteuid() == 0:
+        # --dangerously-skip-permissions is blocked for root; run as dgebbink
+        cmd = ["su", "-s", "/bin/sh", "dgebbink", "-c",
+               f"{claude} -p {subprocess.list2cmdline([prompt])} --dangerously-skip-permissions"]
+    else:
+        cmd = [claude, "-p", prompt, "--dangerously-skip-permissions"]
     result = subprocess.run(
-        ["claude", "-p", prompt, "--dangerously-skip-permissions"],
-        capture_output=True, text=True, timeout=timeout,
+        cmd, capture_output=True, text=True, timeout=timeout,
     )
     if result.returncode != 0:
         err = result.stderr.strip()

@@ -7,10 +7,8 @@ Retentieregels:
   cron_run_*.log          — 14 dagen
   email_fallback_*.html   — 14 dagen
   digest_*.html           — 7 dagen
-  adhoc_*.log             — 14 dagen
   backfill_*.log          — 30 dagen
   scheduler.log           — 30 dagen
-  telegram_bot.log        — roteren bij > 5 MB (max 1 backup)
   leeg (0 bytes)          — altijd verwijderen
 
 Gebruik:
@@ -40,15 +38,12 @@ RETENTION: list[tuple[str, int]] = [
     ("cron_run_*.log",        14),
     ("email_fallback_*.html", 14),
     ("digest_*.html",          7),
-    ("adhoc_*.log",           14),
     ("backfill_*.log",        30),
     ("scheduler.log",         30),
     ("daily_schedule.log",    30),
 ]
 
-ROTATE_FILES = [
-    ("telegram_bot.log", 5 * 1024 * 1024),  # roteren bij > 5 MB
-]
+ROTATE_FILES: list[tuple[str, int]] = []
 
 
 def _age_days(path: Path) -> float:

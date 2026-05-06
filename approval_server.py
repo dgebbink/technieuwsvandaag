@@ -129,7 +129,7 @@ def new_image(token: str):
     def _do_new_image():
         try:
             from image_generator import generate_image_for_article
-            dest = f"/tmp/tnv_reimage_{post_id}.jpg"
+            dest = str(_TMP_DIR / f"tnv_reimage_{post_id}.jpg")
             new_image_path = generate_image_for_article(
                 title=post_title,
                 article_text=article_text,
@@ -300,6 +300,8 @@ def api_visitor_stats():
 # ---------------------------------------------------------------------------
 
 _BASE = Path(__file__).parent
+_TMP_DIR = _BASE / "tmp"
+_TMP_DIR.mkdir(exist_ok=True)
 
 
 def _analytics_posts() -> dict:
@@ -464,9 +466,9 @@ def analytics():
         <h2 class="text-base font-semibold text-gray-700">Bezoekers</h2>
         <div id="visitor-period" class="flex gap-1 hidden">
           <button id="vbtn-7"  onclick="setVisitorPeriod(7)"
-            class="px-3 py-1 text-sm rounded-lg bg-red-700 text-white">7d</button>
+            class="px-3 py-1 text-sm rounded-lg text-gray-500 hover:bg-gray-100">7d</button>
           <button id="vbtn-30" onclick="setVisitorPeriod(30)"
-            class="px-3 py-1 text-sm rounded-lg text-gray-500 hover:bg-gray-100">30d</button>
+            class="px-3 py-1 text-sm rounded-lg bg-red-700 text-white">30d</button>
           <button id="vbtn-90" onclick="setVisitorPeriod(90)"
             class="px-3 py-1 text-sm rounded-lg text-gray-500 hover:bg-gray-100">90d</button>
         </div>
@@ -510,17 +512,22 @@ def analytics():
       <!-- Apparaat / OS / Herkomst -->
       <div id="device-section" class="hidden bg-white rounded-xl shadow-sm p-6 border border-gray-100">
         <h2 class="text-base font-semibold text-gray-700 mb-4">Apparaat</h2>
-        <canvas id="deviceChart"></canvas>
+        <div class="mx-auto" style="max-width:50%"><canvas id="deviceChart"></canvas></div>
       </div>
 
       <div id="os-section" class="hidden bg-white rounded-xl shadow-sm p-6 border border-gray-100">
         <h2 class="text-base font-semibold text-gray-700 mb-4">Besturingssysteem</h2>
-        <canvas id="osChart"></canvas>
+        <div class="mx-auto" style="max-width:50%"><canvas id="osChart"></canvas></div>
       </div>
 
       <div id="country-section" class="hidden bg-white rounded-xl shadow-sm p-6 border border-gray-100">
         <h2 class="text-base font-semibold text-gray-700 mb-4">Herkomst (top 10)</h2>
         <canvas id="countryChart"></canvas>
+      </div>
+
+      <div id="referer-section" class="hidden bg-white rounded-xl shadow-sm p-6 border border-gray-100 md:col-span-2">
+        <h2 class="text-base font-semibold text-gray-700 mb-4">Verkeersbronnen</h2>
+        <canvas id="refererChart" height="40"></canvas>
       </div>
 
       <!-- Top bronnen + top pagina's -->
@@ -602,8 +609,10 @@ def analytics():
       options: {{
         plugins: {{ legend: {{ display: false }} }},
         scales: {{
-          x: {{ grid: {{ display: false }}, ticks: {{ font: {{ size: 11 }}, maxTicksLimit: 14 }} }},
-          y: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }}, grid: {{ color: '#f3f4f6' }} }},
+          x: {{ grid: {{ display: false }}, ticks: {{ font: {{ size: 11 }}, maxTicksLimit: 14 }},
+               title: {{ display: true, text: 'Datum', font: {{ size: 11 }}, color: '#9ca3af' }} }},
+          y: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }}, grid: {{ color: '#f3f4f6' }},
+               title: {{ display: true, text: 'Artikelen', font: {{ size: 11 }}, color: '#9ca3af' }} }},
         }}
       }}
     }});
@@ -630,8 +639,10 @@ def analytics():
         indexAxis: 'y',
         plugins: {{ legend: {{ display: false }} }},
         scales: {{
-          x: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }}, grid: {{ color: '#f3f4f6' }} }},
-          y: {{ ticks: {{ font: {{ size: 11 }} }}, grid: {{ display: false }} }},
+          x: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }}, grid: {{ color: '#f3f4f6' }},
+               title: {{ display: true, text: 'Artikelen', font: {{ size: 11 }}, color: '#9ca3af' }} }},
+          y: {{ ticks: {{ font: {{ size: 11 }} }}, grid: {{ display: false }},
+               title: {{ display: true, text: 'Bron', font: {{ size: 11 }}, color: '#9ca3af' }} }},
         }}
       }}
     }});
@@ -649,9 +660,9 @@ def analytics():
 
     function setVisitorPeriod(days) {{
       if (!V) return;
-      const sl = V.labels.slice(-days);
-      const sv = V.views_series.slice(-days);
-      const su = V.unique_series.slice(-days);
+      const sl = V.labels.slice(-days - 1, -1);
+      const sv = V.views_series.slice(-days - 1, -1);
+      const su = V.unique_series.slice(-days - 1, -1);
       visitorsChart.data.labels = sl;
       visitorsChart.data.datasets[0].data = sv;
       visitorsChart.data.datasets[1].data = su;
@@ -699,11 +710,11 @@ def analytics():
         visitorsChart = new Chart(canvas, {{
           type: 'line',
           data: {{
-            labels: data.labels.slice(-7),
+            labels: data.labels.slice(-31, -1),
             datasets: [
               {{
                 label: 'Pageviews',
-                data: data.views_series.slice(-7),
+                data: data.views_series.slice(-31, -1),
                 borderColor: '#dc2626',
                 backgroundColor: 'rgba(220,38,38,0.06)',
                 borderWidth: 2, fill: true, tension: 0.35,
@@ -711,7 +722,7 @@ def analytics():
               }},
               {{
                 label: 'Unieke bezoekers',
-                data: data.unique_series.slice(-7),
+                data: data.unique_series.slice(-31, -1),
                 borderColor: '#3b82f6',
                 backgroundColor: 'rgba(59,130,246,0.06)',
                 borderWidth: 2, fill: true, tension: 0.35,
@@ -722,8 +733,10 @@ def analytics():
           options: {{
             plugins: {{ legend: {{ labels: {{ font: {{ size: 11 }} }} }} }},
             scales: {{
-              x: {{ grid: {{ display: false }}, ticks: {{ font: {{ size: 11 }}, maxTicksLimit: 14 }} }},
-              y: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }}, grid: {{ color: '#f3f4f6' }} }},
+              x: {{ grid: {{ display: false }}, ticks: {{ font: {{ size: 11 }}, maxTicksLimit: 14 }},
+                   title: {{ display: true, text: 'Datum', font: {{ size: 11 }}, color: '#9ca3af' }} }},
+              y: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }}, grid: {{ color: '#f3f4f6' }},
+                   title: {{ display: true, text: 'Bezoeken', font: {{ size: 11 }}, color: '#9ca3af' }} }},
             }}
           }}
         }});
@@ -766,8 +779,33 @@ def analytics():
               indexAxis: 'y',
               plugins: {{ legend: {{ display: false }} }},
               scales: {{
-                x: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }}, grid: {{ color: '#f3f4f6' }} }},
-                y: {{ ticks: {{ font: {{ size: 11 }} }}, grid: {{ display: false }} }},
+                x: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }}, grid: {{ color: '#f3f4f6' }},
+                     title: {{ display: true, text: 'Bezoeken', font: {{ size: 11 }}, color: '#9ca3af' }} }},
+                y: {{ ticks: {{ font: {{ size: 11 }} }}, grid: {{ display: false }},
+                     title: {{ display: true, text: 'Land', font: {{ size: 11 }}, color: '#9ca3af' }} }},
+              }}
+            }}
+          }});
+        }}
+
+        // Referrer chart
+        if (data.referrers && data.referrers.length) {{
+          document.getElementById('referer-section').classList.remove('hidden');
+          new Chart(document.getElementById('refererChart'), {{
+            type: 'bar',
+            data: {{
+              labels: data.referrers.map(r => r.label),
+              datasets: [{{ data: data.referrers.map(r => r.count),
+                backgroundColor: 'rgba(234,179,8,0.75)', borderRadius: 4 }}]
+            }},
+            options: {{
+              indexAxis: 'y',
+              plugins: {{ legend: {{ display: false }} }},
+              scales: {{
+                x: {{ beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }}, grid: {{ color: '#f3f4f6' }},
+                     title: {{ display: true, text: 'Pageviews', font: {{ size: 11 }}, color: '#9ca3af' }} }},
+                y: {{ ticks: {{ font: {{ size: 11 }} }}, grid: {{ display: false }},
+                     title: {{ display: true, text: 'Bron', font: {{ size: 11 }}, color: '#9ca3af' }} }},
               }}
             }}
           }});
@@ -799,9 +837,11 @@ def analytics():
             options: {{
               plugins: {{ legend: {{ labels: {{ font: {{ size: 11 }} }} }} }},
               scales: {{
-                x: {{ stacked: true, grid: {{ display: false }}, ticks: {{ font: {{ size: 10 }} }} }},
+                x: {{ stacked: true, grid: {{ display: false }}, ticks: {{ font: {{ size: 10 }} }},
+                     title: {{ display: true, text: 'Uur van de dag', font: {{ size: 11 }}, color: '#9ca3af' }} }},
                 y: {{ stacked: true, beginAtZero: true, ticks: {{ precision: 0, font: {{ size: 11 }} }},
-                     grid: {{ color: '#f3f4f6' }} }},
+                     grid: {{ color: '#f3f4f6' }},
+                     title: {{ display: true, text: 'Bezoeken', font: {{ size: 11 }}, color: '#9ca3af' }} }},
               }}
             }}
           }});

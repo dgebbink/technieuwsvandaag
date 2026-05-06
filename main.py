@@ -42,7 +42,10 @@ def _setup_logging(logs_dir: Path) -> logging.Logger:
 
 # Logging initialiseren vóór alle andere imports, zodat module-loggers correct
 # worden geconfigureerd bij het importeren
-from config import LOGS_DIR  # noqa: E402
+from config import BASE_DIR, LOGS_DIR  # noqa: E402
+
+_TMP_DIR = BASE_DIR / "tmp"
+_TMP_DIR.mkdir(exist_ok=True)
 
 logger = _setup_logging(LOGS_DIR)
 
@@ -224,7 +227,7 @@ def main() -> int:
             send_fal_balance_warning(bal or 0.0)
 
         for i, processed in enumerate(processed_articles):
-            dest = f"/tmp/tnv_image_{i}.jpg"
+            dest = str(_TMP_DIR / f"tnv_image_{i}.jpg")
             processed.image_path = generate_image_for_article(
                 title=processed.titel,
                 article_text=processed.samenvatting,
@@ -239,7 +242,7 @@ def main() -> int:
         from urllib.parse import urlparse  # noqa: PLC0415
         session = _make_session()
         for i, processed in enumerate(processed_articles):
-            dest = f"/tmp/tnv_image_{i}.jpg"
+            dest = str(_TMP_DIR / f"tnv_image_{i}.jpg")
             img_url = processed.original.image_url
 
             if not img_url:

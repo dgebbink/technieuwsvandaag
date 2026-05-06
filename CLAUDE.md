@@ -17,9 +17,6 @@ python main.py --dry-run
 # Test één bron
 python main.py --test-source techcrunch.com --dry-run
 
-# Verwerk één URL direct (Telegram/adhoc flow — publiceert direct, bypasses approval)
-python -c "from adhoc_processor import process_single_url; print(process_single_url('https://...'))"
-
 # Approval server handmatig starten (normaal via supervisord)
 python approval_server.py
 
@@ -61,26 +58,14 @@ scraper.py → ai_processor.py → image_generator.py → wordpress_client.py �
   - `GET /health` — health check + cleanup verlopen tokens
 - Draait als **supervisord** service (`/etc/supervisor/conf.d/user/tnv-approval-server.conf`)
 
-### Telegram/adhoc flow (`telegram_bot.py` + `adhoc_processor.py`)
-
-Bypasses de approval flow — publiceert direct:
-
-```
-telegram_bot.py → adhoc_processor.process_single_url()
-                      → ai_processor.process_article()
-                      → image_generator (FAL.ai + logo compositing)
-                      → wordpress_client.publish_articles()  # maakt draft
-                      → wordpress_client.publish_post()      # publiceert direct
-                      → social_poster.post_to_bluesky()
-```
-
 ## Sleutelbestanden
 
 | Bestand | Doel |
 |---|---|
 | `config.py` | Alle settings uit `.env`, gedeelde paden |
 | `approval_store.py` | Token store voor Accept/Decline/Reimage |
-| `approval_server.py` | Flask approval server |
+| `approval_server.py` | Flask approval server (incl. `/submit` dashboard endpoint) |
+| `adhoc_processor.py` | Verwerkt één URL direct naar WordPress post (dashboard flow) |
 | `approval_tokens.json` | Pending tokens — niet verwijderen |
 | `posted_urls.txt` | Één URL per regel, voorkomt dubbele posts |
 | `sources.txt` | Één domein/URL per regel |
@@ -113,5 +98,3 @@ HTTP Basic met base64-encoded `WP_USERNAME:WP_APP_PASSWORD`. Custom field `bron_
 
 - Dagelijkse runs: `logs/run_YYYY-MM-DD_HH-MM-SS.log`
 - Approval server: `logs/approval_server.log`
-- Telegram bot: `logs/telegram_bot.log`
-- Adhoc verwerking: `logs/adhoc_YYYY-MM-DD.log`
