@@ -54,10 +54,13 @@ class ProcessedArticle:
 # Claude CLI helpers
 # ---------------------------------------------------------------------------
 
+_CLAUDE_KNOWN_PATHS = [
+    Path("/home/dgebbink/.local/bin/claude"),
+    Path("/usr/local/bin/claude"),
+]
+
 _CLAUDE_FALLBACK_DIRS = [
-    Path.home() / ".cursor-server",
     Path("/home/dgebbink/.cursor-server"),
-    Path("/usr/local/bin"),
     Path("/opt"),
 ]
 
@@ -65,10 +68,18 @@ _CLAUDE_FALLBACK_DIRS = [
 def _find_claude() -> Optional[str]:
     if path := shutil.which("claude"):
         return path
+    # Exact paths first — avoids picking up internal extension binaries
+    for p in _CLAUDE_KNOWN_PATHS:
+        if p.is_file() and p.stat().st_mode & 0o111:
+            return str(p)
+    # Directory scan as last resort
     for base in _CLAUDE_FALLBACK_DIRS:
-        for p in sorted(base.rglob("claude"), reverse=True):
-            if p.is_file() and p.stat().st_mode & 0o111:
-                return str(p)
+        try:
+            for p in sorted(base.rglob("claude"), reverse=True):
+                if p.is_file() and p.stat().st_mode & 0o111:
+                    return str(p)
+        except PermissionError:
+            continue
     return None
 
 

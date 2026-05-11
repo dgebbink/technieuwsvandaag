@@ -118,7 +118,9 @@ def fetch_adhoc_article(url: str) -> Optional[object]:
 
     # Eenvoudige NL-domein detectie
     nl_domains = ("tweakers.net", "nu.nl", "bright.nl", "dutchcowboys.nl",
-                  "androidworld.nl", "webwereld.nl", "computeridee.nl")
+                  "androidworld.nl", "webwereld.nl", "computeridee.nl",
+                  "volkskrant.nl", "nos.nl", "rtlnieuws.nl", "fd.nl",
+                  "telegraaf.nl", "ad.nl")
     if any(nd in article.source for nd in nl_domains):
         article.source_lang = "NL"
 
