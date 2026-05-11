@@ -95,6 +95,10 @@ def _call_claude(prompt: str, timeout: int = 90) -> str:
     """Invoke the claude CLI with the given prompt; return stdout."""
     import os
     claude = _find_claude() or "claude"
+    # Ensure HOME points to dgebbink's home so claude finds its auth config,
+    # even when the process was started with HOME=/root (e.g. via supervisord).
+    env = os.environ.copy()
+    env["HOME"] = "/home/dgebbink"
     if os.geteuid() == 0:
         # --dangerously-skip-permissions is blocked for root; run as dgebbink
         cmd = ["su", "-s", "/bin/sh", "dgebbink", "-c",
@@ -102,7 +106,7 @@ def _call_claude(prompt: str, timeout: int = 90) -> str:
     else:
         cmd = [claude, "-p", prompt, "--dangerously-skip-permissions"]
     result = subprocess.run(
-        cmd, capture_output=True, text=True, timeout=timeout,
+        cmd, capture_output=True, text=True, timeout=timeout, env=env,
     )
     if result.returncode != 0:
         err = result.stderr.strip()
@@ -168,7 +172,7 @@ def deduplicate_articles(
     )
 
     try:
-        response = _call_claude(prompt, timeout=60)
+        response = _call_claude(prompt, timeout=120)
         match = re.search(r'\[[\d,\s]+\]', response)
         if match:
             keep_indices = [
@@ -328,7 +332,7 @@ def process_article(article: Article) -> Optional[ProcessedArticle]:
     )
 
     try:
-        response_text = _call_claude(prompt, timeout=120)
+        response_text = _call_claude(prompt, timeout=240)
         data = _extract_json(response_text)
 
         if not isinstance(data, dict):

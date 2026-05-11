@@ -191,13 +191,32 @@ def process_single_url(url: str) -> dict | None:
     try:
         pub_result = publish_post(post_id)
         public_url = pub_result.get("link", post.get("preview_url", ""))
-        logger.info("Post direct gepubliceerd (Telegram): %s", public_url)
+        logger.info("Post direct gepubliceerd (dashboard): %s", public_url)
     except Exception as exc:
         logger.error("Publiceren mislukt voor post %s: %s — preview URL gebruikt", post_id, exc)
         public_url = post.get("preview_url", "")
 
+    post["link"] = public_url
+
     from scraper import save_posted_url
     save_posted_url(url)
+
+    # Stap 6: Notificatiemail met Decline / Nieuwe afbeelding knoppen
+    try:
+        from mailer import build_action_buttons, send_notification
+        meta = {
+            "article_text": processed.samenvatting,
+            "categorieen":  processed.categorieen,
+            "trefwoorden":  processed.trefwoorden,
+            "source_url":   url,
+            "image_url":    post.get("image_url", ""),
+        }
+        buttons_html, _, _ = build_action_buttons(post_id, processed.titel, public_url, meta)
+        result["buttons_html"] = buttons_html
+        send_notification([result], subject_prefix="[Dashboard]")
+        logger.info("Notificatiemail verstuurd voor dashboard-post %s", post_id)
+    except Exception as exc:
+        logger.error("Notificatiemail mislukt voor post %s: %s", post_id, exc)
 
     logger.info("process_single_url klaar: %s → %s", url, public_url)
 
