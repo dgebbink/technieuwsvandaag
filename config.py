@@ -10,9 +10,6 @@ load_dotenv()
 
 BASE_DIR: Path = Path(__file__).parent
 
-# Anthropic
-ANTHROPIC_API_KEY: str = os.environ.get("ANTHROPIC_API_KEY", "")
-
 # WordPress
 WP_URL: str = os.environ.get("WP_URL", "https://technieuwsvandaag.nl")
 WP_USERNAME: str = os.environ.get("WP_USERNAME", "")

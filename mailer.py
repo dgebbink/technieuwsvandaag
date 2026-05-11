@@ -749,10 +749,6 @@ def render_funds_section(data: dict) -> str:
             f"${amount:.2f} USD{warn}</td></tr>"
         )
 
-    anthropic_row = row(
-        "Claude (Anthropic)", data["anthropic"], "🤖",
-        "https://console.anthropic.com/settings/billing",
-    )
     fal_row = row(
         "FAL.ai (beeldgeneratie)", data["fal"], "🎨",
         "https://fal.ai/dashboard/usage-billing/credits",
@@ -768,6 +764,6 @@ def render_funds_section(data: dict) -> str:
         "text-transform:uppercase;letter-spacing:0.8px;width:50%'>Service</th>"
         "<th style='text-align:left;padding:8px;color:#fff;font-size:11px;"
         "text-transform:uppercase;letter-spacing:0.8px'>Tegoed</th></tr>"
-        f"{anthropic_row}{fal_row}"
+        f"{fal_row}"
         "</table></div>"
     )
