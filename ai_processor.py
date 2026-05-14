@@ -193,26 +193,34 @@ def deduplicate_articles(
     return articles
 
 
-def is_similar_to_posted_today(
+def is_similar_to_recently_posted(
     title: str,
     threshold: float = 0.6,
+    days_back: int = 7,
 ) -> bool:
-    """Checks if a similar article was already posted today.
-    Pre:  title is a non-empty string; threshold in (0, 1)
-    Post: True if a title with >threshold word overlap
-          was posted today, False otherwise
+    """Checks if a similar article was already posted in the last `days_back` days.
+    Pre:  title is a non-empty string; threshold in (0, 1); days_back >= 1
+    Post: True if a title with >threshold word overlap was posted recently
     """
     if not POSTED_TITLES_FILE.exists():
         return False
 
-    today = date.today().isoformat()
+    from datetime import timedelta
+    cutoff = date.today() - timedelta(days=days_back - 1)
     title_words = set(title.lower().split())
 
     with open(POSTED_TITLES_FILE, "r", encoding="utf-8") as f:
         for line in f:
-            if not line.startswith(today):
+            parts = line.split("|", 2)
+            if len(parts) < 3:
                 continue
-            posted_title = line.split("|", 2)[-1].strip().lower()
+            try:
+                post_date = date.fromisoformat(parts[0])
+            except ValueError:
+                continue
+            if post_date < cutoff:
+                continue
+            posted_title = parts[2].strip().lower()
             posted_words = set(posted_title.split())
             combined = title_words | posted_words
             if not combined:
@@ -220,7 +228,8 @@ def is_similar_to_posted_today(
             ratio = len(title_words & posted_words) / len(combined)
             if ratio > threshold:
                 logger.info(
-                    "Vergelijkbaar artikel vandaag al gepost (overlap %.0f%%): %s",
+                    "Vergelijkbaar artikel recent gepost (%s, overlap %.0f%%): %s",
+                    parts[0],
                     ratio * 100,
                     posted_title,
                 )
@@ -404,7 +413,7 @@ def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
 
     # Stap B: filter artikelen die vandaag al gepost zijn (title overlap)
     before_filter = len(articles)
-    articles = [a for a in articles if not is_similar_to_posted_today(a.title)]
+    articles = [a for a in articles if not is_similar_to_recently_posted(a.title)]
     filtered = before_filter - len(articles)
     if filtered:
         logger.info("%d artikel(en) gefilterd wegens overlap met vandaag al geposte titels", filtered)
