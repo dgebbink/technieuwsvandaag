@@ -334,58 +334,53 @@ def process_article(article: Article) -> Optional[ProcessedArticle]:
         "- focus_keyword: het primaire SEO-trefwoord, 1-3 woorden"
     )
 
+    import time
     last_exc: Exception = RuntimeError("onbekende fout")
     for attempt in range(1, 4):
         try:
             response_text = _call_claude(prompt, timeout=240)
-            break
-        except (RuntimeError, subprocess.TimeoutExpired) as exc:
+            data = _extract_json(response_text)
+
+            if not isinstance(data, dict):
+                raise ValueError(f"Verwachtte een dict, kreeg: {type(data)}")
+
+            # Valideer verplichte velden
+            for field in ("titel", "samenvatting", "trefwoorden", "categorieen"):
+                if field not in data:
+                    raise ValueError(f"Veld '{field}' ontbreekt in Claude-antwoord")
+
+            # Normaliseer categorieen: accepteer zowel lijst als enkele string
+            raw_cats = data["categorieen"]
+            if isinstance(raw_cats, str):
+                raw_cats = [raw_cats]
+            categorieen = [str(c).strip() for c in raw_cats[:3] if str(c).strip()]
+            if not categorieen:
+                categorieen = ["Technologie"]
+
+            # SEO-velden (optioneel — geen fout als ze ontbreken)
+            meta_description = str(data.get("meta_description", "")).strip()[:155]
+            slug = str(data.get("slug", "")).strip().lower()
+            focus_keyword = str(data.get("focus_keyword", "")).strip()
+
+            return ProcessedArticle(
+                original=article,
+                titel=str(data["titel"]).strip(),
+                samenvatting=str(data["samenvatting"]).strip(),
+                trefwoorden=str(data["trefwoorden"]).strip(),
+                categorieen=categorieen,
+                meta_description=meta_description,
+                slug=slug,
+                focus_keyword=focus_keyword,
+            )
+
+        except (RuntimeError, subprocess.TimeoutExpired, json.JSONDecodeError, ValueError) as exc:
             last_exc = exc
-            logger.warning("Claude CLI poging %d/3 mislukt voor '%s': %s", attempt, article.title, exc)
+            logger.warning("Artikel-verwerking poging %d/3 mislukt voor '%s': %s", attempt, article.title, exc)
             if attempt < 3:
-                import time; time.sleep(15 * attempt)
-    else:
-        logger.error("Artikel-verwerking mislukt na 3 pogingen voor '%s': %s", article.title, last_exc)
-        return None
+                time.sleep(15 * attempt)
 
-    try:
-        data = _extract_json(response_text)
-
-        if not isinstance(data, dict):
-            raise ValueError(f"Verwachtte een dict, kreeg: {type(data)}")
-
-        # Valideer verplichte velden
-        for field in ("titel", "samenvatting", "trefwoorden", "categorieen"):
-            if field not in data:
-                raise ValueError(f"Veld '{field}' ontbreekt in Claude-antwoord")
-
-        # Normaliseer categorieen: accepteer zowel lijst als enkele string
-        raw_cats = data["categorieen"]
-        if isinstance(raw_cats, str):
-            raw_cats = [raw_cats]
-        categorieen = [str(c).strip() for c in raw_cats[:3] if str(c).strip()]
-        if not categorieen:
-            categorieen = ["Technologie"]
-
-        # SEO-velden (optioneel — geen fout als ze ontbreken)
-        meta_description = str(data.get("meta_description", "")).strip()[:155]
-        slug = str(data.get("slug", "")).strip().lower()
-        focus_keyword = str(data.get("focus_keyword", "")).strip()
-
-        return ProcessedArticle(
-            original=article,
-            titel=str(data["titel"]).strip(),
-            samenvatting=str(data["samenvatting"]).strip(),
-            trefwoorden=str(data["trefwoorden"]).strip(),
-            categorieen=categorieen,
-            meta_description=meta_description,
-            slug=slug,
-            focus_keyword=focus_keyword,
-        )
-
-    except Exception as exc:
-        logger.error("Artikel-verwerking mislukt voor '%s': %s", article.title, exc)
-        return None
+    logger.error("Artikel-verwerking mislukt na 3 pogingen voor '%s': %s", article.title, last_exc)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -433,8 +428,12 @@ def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
             logger.error("Artikel-selectie mislukt, val terug op eerste: %s", exc)
             selected_indices = [0]
 
+    # Bouw kandidatenlijst: geselecteerde index eerst, daarna de rest als fallback
+    fallback_indices = [i for i in range(len(articles)) if i not in selected_indices[:1]]
+    candidate_indices = selected_indices[:1] + fallback_indices
+
     processed: list[ProcessedArticle] = []
-    for idx in selected_indices[:1]:
+    for idx in candidate_indices:
         if 0 <= idx < len(articles):
             article = articles[idx]
             lang = getattr(article, "source_lang", "EN")
@@ -442,6 +441,8 @@ def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
             result = process_article(article)
             if result:
                 processed.append(result)
+                break  # 1 artikel verwerkt, klaar
+            logger.warning("Artikel mislukt, probeer volgende kandidaat")
         else:
             logger.warning("Index %d buiten bereik (max %d)", idx, len(articles) - 1)
 
