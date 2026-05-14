@@ -113,7 +113,10 @@ def _call_claude(prompt: str, timeout: int = 90) -> str:
         if "credit" in err.lower():
             raise InsufficientCreditsError(err)
         raise RuntimeError(f"claude CLI mislukt (exit {result.returncode}): {err}")
-    return result.stdout.strip()
+    output = result.stdout.strip()
+    if not output:
+        raise RuntimeError("claude CLI gaf lege response (exit 0 maar geen stdout)")
+    return output
 
 
 # ---------------------------------------------------------------------------
@@ -331,8 +334,21 @@ def process_article(article: Article) -> Optional[ProcessedArticle]:
         "- focus_keyword: het primaire SEO-trefwoord, 1-3 woorden"
     )
 
+    last_exc: Exception = RuntimeError("onbekende fout")
+    for attempt in range(1, 4):
+        try:
+            response_text = _call_claude(prompt, timeout=240)
+            break
+        except (RuntimeError, subprocess.TimeoutExpired) as exc:
+            last_exc = exc
+            logger.warning("Claude CLI poging %d/3 mislukt voor '%s': %s", attempt, article.title, exc)
+            if attempt < 3:
+                import time; time.sleep(15 * attempt)
+    else:
+        logger.error("Artikel-verwerking mislukt na 3 pogingen voor '%s': %s", article.title, last_exc)
+        return None
+
     try:
-        response_text = _call_claude(prompt, timeout=240)
         data = _extract_json(response_text)
 
         if not isinstance(data, dict):
