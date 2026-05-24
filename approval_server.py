@@ -344,6 +344,57 @@ def _analytics_posts() -> dict:
     }
 
 
+_SHARE_LOG_PATH = "/var/www/technieuwsvandaag/wordpress/share_log.jsonl"
+
+
+def _read_share_stats() -> dict:
+    """Fetch share_log.jsonl from Oracle via SSH and return aggregated stats."""
+    try:
+        result = subprocess.run(
+            ["ssh", "-i", _SSH_KEY, "-o", "StrictHostKeyChecking=no",
+             "-o", "ConnectTimeout=10", _SSH_TARGET,
+             f"cat {_SHARE_LOG_PATH} 2>/dev/null || true"],
+            capture_output=True, text=True, timeout=15,
+        )
+        lines = [l.strip() for l in result.stdout.splitlines() if l.strip()]
+    except Exception as exc:
+        logging.error("share_stats fetch failed: %s", exc)
+        return {}
+
+    total = 0
+    by_platform: Counter = Counter()
+    by_article: dict = {}  # url -> {"title": str, "total": int, "by_platform": Counter}
+
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        platform = entry.get("platform", "")
+        url      = entry.get("url", "")
+        title    = entry.get("title", url)
+        if not platform or not url:
+            continue
+        total += 1
+        by_platform[platform] += 1
+        if url not in by_article:
+            by_article[url] = {"title": title, "total": 0, "by_platform": Counter()}
+        by_article[url]["total"] += 1
+        by_article[url]["by_platform"][platform] += 1
+
+    top_articles = sorted(by_article.items(), key=lambda kv: kv[1]["total"], reverse=True)[:10]
+
+    return {
+        "total":        total,
+        "by_platform":  dict(by_platform.most_common()),
+        "top_articles": [
+            {"url": url, "title": art["title"], "total": art["total"],
+             "by_platform": dict(art["by_platform"].most_common())}
+            for url, art in top_articles
+        ],
+    }
+
+
 def _analytics_runs() -> list[tuple[str, int, int, str]]:
     """Parse run logs; return list of (date, ok, total, last_title) per day, newest first."""
     per_day: dict[str, dict] = {}
@@ -373,8 +424,9 @@ def _analytics_runs() -> list[tuple[str, int, int, str]]:
 @app.route("/analytics")
 def analytics():
     """Analytics dashboard — post history, top sources, run status."""
-    data = _analytics_posts()
-    runs = _analytics_runs()
+    data   = _analytics_posts()
+    runs   = _analytics_runs()
+    shares = _read_share_stats()
 
     js = json.dumps({
         "labels":     data["labels"],
@@ -432,6 +484,57 @@ def analytics():
     if not runs_html:
         runs_html = '<tr><td colspan="3" class="py-4 text-sm text-gray-400">Geen run-logs gevonden</td></tr>'
 
+    # Share stats
+    _PLATFORM_LABELS = {
+        "whatsapp": "WhatsApp", "facebook": "Facebook",
+        "x": "X", "bluesky": "Bluesky", "linkedin": "LinkedIn",
+    }
+    share_total      = shares.get("total", 0)
+    share_platforms  = shares.get("by_platform", {})
+    share_articles   = shares.get("top_articles", [])
+
+    def _share_platform_row(platform, count):
+        label  = _PLATFORM_LABELS.get(platform, platform)
+        pct    = round(count / share_total * 100) if share_total else 0
+        return (
+            f'<tr class="border-b border-gray-100">'
+            f'<td class="py-2 pr-4 text-sm text-gray-700">{_html_mod.escape(label)}</td>'
+            f'<td class="py-2 pr-4">'
+            f'  <div class="flex items-center gap-2">'
+            f'    <div class="h-2 rounded bg-red-500" style="width:{pct * 1.5:.0f}px;min-width:2px"></div>'
+            f'    <span class="text-sm text-gray-500">{count}</span>'
+            f'  </div>'
+            f'</td>'
+            f'<td class="py-2 text-sm text-gray-400">{pct}%</td>'
+            f'</tr>'
+        )
+
+    def _share_article_row(art):
+        t   = _html_mod.escape(art["title"] or art["url"])
+        u   = _html_mod.escape(art["url"], quote=True)
+        cnt = art["total"]
+        breakdown = " · ".join(
+            f'{_PLATFORM_LABELS.get(p, p)}&nbsp;{c}'
+            for p, c in art["by_platform"].items()
+        )
+        return (
+            f'<tr class="border-b border-gray-100 hover:bg-gray-50">'
+            f'<td class="py-2 pr-4 text-sm">'
+            f'  <a href="{u}" target="_blank" class="text-gray-800 hover:text-red-600 line-clamp-1">{t}</a>'
+            f'  <div class="text-xs text-gray-400 mt-0.5">{breakdown}</div>'
+            f'</td>'
+            f'<td class="py-2 text-sm font-semibold text-gray-700 text-right whitespace-nowrap">{cnt}×</td>'
+            f'</tr>'
+        )
+
+    share_platform_rows = "".join(_share_platform_row(p, c) for p, c in share_platforms.items())
+    if not share_platform_rows:
+        share_platform_rows = '<tr><td colspan="3" class="py-4 text-sm text-gray-400">Nog geen deelacties</td></tr>'
+
+    share_article_rows = "".join(_share_article_row(a) for a in share_articles)
+    if not share_article_rows:
+        share_article_rows = '<tr><td colspan="2" class="py-4 text-sm text-gray-400">Nog geen deelacties</td></tr>'
+
     return f"""<!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -483,6 +586,30 @@ def analytics():
       <div id="visitor-error" class="hidden text-sm text-red-500 py-4"></div>
       <div id="visitor-cards" class="hidden grid grid-cols-2 md:grid-cols-3 gap-4 mb-6"></div>
       <canvas id="visitorsChart" class="hidden" height="70"></canvas>
+    </div>
+
+    <!-- Deel-statistieken -->
+    <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="text-base font-semibold text-gray-700">Deel-statistieken</h2>
+        <span class="text-2xl font-bold text-gray-800">{share_total}</span>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Platform breakdown -->
+        <div>
+          <h3 class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Per platform</h3>
+          <table class="w-full">
+            <tbody>{share_platform_rows}</tbody>
+          </table>
+        </div>
+        <!-- Top gedeelde artikelen -->
+        <div>
+          <h3 class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Meest gedeeld</h3>
+          <table class="w-full">
+            <tbody>{share_article_rows}</tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- Posts per dag -->
