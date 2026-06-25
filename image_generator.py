@@ -4,6 +4,7 @@ Wordt gebruikt wanneer IMAGE_STRATEGY=generate is ingesteld.
 """
 import json
 import logging
+import random
 from typing import Optional
 
 import requests
@@ -27,12 +28,82 @@ def is_fal_balance_low() -> bool:
     return False
 
 
+def generate_person_variant() -> dict:
+    """Kies een willekeurige persoonsbeschrijving voor de beeldprompt.
+
+    Post: dict met keys gender, ethnicity, body_type, age en hair_description
+          (hair_description is None tenzij gender "a woman" is).
+    """
+    gender = random.choices(
+        ["a woman", "a non-binary person", "a man"],
+        weights=[60, 20, 20],
+        k=1,
+    )[0]
+
+    hair_description = None
+    if gender == "a woman":
+        hair_description = random.choice([
+            "short pixie cut",
+            "long curly hair",
+            "braided hair",
+            "a sleek bob",
+            "natural afro hair",
+            "wavy shoulder-length hair",
+            "hair in an updo",
+        ])
+
+    body_type = random.choice([
+        "athletic build",
+        "curvy build",
+        "slender build",
+        "average build",
+        "tall and lean build",
+        "petite build",
+    ])
+
+    ethnicity = random.choice([
+        "Black",
+        "East Asian",
+        "South Asian",
+        "Latina",
+        "Middle Eastern",
+        "white",
+        "mixed-race",
+    ])
+
+    age = random.randint(18, 30)
+
+    return {
+        "gender": gender,
+        "ethnicity": ethnicity,
+        "body_type": body_type,
+        "age": age,
+        "hair_description": hair_description,
+    }
+
+
 def generate_image_prompt(title: str, article_text: str) -> str:
     """Ask Claude for an image prompt.
 
     Pre:  claude CLI is available; title is non-empty
     Post: returns prompt_text
     """
+    variant = generate_person_variant()
+    hair_part = (
+        ", " + variant["hair_description"] if variant["hair_description"] else ""
+    )
+    person_instruction = (
+        "If a person appears in the scene, show {gender}, {ethnicity}, around "
+        "{age} years old, with {body_type}{hair_part}, in an active, central "
+        "role. Use natural skin texture and realistic proportions."
+    ).format(
+        gender=variant["gender"],
+        ethnicity=variant["ethnicity"],
+        age=variant["age"],
+        body_type=variant["body_type"],
+        hair_part=hair_part,
+    )
+
     instruction = (
         "Return a single JSON field:\n"
         "\"prompt\": A 2-sentence English prompt for a photorealistic AI image "
@@ -42,14 +113,7 @@ def generate_image_prompt(title: str, article_text: str) -> str:
         "Convey the brand identity through the color palette, product design, "
         "materials, or the associated scene, without including any text, logos, "
         "or lettering. "
-        "If people appear in the scene, use a balance of approximately 60% women, "
-        "20% non-binary people, and 20% men, with women in active, central, "
-        "professional roles. Vary the women's appearance: different hair types and "
-        "lengths (short, curly, braided, updos), different body types, and a more "
-        "relaxed, natural look rather than a uniform, standard appearance. Use "
-        "natural skin texture and realistic proportions. Show, where applicable, "
-        "young adults (approximately "
-        "18 to 30 years old). Apply diversity from an ethnic perspective.\n\n"
+        f"{person_instruction}\n\n"
         f"Article title: {title}\n"
         f"Article text:\n{article_text[:1000]}\n\n"
         "Respond with only valid JSON, no markdown fences."
