@@ -36,7 +36,7 @@ def generate_person_variant() -> dict:
     """
     gender = random.choices(
         ["a woman", "a non-binary person", "a man"],
-        weights=[60, 20, 20],
+        weights=[70, 15, 15],
         k=1,
     )[0]
 
