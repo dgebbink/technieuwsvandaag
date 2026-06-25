@@ -237,6 +237,67 @@ def is_similar_to_recently_posted(
     return False
 
 
+def _title_overlap_ratio(a: str, b: str) -> float:
+    """Jaccard word-overlap of two titles (case-insensitive). 0.0 when either empty."""
+    wa, wb = set(a.lower().split()), set(b.lower().split())
+    combined = wa | wb
+    return len(wa & wb) / len(combined) if combined else 0.0
+
+
+def is_similar_to_recent(
+    candidate: "ProcessedArticle",
+    recent_articles: list[dict],
+    title_threshold: float = 0.6,
+) -> tuple[bool, str]:
+    """Check whether a candidate duplicates the topic of a recently published article.
+
+    Two-stage, cost-aware:
+      1. Cheap: word-overlap of the Dutch title against each recent title.
+      2. Inconclusive → one short, cheap Claude call comparing the candidate
+         title + first sentences against the recent titles (no full body needed).
+
+    Pre:  candidate has .titel and .samenvatting; recent_articles is a list of
+          dicts with a 'title' key (newest first)
+    Post: returns (is_similar, reason); reason names the matched recent title.
+    """
+    if not recent_articles:
+        return False, ""
+
+    # Stap 1 — goedkope titel-overlap (zelfde bedrijf + product + type nieuws
+    # geeft doorgaans hoge woordoverlap in de NL-titel)
+    for art in recent_articles:
+        ratio = _title_overlap_ratio(candidate.titel, art.get("title", ""))
+        if ratio > title_threshold:
+            return True, f"titel-overlap {ratio * 100:.0f}% met recent '{art['title']}'"
+
+    # Stap 2 — kort Claude-oordeel; alleen titels + eerste zinnen, dus goedkoop
+    first_sentences = " ".join(candidate.samenvatting.split(". ")[:2]).strip()
+    recent_titles = "\n".join(
+        f"{i + 1}. {a.get('title', '')}" for i, a in enumerate(recent_articles)
+    )
+    prompt = (
+        "Je bent eindredacteur. Bepaal of het KANDIDAAT-artikel hetzelfde "
+        "onderwerp of nieuwsfeit behandelt als een van de RECENT gepubliceerde "
+        "artikelen. Zelfde bedrijf + product + type nieuws telt als duplicaat; "
+        "een ander aspect van een breed thema (bv. ander product, andere invalshoek) "
+        "telt NIET als duplicaat.\n\n"
+        f"KANDIDAAT:\nTitel: {candidate.titel}\n{first_sentences}\n\n"
+        f"RECENT GEPUBLICEERD:\n{recent_titles}\n\n"
+        'Antwoord ALLEEN met JSON: {"is_duplicate_topic": true/false, "reason": "..."}'
+    )
+    try:
+        data = _extract_json(_call_claude(prompt, timeout=30))
+        if isinstance(data, dict) and data.get("is_duplicate_topic") is True:
+            return True, str(data.get("reason", "Claude markeerde als duplicaat-onderwerp"))
+    except Exception as exc:
+        logger.warning(
+            "Duplicate-topic check via Claude mislukt: %s — niet als duplicaat behandeld",
+            exc,
+        )
+
+    return False, ""
+
+
 def save_posted_title(title: str, url: str) -> None:
     """Saves a posted article title for future dedup checks.
     Pre:  title and url are non-empty strings
@@ -441,19 +502,69 @@ def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
     fallback_indices = [i for i in range(len(articles)) if i not in selected_indices[:1]]
     candidate_indices = selected_indices[:1] + fallback_indices
 
+    # Laatste 10 gepubliceerde artikelen ophalen voor de duplicate-topic check.
+    # Up-to-date op selectiemoment: binnen één run publiceert er niets tussen
+    # selectie en publicatie, dus dit is gelijk aan de stand bij publiceren.
+    from wordpress_client import fetch_recent_published  # noqa: PLC0415
+    recent_published = fetch_recent_published(limit=10)
+    logger.info("Duplicate-topic check tegen laatste %d gepubliceerde artikel(en)",
+                len(recent_published))
+
+    MAX_DUP_ATTEMPTS = 5
     processed: list[ProcessedArticle] = []
+    first_processed: Optional[ProcessedArticle] = None  # fallback: nooit niets publiceren
+    dup_attempts = 0
+
     for idx in candidate_indices:
-        if 0 <= idx < len(articles):
-            article = articles[idx]
-            lang = getattr(article, "source_lang", "EN")
-            logger.info("Artikel verwerken [%s]: %s", lang, article.title)
-            result = process_article(article)
-            if result:
-                processed.append(result)
-                break  # 1 artikel verwerkt, klaar
-            logger.warning("Artikel mislukt, probeer volgende kandidaat")
-        else:
+        if not (0 <= idx < len(articles)):
             logger.warning("Index %d buiten bereik (max %d)", idx, len(articles) - 1)
+            continue
+
+        article = articles[idx]
+        lang = getattr(article, "source_lang", "EN")
+        logger.info("Artikel verwerken [%s]: %s", lang, article.title)
+        result = process_article(article)
+        if not result:
+            logger.warning("Artikel mislukt, probeer volgende kandidaat")
+            continue
+
+        if first_processed is None:
+            first_processed = result  # bewaar eerste kandidaat als laatste redmiddel
+
+        dup_attempts += 1
+        is_dup, reason = is_similar_to_recent(result, recent_published)
+        if is_dup:
+            logger.info(
+                "skipped_duplicate_topic: '%s' overgeslagen (poging %d/%d) — %s",
+                result.titel, dup_attempts, MAX_DUP_ATTEMPTS, reason,
+            )
+            if dup_attempts >= MAX_DUP_ATTEMPTS:
+                logger.warning(
+                    "Na %d pogingen geen niet-gelijkend artikel gevonden — "
+                    "publiceer toch oorspronkelijke kandidaat: '%s'",
+                    dup_attempts, first_processed.titel,
+                )
+                processed.append(first_processed)
+                break
+            continue
+
+        logger.info(
+            "Geen overlap met recente publicaties — gekozen voor publicatie: '%s'",
+            result.titel,
+        )
+        processed.append(result)
+        break  # 1 niet-gelijkend artikel verwerkt, klaar
+
+    # Alle beschikbare kandidaten leken op recente publicaties (minder dan
+    # MAX_DUP_ATTEMPTS kandidaten): publiceer toch de eerste om niets-publiceren
+    # te voorkomen.
+    if not processed and first_processed is not None:
+        logger.warning(
+            "Alle %d kandidaten leken op recente publicaties — "
+            "publiceer toch oorspronkelijke kandidaat: '%s'",
+            dup_attempts, first_processed.titel,
+        )
+        processed.append(first_processed)
 
     # Log NL vs EN verdeling van geselecteerde artikelen
     nl_selected = sum(1 for p in processed if getattr(p.original, "source_lang", "EN") == "NL")

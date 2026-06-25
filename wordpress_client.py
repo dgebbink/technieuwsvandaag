@@ -358,6 +358,50 @@ def publish_articles(
 
 
 # ---------------------------------------------------------------------------
+# Recent gepubliceerde artikelen (voor duplicate-topic check)
+# ---------------------------------------------------------------------------
+
+def fetch_recent_published(limit: int = 10) -> list[dict]:
+    """Fetch the most recently published posts (title + excerpt) for dedup checks.
+    Pre:  WP REST API reachable; limit >= 1
+    Post: returns list[dict] with plain-text keys 'title' and 'excerpt',
+          newest first; returns [] on any API error
+    """
+    import re as _re
+    from html import unescape
+
+    def _strip(html: str) -> str:
+        return unescape(_re.sub(r"<[^>]+>", "", html or "")).strip()
+
+    client = WordPressClient()
+    try:
+        resp = client.session.get(
+            f"{client.base_url}/posts",
+            params={
+                "per_page": limit,
+                "status":   "publish",
+                "orderby":  "date",
+                "order":    "desc",
+                "_fields":  "title,excerpt",
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        posts = resp.json()
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("Laatste gepubliceerde artikelen ophalen mislukt: %s", exc)
+        return []
+
+    return [
+        {
+            "title":   _strip(p.get("title", {}).get("rendered", "")),
+            "excerpt": _strip(p.get("excerpt", {}).get("rendered", "")),
+        }
+        for p in posts
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Publiceren / verwijderen van individuele posts
 # ---------------------------------------------------------------------------
 
