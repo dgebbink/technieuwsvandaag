@@ -67,6 +67,7 @@ scraper.py → ai_processor.py → image_generator.py → wordpress_client.py �
 | `approval_server.py` | Flask approval server (incl. `/submit` dashboard endpoint) |
 | `adhoc_processor.py` | Verwerkt één URL direct naar WordPress post (dashboard flow) |
 | `approval_tokens.json` | Pending tokens — niet verwijderen |
+| `image_distribution.json` | Persistente teller voor beeld-persoonsvariatie; stuurt de verdeling naar `IMAGE_DISTRIBUTION_TARGETS` in `config.py` |
 | `posted_urls.txt` | Één URL per regel, voorkomt dubbele posts |
 | `sources.txt` | Één domein/URL per regel |
 

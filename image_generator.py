@@ -10,7 +10,13 @@ from typing import Optional
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
-from config import FAL_API_KEY, FAL_CREDIT_THRESHOLD, REQUEST_TIMEOUT
+from config import (
+    FAL_API_KEY,
+    FAL_CREDIT_THRESHOLD,
+    REQUEST_TIMEOUT,
+    IMAGE_DISTRIBUTION_FILE,
+    IMAGE_DISTRIBUTION_TARGETS,
+)
 from ai_processor import _call_claude
 
 logger = logging.getLogger(__name__)
@@ -28,50 +34,83 @@ def is_fal_balance_low() -> bool:
     return False
 
 
+def _load_distribution_state() -> dict:
+    """Lees de persistente tellerstand; bij ontbreken/corruptie een lege dict."""
+    try:
+        with open(IMAGE_DISTRIBUTION_FILE, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_distribution_state(state: dict) -> None:
+    """Schrijf de tellerstand weg; faalt stil met een waarschuwing."""
+    try:
+        with open(IMAGE_DISTRIBUTION_FILE, "w", encoding="utf-8") as fh:
+            json.dump(state, fh, indent=2, ensure_ascii=False)
+    except OSError as exc:
+        logger.warning("Kon beeldverdeling-state niet opslaan: %s", exc)
+
+
+def _pick_balanced(dimension: str, weights: dict, state: dict) -> str:
+    """Kies de optie die het meest achterloopt op zijn doelaandeel.
+
+    Pre:  weights is een niet-lege dict {optie: relatief_gewicht}
+    Post: de teller voor `dimension` in `state` is in-place opgehoogd voor de
+          gekozen optie; retourneert die optie. Bij gelijke achterstand wordt
+          willekeurig getrokken om systematische volgorde-bias te voorkomen.
+    """
+    counts = state.setdefault(dimension, {})
+    total = sum(counts.get(opt, 0) for opt in weights)
+    total_weight = sum(weights.values()) or 1
+
+    deficits = {}
+    for opt, weight in weights.items():
+        target_share = weight / total_weight
+        current_share = (counts.get(opt, 0) / total) if total else 0.0
+        deficits[opt] = target_share - current_share
+
+    best = max(deficits.values())
+    candidates = [opt for opt, d in deficits.items() if abs(d - best) < 1e-9]
+    chosen = random.choice(candidates)
+
+    counts[chosen] = counts.get(chosen, 0) + 1
+    return chosen
+
+
 def generate_person_variant() -> dict:
-    """Kies een willekeurige persoonsbeschrijving voor de beeldprompt.
+    """Kies een persoonsbeschrijving voor de beeldprompt via een persistente
+    teller, zodat de werkelijke verdeling per dimensie naar de doelen in
+    config.IMAGE_DISTRIBUTION_TARGETS convergeert in plaats van puur toeval.
 
     Post: dict met keys gender, ethnicity, body_type, age en hair_description
-          (hair_description is None tenzij gender "a woman" is).
+          (hair_description is None tenzij gender "a woman" is). De teller in
+          IMAGE_DISTRIBUTION_FILE is bijgewerkt voor de gekozen opties.
     """
-    gender = random.choices(
-        ["a woman", "a non-binary person", "a man"],
-        weights=[70, 15, 15],
-        k=1,
-    )[0]
+    state = _load_distribution_state()
+    targets = IMAGE_DISTRIBUTION_TARGETS
+
+    gender = _pick_balanced("gender", targets["gender"], state)
+    ethnicity = _pick_balanced("ethnicity", targets["ethnicity"], state)
+
+    # "Latina" is vrouwelijk gegenderd: forceer vrouw en corrigeer de teller
+    # zodat die de werkelijke output blijft weerspiegelen.
+    if ethnicity == "Latina" and gender != "a woman":
+        state["gender"][gender] -= 1
+        state["gender"]["a woman"] = state["gender"].get("a woman", 0) + 1
+        gender = "a woman"
+
+    body_type = _pick_balanced("body_type", targets["body_type"], state)
+
+    age_bucket = _pick_balanced("age_bucket", targets["age_bucket"], state)
+    low, high = (int(part) for part in age_bucket.split("-"))
+    age = random.randint(low, high)
 
     hair_description = None
     if gender == "a woman":
-        hair_description = random.choice([
-            "short pixie cut",
-            "long curly hair",
-            "braided hair",
-            "a sleek bob",
-            "natural afro hair",
-            "wavy shoulder-length hair",
-            "hair in an updo",
-        ])
+        hair_description = _pick_balanced("hair", targets["hair"], state)
 
-    body_type = random.choice([
-        "athletic build",
-        "curvy build",
-        "slender build",
-        "average build",
-        "tall and lean build",
-        "petite build",
-    ])
-
-    ethnicity = random.choice([
-        "Black",
-        "East Asian",
-        "South Asian",
-        "Latina",
-        "Middle Eastern",
-        "white",
-        "mixed-race",
-    ])
-
-    age = random.randint(18, 30)
+    _save_distribution_state(state)
 
     return {
         "gender": gender,

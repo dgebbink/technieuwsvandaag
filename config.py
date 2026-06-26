@@ -38,6 +38,51 @@ MAX_ARTICLES_FOR_SELECTION: int = 50
 
 # Afbeeldingsstrategie: 'generate' (FAL.ai) of 'scrape' (og:image van bron)
 IMAGE_STRATEGY: str = os.environ.get("IMAGE_STRATEGY", "generate")
+
+# Persistente teller voor de persoonsvariatie in beeldprompts.
+# Per run wordt per dimensie de categorie gekozen die het meest achterloopt op
+# zijn doelaandeel, zodat de werkelijke verdeling naar deze gewichten convergeert
+# (i.p.v. puur toeval, dat bij ~1 beeld/dag flink kan afdwalen).
+# Gewichten zijn relatief; alle gelijke gewichten = uniforme verdeling.
+IMAGE_DISTRIBUTION_FILE: Path = BASE_DIR / "image_distribution.json"
+IMAGE_DISTRIBUTION_TARGETS: dict = {
+    "gender": {
+        "a woman": 70,
+        "a non-binary person": 15,
+        "a man": 15,
+    },
+    "ethnicity": {
+        "Black": 1,
+        "East Asian": 1,
+        "South Asian": 1,
+        "Latina": 1,
+        "Middle Eastern": 1,
+        "white": 1,
+        "mixed-race": 1,
+    },
+    "body_type": {
+        "athletic build": 1,
+        "curvy build": 1,
+        "slender build": 1,
+        "average build": 1,
+        "tall and lean build": 1,
+        "petite build": 1,
+    },
+    "age_bucket": {
+        "18-22": 1,
+        "23-26": 1,
+        "27-30": 1,
+    },
+    "hair": {
+        "short pixie cut": 1,
+        "long curly hair": 1,
+        "braided hair": 1,
+        "a sleek bob": 1,
+        "natural afro hair": 1,
+        "wavy shoulder-length hair": 1,
+        "hair in an updo": 1,
+    },
+}
 FAL_API_KEY: str = os.environ.get("FAL_API_KEY", "")
 # Waarschuwingsdrempel voor FAL.ai tegoed (in dollars); 0 schakelt de check uit
 FAL_CREDIT_THRESHOLD: float = float(os.environ.get("FAL_CREDIT_THRESHOLD", "2.0"))

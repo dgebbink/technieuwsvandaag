@@ -8,3 +8,5 @@ venv/
 /tmp/
 posted_titles.txt
 posted_urls.txt
+image_distribution.json
+approval_tokens.json
