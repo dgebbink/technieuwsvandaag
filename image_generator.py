@@ -112,20 +112,35 @@ def generate_person_variant() -> dict:
 
     _save_distribution_state(state)
 
-    return {
+    variant = {
         "gender": gender,
         "ethnicity": ethnicity,
         "body_type": body_type,
         "age": age,
         "hair_description": hair_description,
     }
+    logger.info("Beeld-persoonsvariant gekozen: %s", describe_variant(variant))
+    return variant
 
 
-def generate_image_prompt(title: str, article_text: str) -> str:
+def describe_variant(variant: dict) -> str:
+    """Vat de gekozen persoonsvariant samen als leesbare regel (log + mail)."""
+    parts = [
+        variant["gender"],
+        variant["ethnicity"],
+        f"~{variant['age']} jr",
+        variant["body_type"],
+    ]
+    if variant.get("hair_description"):
+        parts.append(variant["hair_description"])
+    return " · ".join(parts)
+
+
+def generate_image_prompt(title: str, article_text: str) -> tuple[str, dict]:
     """Ask Claude for an image prompt.
 
     Pre:  claude CLI is available; title is non-empty
-    Post: returns prompt_text
+    Post: returns (prompt_text, gekozen persoonsvariant)
     """
     variant = generate_person_variant()
     hair_part = (
@@ -160,10 +175,10 @@ def generate_image_prompt(title: str, article_text: str) -> str:
     raw = _call_claude(instruction, timeout=60)
     try:
         data = json.loads(raw)
-        return data.get("prompt", raw)
+        return data.get("prompt", raw), variant
     except Exception:
         logger.warning("Claude returned non-JSON for image prompt, using raw text")
-        return raw
+        return raw, variant
 
 
 def fetch_brand_logo(brand_domain: str, dest_path: str) -> str | None:
@@ -333,18 +348,23 @@ def generate_image_for_article(
     article_text: str,
     dest_path: str,
     dry_run: bool = False,
+    variant_out: Optional[dict] = None,
 ) -> Optional[str]:
     """Generate an AI image for one article: prompt via Claude, image via FAL.ai.
 
     Pre:  title is non-empty; dest_path is writable
-    Post: returns dest_path on success, None on any failure or in dry-run
+    Post: returns dest_path on success, None on any failure or in dry-run.
+          Als variant_out is meegegeven, wordt die gevuld met de gekozen
+          persoonsvariant (gender/ethnicity/body_type/age/hair_description).
     """
     if dry_run:
         logger.info("[DRY RUN] Zou FAL.ai afbeelding genereren voor: %s", title)
         return None
     try:
         logger.info("Afbeeldingsprompt genereren via Claude voor: %s", title)
-        image_prompt = generate_image_prompt(title, article_text)
+        image_prompt, variant = generate_image_prompt(title, article_text)
+        if variant_out is not None:
+            variant_out.update(variant)
         logger.info("Gegenereerde prompt: %s", image_prompt)
 
         result = generate_fal_image(image_prompt, dest_path)

@@ -228,12 +228,15 @@ def main() -> int:
 
         for i, processed in enumerate(processed_articles):
             dest = str(_TMP_DIR / f"tnv_image_{i}.jpg")
+            variant: dict = {}
             processed.image_path = generate_image_for_article(
                 title=processed.titel,
                 article_text=processed.samenvatting,
                 dest_path=dest,
                 dry_run=args.dry_run,
+                variant_out=variant,
             )
+            processed.image_variant = variant or None
             if not processed.image_path:
                 logger.warning("FAL.ai afbeelding mislukt voor '%s' — doorgaan zonder", processed.titel)
     else:

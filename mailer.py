@@ -113,6 +113,15 @@ def _article_section(index: int, data: dict, buttons_html: str | None = None) ->
 
     post_link = post.get("link", post["preview_url"])
 
+    variant_row = ""
+    if article.image_variant:
+        from image_generator import describe_variant  # noqa: PLC0415
+        variant_row = f"""
+        <tr>
+          <td style="padding:6px 0; color:#888;">Beeld-variant</td>
+          <td style="padding:6px 0;">{describe_variant(article.image_variant)}</td>
+        </tr>"""
+
     return f"""
     <div style="border:1px solid #e0e0e0; border-radius:8px; padding:24px;
                 margin:20px 0; background:#ffffff;">
@@ -133,7 +142,7 @@ def _article_section(index: int, data: dict, buttons_html: str | None = None) ->
         <tr>
           <td style="padding:6px 0; color:#888;">Trefwoorden</td>
           <td style="padding:6px 0;">{article.trefwoorden}</td>
-        </tr>
+        </tr>{variant_row}
         <tr>
           <td style="padding:6px 0; color:#888;">Bron</td>
           <td style="padding:6px 0;">

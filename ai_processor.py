@@ -48,6 +48,8 @@ class ProcessedArticle:
     # Afbeelding-metadata (scrape-modus)
     image_caption: str = ""
     bron_image_url: str = ""
+    # Gekozen persoonsvariant voor de gegenereerde afbeelding (generate-modus)
+    image_variant: Optional[dict] = None
 
 
 # ---------------------------------------------------------------------------
