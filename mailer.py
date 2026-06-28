@@ -733,97 +733,77 @@ def render_bluesky_section(data: dict) -> str:
 
 
 def render_funds_section(data: dict) -> str:
-    """Renders FAL.ai budget/spend as an HTML block.
-    Pre:  data is output of collect_funds_report() (bevat geschatte uitgaven)
-    Post: self-contained HTML div met geschatte uitgaven (vandaag/maand/totaal)
-          en, indien een budget is ingesteld, het resterende tegoed (kleur-gecodeerd
-          met waarschuwing onder $1.00).
+    """Renders FAL.ai tegoed en werkelijke kosten als HTML-blok.
+    Pre:  data is output of collect_funds_report() (echte cijfers uit de FAL.ai API)
+    Post: self-contained HTML div met het actuele tegoed (kleur-gecodeerd, met
+          waarschuwing onder $1.00) en de werkelijke kosten van vandaag en deze maand.
     """
     dashboard = "https://fal.ai/dashboard/usage-billing/credits"
     fal = data.get("fal", {}) or {}
 
-    # Echt saldo (officiële billing-API met admin-key) prominent tonen indien beschikbaar.
-    real_balance_block = ""
-    if fal.get("success") and fal.get("available") is not None:
-        amount = fal["available"]
+    # Bij een fout: toon enkel een nette melding met dashboardlink.
+    if not fal.get("success"):
+        err = fal.get("error") or "FAL.ai billing-API niet beschikbaar"
+        return (
+            "<div style='background:#f9f9f9;padding:16px;border-radius:6px;"
+            "margin:20px 0;border:1px solid #e0e0e0'>"
+            "<h2 style='margin-top:0;font-size:16px;text-transform:uppercase;"
+            "letter-spacing:0.5px'>🎨 FAL.ai tegoed &amp; kosten</h2>"
+            f"<p style='color:#999;margin:0'>{err} &mdash; "
+            f"<a href='{dashboard}' style='color:#1a73e8'>controleer in dashboard →</a></p>"
+            "</div>"
+        )
+
+    # Actueel tegoed prominent (kleur-gecodeerd).
+    balance_block = ""
+    amount = fal.get("available")
+    if amount is not None:
         color = "#28a745" if amount > 5.00 else "#ffc107" if amount > 1.00 else "#dc3545"
         warn = "&nbsp;⚠️ <b>Tegoed bijna op!</b>" if amount < 1.00 else ""
-        real_balance_block = (
+        balance_block = (
             "<table style='width:100%;border-collapse:collapse;margin-bottom:12px'>"
             "<tr style='background:#1A1A1A'>"
             "<th style='text-align:left;padding:8px;color:#fff;font-size:11px;"
-            "text-transform:uppercase;letter-spacing:0.8px'>Actueel tegoed (FAL.ai)</th></tr>"
-            "<tr><td style='padding:10px 8px;color:" + color + ";font-size:18px;"
+            "text-transform:uppercase;letter-spacing:0.8px'>Actueel tegoed</th></tr>"
+            f"<tr><td style='padding:10px 8px;color:{color};font-size:18px;"
             f"font-weight:700'>${amount:.2f} USD{warn}</td></tr>"
             "</table>"
         )
 
-    def money_row(label: str, amount: float, count: int) -> str:
-        beelden = f"{count} beeld{'en' if count != 1 else ''}"
+    def cost_row(label: str, value) -> str:
+        amount_str = f"${value:.2f} USD" if value is not None else "—"
         return (
             "<tr style='border-bottom:1px solid #e0e0e0'>"
             f"<td style='padding:8px'>{label}</td>"
-            f"<td style='padding:8px;font-weight:700'>${amount:.2f} USD</td>"
-            f"<td style='padding:8px;color:#888'>{beelden}</td></tr>"
+            f"<td style='padding:8px;font-weight:700'>{amount_str}</td></tr>"
         )
 
     rows = (
-        money_row("Vandaag", fal.get("today_cost", 0.0), fal.get("today_count", 0))
-        + money_row("Deze maand", fal.get("month_cost", 0.0), fal.get("month_count", 0))
-        + money_row("Totaal", fal.get("total_cost", 0.0), fal.get("total_count", 0))
+        cost_row("Vandaag", fal.get("today_cost"))
+        + cost_row("Deze maand", fal.get("month_cost"))
     )
 
-    # Resterend tegoed alleen tonen als er een budget is ingesteld.
-    remaining_block = ""
-    remaining = fal.get("remaining")
-    budget = fal.get("budget")
-    if remaining is not None and budget:
-        color = "#28a745" if remaining > 5.00 else "#ffc107" if remaining > 1.00 else "#dc3545"
-        warn = "&nbsp;⚠️ <b>Budget bijna op!</b>" if remaining < 1.00 else ""
-        remaining_block = (
-            "<table style='width:100%;border-collapse:collapse;margin-top:6px'>"
-            "<tr style='border-top:2px solid #1A1A1A'>"
-            "<td style='padding:10px 8px'><b>Resterend budget</b></td>"
-            f"<td style='padding:10px 8px;color:{color};font-size:16px;font-weight:700'>"
-            f"${remaining:.2f} van ${budget:.2f} USD{warn}</td></tr>"
-            "</table>"
-        )
-
-    cost_per = fal.get("cost_per_image", 0.0)
-    if fal.get("success"):
-        note = (
-            "<p style='margin:10px 0 0;font-size:11px;color:#999'>"
-            "Actueel tegoed via de FAL.ai billing-API; uitgaven hieronder zijn "
-            f"geschat (~${cost_per:.3f} per beeld). "
-            f"<a href='{dashboard}' style='color:#1a73e8'>Open dashboard →</a>"
-            "</p>"
-        )
-    else:
-        err = fal.get("error") or "billing-API niet beschikbaar"
-        note = (
-            "<p style='margin:10px 0 0;font-size:11px;color:#999'>"
-            f"Geschat o.b.v. ~${cost_per:.3f} per beeld — {err}. "
-            f"<a href='{dashboard}' style='color:#1a73e8'>Bekijk werkelijk tegoed →</a>"
-            "</p>"
-        )
+    note = (
+        "<p style='margin:10px 0 0;font-size:11px;color:#999'>"
+        "Actueel tegoed en werkelijke kosten via de FAL.ai billing/usage-API. "
+        f"<a href='{dashboard}' style='color:#1a73e8'>Open dashboard →</a>"
+        "</p>"
+    )
 
     return (
         "<div style='background:#f9f9f9;padding:16px;border-radius:6px;"
         "margin:20px 0;border:1px solid #e0e0e0'>"
         "<h2 style='margin-top:0;font-size:16px;text-transform:uppercase;"
-        "letter-spacing:0.5px'>🎨 FAL.ai tegoed &amp; uitgaven</h2>"
-        f"{real_balance_block}"
+        "letter-spacing:0.5px'>🎨 FAL.ai tegoed &amp; kosten</h2>"
+        f"{balance_block}"
         "<table style='width:100%;border-collapse:collapse'>"
         "<tr style='background:#1A1A1A'>"
         "<th style='text-align:left;padding:8px;color:#fff;font-size:11px;"
-        "text-transform:uppercase;letter-spacing:0.8px;width:33%'>Periode (geschat)</th>"
+        "text-transform:uppercase;letter-spacing:0.8px;width:50%'>Periode</th>"
         "<th style='text-align:left;padding:8px;color:#fff;font-size:11px;"
-        "text-transform:uppercase;letter-spacing:0.8px'>Kosten</th>"
-        "<th style='text-align:left;padding:8px;color:#fff;font-size:11px;"
-        "text-transform:uppercase;letter-spacing:0.8px'>Aantal</th></tr>"
+        "text-transform:uppercase;letter-spacing:0.8px'>Werkelijke kosten</th></tr>"
         f"{rows}"
         "</table>"
-        f"{remaining_block}"
         f"{note}"
         "</div>"
     )

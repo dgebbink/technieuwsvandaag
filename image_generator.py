@@ -367,15 +367,6 @@ def generate_fal_image(prompt: str, dest_path: str) -> Optional[str]:
             f.write(img_resp.content)
 
         logger.info("FAL.ai afbeelding gegenereerd en opgeslagen: %s", dest_path)
-
-        # FAL.ai heeft geen publieke billing-API; boek de geschatte kosten lokaal
-        # zodat het dagoverzicht de uitgaven kan tonen.
-        try:
-            from fal_usage import record_generation  # noqa: PLC0415
-            record_generation()
-        except Exception as exc:  # nooit de generatie laten falen op boekhouding
-            logger.warning("FAL-uitgave boeken mislukt: %s", exc)
-
         return dest_path
 
     except Exception as exc:
