@@ -16,6 +16,7 @@ from config import (
     REQUEST_TIMEOUT,
     IMAGE_DISTRIBUTION_FILE,
     IMAGE_DISTRIBUTION_TARGETS,
+    IMAGE_MENTION_ETHNICITY_PROBABILITY,
 )
 from ai_processor import _call_claude
 
@@ -83,9 +84,13 @@ def generate_person_variant() -> dict:
     teller, zodat de werkelijke verdeling per dimensie naar de doelen in
     config.IMAGE_DISTRIBUTION_TARGETS convergeert in plaats van puur toeval.
 
-    Post: dict met keys gender, ethnicity, body_type, age en hair_description
-          (hair_description is None tenzij gender "a woman" is). De teller in
-          IMAGE_DISTRIBUTION_FILE is bijgewerkt voor de gekozen opties.
+    Post: dict met keys gender, ethnicity, age, scene_population en
+          mention_ethnicity. De teller in IMAGE_DISTRIBUTION_FILE is bijgewerkt
+          voor de via convergentie gekozen dimensies (gender, ethnicity,
+          age_bucket, scene_population). mention_ethnicity is een losse random
+          toggle (geen convergentie-tracking) die alleen bepaalt of de
+          ethniciteit wordt benoemd in de solo-template; alle dimensies worden
+          onafhankelijk van elkaar getrokken.
     """
     state = _load_distribution_state()
     targets = IMAGE_DISTRIBUTION_TARGETS
@@ -93,31 +98,25 @@ def generate_person_variant() -> dict:
     gender = _pick_balanced("gender", targets["gender"], state)
     ethnicity = _pick_balanced("ethnicity", targets["ethnicity"], state)
 
-    # "Latina" is vrouwelijk gegenderd: forceer vrouw en corrigeer de teller
-    # zodat die de werkelijke output blijft weerspiegelen.
-    if ethnicity == "Latina" and gender != "a woman":
-        state["gender"][gender] -= 1
-        state["gender"]["a woman"] = state["gender"].get("a woman", 0) + 1
-        gender = "a woman"
-
-    body_type = _pick_balanced("body_type", targets["body_type"], state)
-
     age_bucket = _pick_balanced("age_bucket", targets["age_bucket"], state)
     low, high = (int(part) for part in age_bucket.split("-"))
     age = random.randint(low, high)
 
-    hair_description = None
-    if gender == "a woman":
-        hair_description = _pick_balanced("hair", targets["hair"], state)
+    scene_population = _pick_balanced(
+        "scene_population", targets["scene_population"], state
+    )
 
     _save_distribution_state(state)
+
+    # Losse, onafhankelijke toggle — niet meegenomen in de convergentie-tracking.
+    mention_ethnicity = random.random() < IMAGE_MENTION_ETHNICITY_PROBABILITY
 
     variant = {
         "gender": gender,
         "ethnicity": ethnicity,
-        "body_type": body_type,
         "age": age,
-        "hair_description": hair_description,
+        "scene_population": scene_population,
+        "mention_ethnicity": mention_ethnicity,
     }
     logger.info("Beeld-persoonsvariant gekozen: %s", describe_variant(variant))
     return variant
@@ -125,15 +124,58 @@ def generate_person_variant() -> dict:
 
 def describe_variant(variant: dict) -> str:
     """Vat de gekozen persoonsvariant samen als leesbare regel (log + mail)."""
-    parts = [
-        variant["gender"],
-        variant["ethnicity"],
-        f"~{variant['age']} jr",
-        variant["body_type"],
-    ]
-    if variant.get("hair_description"):
-        parts.append(variant["hair_description"])
+    parts = [variant["gender"]]
+    # Toon de ethniciteit alleen als die ook daadwerkelijk in de prompt komt.
+    if variant.get("scene_population") == "solo" and variant.get("mention_ethnicity"):
+        parts.append(variant["ethnicity"])
+    parts.append(f"~{variant['age']} jr")
+    parts.append(variant.get("scene_population", "solo"))
     return " · ".join(parts)
+
+
+# Vier person-instructie templates, gekozen op basis van scene_population en
+# (bij solo) de losse mention_ethnicity toggle.
+_PERSON_TEMPLATE_SOLO_WITH_ETHNICITY = (
+    "If a person appears in the scene, show {gender}, {ethnicity}, around {age} "
+    "years old. Style them as a confident, professional individual with a "
+    "natural, genuine expression, natural skin texture, and realistic "
+    "proportions."
+)
+_PERSON_TEMPLATE_SOLO_NO_ETHNICITY = (
+    "If a person appears in the scene, show {gender}, around {age} years old. "
+    "Style them as a confident, professional individual with a natural, genuine "
+    "expression, natural skin texture, and realistic proportions."
+)
+_PERSON_TEMPLATE_GROUP = (
+    "Show a small group of colleagues naturally collaborating in the scene "
+    "(2-4 people), with a realistic mix of genders and backgrounds. Make sure "
+    "at least one person in the group could plausibly be {gender}, around {age} "
+    "years old. Do not focus the image on any single person's appearance or "
+    "describe individual demographic traits; keep the emphasis on the activity "
+    "and setting, with natural skin texture and realistic proportions "
+    "throughout."
+)
+
+
+def build_person_instruction(variant: dict) -> str:
+    """Bouw de person-instructie uit de gekozen variant.
+
+    GROUP benoemt nooit ethniciteit (los van mention_ethnicity). SOLO benoemt de
+    ethniciteit alleen als mention_ethnicity true is.
+    """
+    if variant.get("scene_population") == "group":
+        return _PERSON_TEMPLATE_GROUP.format(
+            gender=variant["gender"], age=variant["age"]
+        )
+    if variant.get("mention_ethnicity"):
+        return _PERSON_TEMPLATE_SOLO_WITH_ETHNICITY.format(
+            gender=variant["gender"],
+            ethnicity=variant["ethnicity"],
+            age=variant["age"],
+        )
+    return _PERSON_TEMPLATE_SOLO_NO_ETHNICITY.format(
+        gender=variant["gender"], age=variant["age"]
+    )
 
 
 def generate_image_prompt(title: str, article_text: str) -> tuple[str, dict]:
@@ -143,30 +185,19 @@ def generate_image_prompt(title: str, article_text: str) -> tuple[str, dict]:
     Post: returns (prompt_text, gekozen persoonsvariant)
     """
     variant = generate_person_variant()
-    hair_part = (
-        ", " + variant["hair_description"] if variant["hair_description"] else ""
-    )
-    person_instruction = (
-        "If a person appears in the scene, show {gender}, {ethnicity}, around "
-        "{age} years old, with {body_type}{hair_part}, in an active, central "
-        "role. Use natural skin texture and realistic proportions."
-    ).format(
-        gender=variant["gender"],
-        ethnicity=variant["ethnicity"],
-        age=variant["age"],
-        body_type=variant["body_type"],
-        hair_part=hair_part,
-    )
+    person_instruction = build_person_instruction(variant)
 
     instruction = (
         "Return a single JSON field:\n"
         "\"prompt\": A 2-sentence English prompt for a photorealistic AI image "
         "matching this tech news article. Use bright, warm lighting and an optimistic "
-        "mood. Avoid dark backgrounds. Choose light, modern environments: daylit "
-        "offices, crisp interfaces, futuristic but accessible settings. "
-        "Convey the brand identity through the color palette, product design, "
-        "materials, or the associated scene, without including any text, logos, "
-        "or lettering. "
+        "mood. Avoid dark backgrounds. Choose light, modern, realistic environments "
+        "such as daylit offices, meeting rooms, or labs with crisp interfaces. "
+        "Convey the brand identity through color palette, product design, "
+        "materials, or scene context, without including any text, logos, "
+        "or lettering. Note: if the article refers to AI or language 'models', "
+        "this means LLM/AI models, not fashion or photo models — do not let this "
+        "influence how any people in the image are styled. "
         f"{person_instruction}\n\n"
         f"Article title: {title}\n"
         f"Article text:\n{article_text[:1000]}\n\n"
@@ -355,7 +386,7 @@ def generate_image_for_article(
     Pre:  title is non-empty; dest_path is writable
     Post: returns dest_path on success, None on any failure or in dry-run.
           Als variant_out is meegegeven, wordt die gevuld met de gekozen
-          persoonsvariant (gender/ethnicity/body_type/age/hair_description).
+          persoonsvariant (gender/ethnicity/age).
     """
     if dry_run:
         logger.info("[DRY RUN] Zou FAL.ai afbeelding genereren voor: %s", title)

@@ -55,34 +55,23 @@ IMAGE_DISTRIBUTION_TARGETS: dict = {
         "Black": 1,
         "East Asian": 1,
         "South Asian": 1,
-        "Latina": 1,
         "Middle Eastern": 1,
         "white": 1,
         "mixed-race": 1,
-    },
-    "body_type": {
-        "athletic build": 1,
-        "curvy build": 1,
-        "slender build": 1,
-        "average build": 1,
-        "tall and lean build": 1,
-        "petite build": 1,
     },
     "age_bucket": {
         "18-22": 1,
         "23-26": 1,
         "27-30": 1,
     },
-    "hair": {
-        "short pixie cut": 1,
-        "long curly hair": 1,
-        "braided hair": 1,
-        "a sleek bob": 1,
-        "natural afro hair": 1,
-        "wavy shoulder-length hair": 1,
-        "hair in an updo": 1,
+    "scene_population": {
+        "group": 60,
+        "solo": 40,
     },
 }
+# Onafhankelijke random toggle (geen convergentie-tracking): kans dat de
+# ethniciteit expliciet in de solo person-instructie wordt benoemd.
+IMAGE_MENTION_ETHNICITY_PROBABILITY: float = 0.30
 FAL_API_KEY: str = os.environ.get("FAL_API_KEY", "")
 # Waarschuwingsdrempel voor FAL.ai tegoed (in dollars); 0 schakelt de check uit
 FAL_CREDIT_THRESHOLD: float = float(os.environ.get("FAL_CREDIT_THRESHOLD", "2.0"))
