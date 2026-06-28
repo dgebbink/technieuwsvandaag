@@ -733,46 +733,97 @@ def render_bluesky_section(data: dict) -> str:
 
 
 def render_funds_section(data: dict) -> str:
-    """Renders available API fund balances as HTML block.
-    Pre:  data is output of collect_funds_report()
-    Post: self-contained HTML div with colour-coded balances;
-          red warning shown when balance drops below $1.00
+    """Renders FAL.ai budget/spend as an HTML block.
+    Pre:  data is output of collect_funds_report() (bevat geschatte uitgaven)
+    Post: self-contained HTML div met geschatte uitgaven (vandaag/maand/totaal)
+          en, indien een budget is ingesteld, het resterende tegoed (kleur-gecodeerd
+          met waarschuwing onder $1.00).
     """
-    def row(name: str, d: dict, icon: str, link: str) -> str:
-        if not d.get("success") or d.get("available") is None:
-            return (
-                "<tr style='border-bottom:1px solid #e0e0e0'>"
-                f"<td style='padding:10px 8px'>{icon} <b>{name}</b></td>"
-                "<td style='padding:10px 8px;color:#999'>"
-                f"Niet beschikbaar &mdash; "
-                f"<a href='{link}' style='color:#CC0000'>controleer handmatig</a>"
-                "</td></tr>"
-            )
-        amount = d["available"]
-        color  = "#28a745" if amount > 5.00 else "#ffc107" if amount > 1.00 else "#dc3545"
-        warn   = "&nbsp;⚠️ <b>Tegoed bijna op!</b>" if amount < 1.00 else ""
-        return (
-            "<tr style='border-bottom:1px solid #e0e0e0'>"
-            f"<td style='padding:10px 8px'>{icon} <b>{name}</b></td>"
-            f"<td style='padding:10px 8px;color:{color};font-size:16px;font-weight:700'>"
-            f"${amount:.2f} USD{warn}</td></tr>"
+    dashboard = "https://fal.ai/dashboard/usage-billing/credits"
+    fal = data.get("fal", {}) or {}
+
+    # Echt saldo (officiële billing-API met admin-key) prominent tonen indien beschikbaar.
+    real_balance_block = ""
+    if fal.get("success") and fal.get("available") is not None:
+        amount = fal["available"]
+        color = "#28a745" if amount > 5.00 else "#ffc107" if amount > 1.00 else "#dc3545"
+        warn = "&nbsp;⚠️ <b>Tegoed bijna op!</b>" if amount < 1.00 else ""
+        real_balance_block = (
+            "<table style='width:100%;border-collapse:collapse;margin-bottom:12px'>"
+            "<tr style='background:#1A1A1A'>"
+            "<th style='text-align:left;padding:8px;color:#fff;font-size:11px;"
+            "text-transform:uppercase;letter-spacing:0.8px'>Actueel tegoed (FAL.ai)</th></tr>"
+            "<tr><td style='padding:10px 8px;color:" + color + ";font-size:18px;"
+            f"font-weight:700'>${amount:.2f} USD{warn}</td></tr>"
+            "</table>"
         )
 
-    fal_row = row(
-        "FAL.ai (beeldgeneratie)", data["fal"], "🎨",
-        "https://fal.ai/dashboard/usage-billing/credits",
+    def money_row(label: str, amount: float, count: int) -> str:
+        beelden = f"{count} beeld{'en' if count != 1 else ''}"
+        return (
+            "<tr style='border-bottom:1px solid #e0e0e0'>"
+            f"<td style='padding:8px'>{label}</td>"
+            f"<td style='padding:8px;font-weight:700'>${amount:.2f} USD</td>"
+            f"<td style='padding:8px;color:#888'>{beelden}</td></tr>"
+        )
+
+    rows = (
+        money_row("Vandaag", fal.get("today_cost", 0.0), fal.get("today_count", 0))
+        + money_row("Deze maand", fal.get("month_cost", 0.0), fal.get("month_count", 0))
+        + money_row("Totaal", fal.get("total_cost", 0.0), fal.get("total_count", 0))
     )
+
+    # Resterend tegoed alleen tonen als er een budget is ingesteld.
+    remaining_block = ""
+    remaining = fal.get("remaining")
+    budget = fal.get("budget")
+    if remaining is not None and budget:
+        color = "#28a745" if remaining > 5.00 else "#ffc107" if remaining > 1.00 else "#dc3545"
+        warn = "&nbsp;⚠️ <b>Budget bijna op!</b>" if remaining < 1.00 else ""
+        remaining_block = (
+            "<table style='width:100%;border-collapse:collapse;margin-top:6px'>"
+            "<tr style='border-top:2px solid #1A1A1A'>"
+            "<td style='padding:10px 8px'><b>Resterend budget</b></td>"
+            f"<td style='padding:10px 8px;color:{color};font-size:16px;font-weight:700'>"
+            f"${remaining:.2f} van ${budget:.2f} USD{warn}</td></tr>"
+            "</table>"
+        )
+
+    cost_per = fal.get("cost_per_image", 0.0)
+    if fal.get("success"):
+        note = (
+            "<p style='margin:10px 0 0;font-size:11px;color:#999'>"
+            "Actueel tegoed via de FAL.ai billing-API; uitgaven hieronder zijn "
+            f"geschat (~${cost_per:.3f} per beeld). "
+            f"<a href='{dashboard}' style='color:#1a73e8'>Open dashboard →</a>"
+            "</p>"
+        )
+    else:
+        err = fal.get("error") or "billing-API niet beschikbaar"
+        note = (
+            "<p style='margin:10px 0 0;font-size:11px;color:#999'>"
+            f"Geschat o.b.v. ~${cost_per:.3f} per beeld — {err}. "
+            f"<a href='{dashboard}' style='color:#1a73e8'>Bekijk werkelijk tegoed →</a>"
+            "</p>"
+        )
+
     return (
         "<div style='background:#f9f9f9;padding:16px;border-radius:6px;"
         "margin:20px 0;border:1px solid #e0e0e0'>"
         "<h2 style='margin-top:0;font-size:16px;text-transform:uppercase;"
-        "letter-spacing:0.5px'>💳 Beschikbaar tegoed</h2>"
+        "letter-spacing:0.5px'>🎨 FAL.ai tegoed &amp; uitgaven</h2>"
+        f"{real_balance_block}"
         "<table style='width:100%;border-collapse:collapse'>"
         "<tr style='background:#1A1A1A'>"
         "<th style='text-align:left;padding:8px;color:#fff;font-size:11px;"
-        "text-transform:uppercase;letter-spacing:0.8px;width:50%'>Service</th>"
+        "text-transform:uppercase;letter-spacing:0.8px;width:33%'>Periode (geschat)</th>"
         "<th style='text-align:left;padding:8px;color:#fff;font-size:11px;"
-        "text-transform:uppercase;letter-spacing:0.8px'>Tegoed</th></tr>"
-        f"{fal_row}"
-        "</table></div>"
+        "text-transform:uppercase;letter-spacing:0.8px'>Kosten</th>"
+        "<th style='text-align:left;padding:8px;color:#fff;font-size:11px;"
+        "text-transform:uppercase;letter-spacing:0.8px'>Aantal</th></tr>"
+        f"{rows}"
+        "</table>"
+        f"{remaining_block}"
+        f"{note}"
+        "</div>"
     )

@@ -73,8 +73,21 @@ IMAGE_DISTRIBUTION_TARGETS: dict = {
 # ethniciteit expliciet in de solo person-instructie wordt benoemd.
 IMAGE_MENTION_ETHNICITY_PROBABILITY: float = 0.30
 FAL_API_KEY: str = os.environ.get("FAL_API_KEY", "")
+# Admin-scoped FAL.ai key voor het billing-endpoint (api.fal.ai/v1/account/billing).
+# De gewone FAL_API_KEY (API-scope) mag dit endpoint niet (403). Aanmaken via
+# https://fal.ai/dashboard/keys met scope "ADMIN". Leeg = val terug op schatting.
+FAL_ADMIN_API_KEY: str = os.environ.get("FAL_ADMIN_API_KEY", "")
 # Waarschuwingsdrempel voor FAL.ai tegoed (in dollars); 0 schakelt de check uit
 FAL_CREDIT_THRESHOLD: float = float(os.environ.get("FAL_CREDIT_THRESHOLD", "2.0"))
+
+# FAL.ai heeft geen publieke billing-API, dus houden we de uitgaven zelf bij.
+# Geschatte kosten per gegenereerd beeld (flux/dev ≈ $0.025/megapixel; een
+# landscape_16_9 beeld kost grofweg ~$0.025). Aanpasbaar via .env.
+FAL_USAGE_FILE: Path = BASE_DIR / "fal_usage.json"
+FAL_COST_PER_IMAGE: float = float(os.environ.get("FAL_COST_PER_IMAGE", "0.025"))
+# Voorgeschoten/maandelijks FAL.ai-budget in dollars; 0 = onbekend (dan wordt
+# alleen de geschatte uitgave getoond, geen resterend tegoed).
+FAL_BUDGET_USD: float = float(os.environ.get("FAL_BUDGET_USD", "0"))
 
 # Social media
 ENABLE_SOCIAL_POSTING: bool = os.environ.get("ENABLE_SOCIAL_POSTING", "false").lower() == "true"

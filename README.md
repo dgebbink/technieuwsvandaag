@@ -189,6 +189,9 @@ dutchcowboys.nl|https://www.dutchcowboys.nl/sitemap/news.xml
 | `BLUESKY_HANDLE` | Je Bluesky handle (bijv. `technieuwsvandaag.bsky.social`) | — |
 | `BLUESKY_APP_PASSWORD` | Bluesky App Password (Instellingen → App Passwords) | — |
 | `FAL_CREDIT_THRESHOLD` | Stuur waarschuwingsmail als FAL.ai tegoed onder dit bedrag (USD) valt; `0` schakelt uit | `2.0` |
+| `FAL_ADMIN_API_KEY` | **ADMIN**-scoped FAL.ai key voor het officiële billing-endpoint (`api.fal.ai/v1/account/billing`); toont het werkelijke tegoed in het dagoverzicht. Aanmaken via [fal.ai/dashboard/keys](https://fal.ai/dashboard/keys) met scope ADMIN. Leeg = val terug op de schatting | — |
+| `FAL_COST_PER_IMAGE` | Geschatte kosten per gegenereerd FAL.ai-beeld (USD); fallback-uitgaventeller wanneer geen admin-key is gezet | `0.025` |
+| `FAL_BUDGET_USD` | Voorgeschoten/maandelijks FAL.ai-budget (USD); toont resterend tegoed o.b.v. de schatting. `0` = onbekend (alleen uitgaven tonen) | `0` |
 
 ---
 
