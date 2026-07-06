@@ -148,13 +148,20 @@ _PERSON_TEMPLATE_SOLO_NO_ETHNICITY = (
 )
 _PERSON_TEMPLATE_GROUP = (
     "Show a small group of colleagues naturally collaborating in the scene "
-    "(2-4 people), with a realistic mix of genders and backgrounds. Make sure "
-    "at least one person in the group could plausibly be {gender}, around {age} "
-    "years old. Do not focus the image on any single person's appearance or "
-    "describe individual demographic traits; keep the emphasis on the activity "
-    "and setting, with natural skin texture and realistic proportions "
-    "throughout."
+    "(2-4 people). The group consists predominantly of {gender_plural} around "
+    "{age} years old, with some natural variety in ethnicity and background. "
+    "Do not focus the image on any single person's appearance or describe "
+    "individual demographic traits; keep the emphasis on the activity and "
+    "setting, with natural skin texture and realistic proportions throughout."
 )
+
+# Meervoudsvorm van de gekozen sekse voor de group-template, zodat de groep
+# overwegend uit die sekse bestaat (i.p.v. de default male-mix van het model).
+_GENDER_PLURAL = {
+    "a woman": "women",
+    "a man": "men",
+    "a non-binary person": "non-binary people",
+}
 
 
 def build_person_instruction(variant: dict) -> str:
@@ -164,8 +171,9 @@ def build_person_instruction(variant: dict) -> str:
     ethniciteit alleen als mention_ethnicity true is.
     """
     if variant.get("scene_population") == "group":
+        gender_plural = _GENDER_PLURAL.get(variant["gender"], "people")
         return _PERSON_TEMPLATE_GROUP.format(
-            gender=variant["gender"], age=variant["age"]
+            gender_plural=gender_plural, age=variant["age"]
         )
     if variant.get("mention_ethnicity"):
         return _PERSON_TEMPLATE_SOLO_WITH_ETHNICITY.format(
