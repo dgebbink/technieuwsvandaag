@@ -2,27 +2,68 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ Kernregels
+
+1. **`scheduler.py` overschrijft de VOLLEDIGE user-crontab** elke nacht om 00:00
+   (`crontab -` met een template in `build_crontab()`). Handmatig toegevoegde
+   cron-regels verdwijnen dus binnen 24 uur — nieuwe vaste jobs moeten in de
+   template in `scheduler.py`.
+2. **De snake-`@reboot`-regel leeft in die template** (`scheduler.py:87`) — het
+   snake-project draait alleen doordat dít project z'n crontab genereert. Niet
+   verwijderen zonder snake elders te regelen.
+3. **Gebruik altijd `venv/bin/python3`** (let op: `venv/`, niet `.venv/` zoals de
+   andere projecten) — system Python is pyenv-managed.
+
 ## Commands
 
 ```bash
 # Installeer dependencies
-pip install -r requirements.txt
+venv/bin/pip install -r requirements.txt
 
 # Volledige uitvoering (scant bronnen, AI-verwerking, WordPress draft, mail)
-python main.py
+venv/bin/python3 main.py
 
 # Simulatie zonder externe writes
-python main.py --dry-run
+venv/bin/python3 main.py --dry-run
 
 # Test één bron
-python main.py --test-source techcrunch.com --dry-run
+venv/bin/python3 main.py --test-source techcrunch.com --dry-run
 
 # Approval server handmatig starten (normaal via supervisord)
-python approval_server.py
+venv/bin/python3 approval_server.py
 
 # Individuele modules testen in een Python REPL
-python -c "from scraper import scrape_all_sources; arts = scrape_all_sources('theverge.com'); print(len(arts))"
+venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_sources('theverge.com'); print(len(arts))"
 ```
+
+## Scheduling & services (workstation)
+
+- **Cron (user)**: 00:00 `scheduler.py` regenereert het schema → 5× `main.py` op
+  random tijden (07:00–19:00 CET, min. 90 min tussenruimte), 00:00 `log_cleaner.py`,
+  18:00 UTC `daily_digest.py` (gecombineerd dagoverzicht: artikelen + Bluesky +
+  FAL.ai-tegoed via `bluesky_monitor.py` + `budget_monitor.py`).
+- **Approval server**: system-supervisord service `tnv-approval-server`
+  (`/etc/supervisor/conf.d/user/tnv-approval-server.conf`); `supervisorctl` vereist
+  sudo. `APPROVAL_BASE_URL` staat op een LAN-adres — de knoppen in de mail werken
+  alleen op LAN/VPN.
+- **Op oracle-web**: cron 06:00+18:00 draait `nginx_stats.py` → JSON-cache voor de
+  analytics-pagina.
+
+## Hulpscripts (handmatig)
+
+- `backfill.py` — vult de site geantidateerd met historische artikelen
+- `publish_pages.py` — publiceert/updatet WP-pagina's vanuit `assets/`
+- `adhoc_processor.py` — één URL → WP-draft (gebruikt door approval-server dashboard)
+- `update_bluesky_profile.py` — eenmalig Bluesky-profiel bijwerken
+
+## Legacy / niet actief (niet op vertrouwen)
+
+- `daily_report.py` — vervangen door `daily_digest.py` (docstring noemt een
+  19:00-slot dat niet meer bestaat)
+- `tnv-telegram-bot.service` — verwijst naar `telegram_bot.py` dat **niet bestaat**;
+  nergens geïnstalleerd (workstation-container heeft geen systemd)
+- `service_watchdog.sh` / `ssl_watchdog.sh` — staan in geen enkele crontab
+  (workstation noch oracle-web); draaien dus niet
 
 ## Architecture
 
