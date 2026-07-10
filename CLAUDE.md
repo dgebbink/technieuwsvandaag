@@ -46,8 +46,14 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
   (`/etc/supervisor/conf.d/user/tnv-approval-server.conf`); `supervisorctl` vereist
   sudo. `APPROVAL_BASE_URL` staat op een LAN-adres — de knoppen in de mail werken
   alleen op LAN/VPN.
-- **Op oracle-web**: cron 06:00+18:00 draait `nginx_stats.py` → JSON-cache voor de
-  analytics-pagina.
+- **Service watchdog**: `service_watchdog.sh` elke 5 min via cron (in de
+  scheduler-template) — herstart gestopte supervisor-services, herstelt
+  log-permissies, meldt via Telegram (credentials uit `.env`).
+- **Op oracle-web**: cron (ubuntu) 06:00+18:00 draait `nginx_stats.py` → JSON-cache
+  voor de analytics-pagina; root-cron 05:15 UTC draait
+  `/usr/local/bin/ssl_watchdog.sh` (kopie van `ssl_watchdog.sh` hier) — controleert
+  en vernieuwt SSL-certs, herstelt nginx-config, meldt via Telegram (env:
+  `/root/ssl_watchdog.env`).
 
 ## Hulpscripts (handmatig)
 
@@ -56,14 +62,12 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
 - `adhoc_processor.py` — één URL → WP-draft (gebruikt door approval-server dashboard)
 - `update_bluesky_profile.py` — eenmalig Bluesky-profiel bijwerken
 
-## Legacy / niet actief (niet op vertrouwen)
+## Opgeruimd (2026-07-10)
 
-- `daily_report.py` — vervangen door `daily_digest.py` (docstring noemt een
-  19:00-slot dat niet meer bestaat)
-- `tnv-telegram-bot.service` — verwijst naar `telegram_bot.py` dat **niet bestaat**;
-  nergens geïnstalleerd (workstation-container heeft geen systemd)
-- `service_watchdog.sh` / `ssl_watchdog.sh` — staan in geen enkele crontab
-  (workstation noch oracle-web); draaien dus niet
+`daily_report.py` (vervangen door `daily_digest.py`) en `tnv-telegram-bot.service`
+(de bijbehorende `telegram_bot.py` was al verwijderd in commit a101266) zijn
+verwijderd. De watchdog-scripts zijn sindsdien wél actief — zie Scheduling &
+services.
 
 ## Architecture
 

@@ -3,9 +3,16 @@
 # Draait elke 5 minuten via cron.
 set -euo pipefail
 
-LOGS_DIR="/home/dgebbink/projects/technieuwsvandaag/logs"
+PROJECT_DIR="/home/dgebbink/projects/technieuwsvandaag"
+LOGS_DIR="${PROJECT_DIR}/logs"
 LOG_OWNER="dgebbink"
-SERVICES=("tnv-telegram-bot" "tnv-approval-server")
+SERVICES=("tnv-approval-server")
+
+# Laad Telegram-credentials uit project-.env (cron heeft geen environment)
+if [[ -f "${PROJECT_DIR}/.env" ]]; then
+    TELEGRAM_BOT_TOKEN=$(grep -oP '^TELEGRAM_BOT_TOKEN=\K.*' "${PROJECT_DIR}/.env" || true)
+    TELEGRAM_CHAT_ID=$(grep -oP '^TELEGRAM_ALLOWED_USER_ID=\K.*' "${PROJECT_DIR}/.env" || true)
+fi
 TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
 TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
 

@@ -127,6 +127,14 @@ def build_crontab(
         f">> {project_path}/logs/cron_digest.log 2>&1",
     ]
 
+    # Service watchdog elke 5 minuten (herstart gestopte supervisor-services)
+    lines += [
+        "",
+        "# Service watchdog (supervisor-services + log-permissies)",
+        f"*/5 * * * * bash {project_path}/service_watchdog.sh "
+        f">> {project_path}/logs/service_watchdog.log 2>&1",
+    ]
+
     return "\n".join(lines) + "\n"
 
 
