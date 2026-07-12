@@ -135,6 +135,17 @@ def build_crontab(
         f">> {project_path}/logs/service_watchdog.log 2>&1",
     ]
 
+    # Cultureel Amsterdam — self-healing scrape-stap. Draait 07:30 CEST (05:30 UTC),
+    # ná de nacht-scrape (03:00) + resume (06:30). Staat hier omdat dit script de
+    # workstation-crontab elke nacht overschrijft; zie amsterdam/heal_runner.py.
+    _AMS = "/home/dgebbink/projects/amsterdam/backend/scrapers"
+    lines += [
+        "",
+        "# Cultureel Amsterdam self-healing scrape-runner (07:30 CEST)",
+        f"30 5 * * * cd {_AMS} && .venv/bin/python heal_runner.py "
+        f">> {_AMS}/heal_runner.log 2>&1",
+    ]
+
     return "\n".join(lines) + "\n"
 
 
