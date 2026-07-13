@@ -20,7 +20,17 @@ from PIL import Image
 
 from pathlib import Path
 
-from config import BASE_DIR, BLUESKY_APP_PASSWORD, BLUESKY_HANDLE, BLUESKY_POST_DELAY_SECONDS, ENABLE_SOCIAL_POSTING
+from config import (
+    BASE_DIR,
+    BLUESKY_APP_PASSWORD,
+    BLUESKY_HANDLE,
+    BLUESKY_POST_DELAY_SECONDS,
+    ENABLE_INSTAGRAM_POSTING,
+    ENABLE_SOCIAL_POSTING,
+    INSTAGRAM_ACCESS_TOKEN,
+    INSTAGRAM_ACCOUNT_ID,
+    INSTAGRAM_API_VERSION,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -465,6 +475,158 @@ def delete_bluesky_post(post_uri: str) -> bool:
     except Exception as exc:
         logger.error("Bluesky post verwijderen mislukt (%s): %s", post_uri, exc)
         return False
+
+
+# ---------------------------------------------------------------------------
+# Instagram (Meta Graph API)
+# ---------------------------------------------------------------------------
+# Flow (zie INSTAGRAM_PLAN.md): beeld componeren (instagram_image.py) →
+# uploaden naar de WP media library (Graph API accepteert alleen een publieke
+# image_url) → container aanmaken → pollen tot FINISHED → publiceren.
+# Let op: Instagram-posts kunnen NIET via de API verwijderd worden.
+
+_IG_IMAGE_TMP = str(_TMP_DIR / "tnv_instagram.jpg")
+_IG_POLL_ATTEMPTS = 30
+_IG_POLL_DELAY = 2.0
+
+
+def _ig_graph_base() -> str:
+    return f"https://graph.facebook.com/{INSTAGRAM_API_VERSION}"
+
+
+def _ig_create_container(image_url: str, caption: str) -> str:
+    """Maak een media container aan; retourneert container-ID, raist op fout."""
+    resp = requests.post(
+        f"{_ig_graph_base()}/{INSTAGRAM_ACCOUNT_ID}/media",
+        params={
+            "image_url": image_url,
+            "caption": caption,
+            "access_token": INSTAGRAM_ACCESS_TOKEN,
+        },
+        timeout=30,
+    )
+    if not resp.ok:
+        msg = resp.json().get("error", {}).get("message", resp.text[:200])
+        raise RuntimeError(f"Instagram container aanmaken mislukt: {msg}")
+    return resp.json()["id"]
+
+
+def _ig_wait_finished(container_id: str) -> None:
+    """Poll de containerstatus tot FINISHED; raist bij ERROR/EXPIRED/timeout."""
+    for attempt in range(_IG_POLL_ATTEMPTS):
+        resp = requests.get(
+            f"{_ig_graph_base()}/{container_id}",
+            params={"fields": "status_code", "access_token": INSTAGRAM_ACCESS_TOKEN},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        status = resp.json().get("status_code", "")
+        if status == "FINISHED":
+            return
+        if status in ("ERROR", "EXPIRED"):
+            raise RuntimeError(f"Instagram container {container_id} status: {status}")
+        time.sleep(_IG_POLL_DELAY)
+    raise RuntimeError(f"Timeout op Instagram container {container_id}")
+
+
+def _ig_publish(container_id: str) -> str:
+    """Publiceer een FINISHED container; retourneert de media-ID."""
+    resp = requests.post(
+        f"{_ig_graph_base()}/{INSTAGRAM_ACCOUNT_ID}/media_publish",
+        params={"creation_id": container_id, "access_token": INSTAGRAM_ACCESS_TOKEN},
+        timeout=30,
+    )
+    if not resp.ok:
+        msg = resp.json().get("error", {}).get("message", resp.text[:200])
+        raise RuntimeError(f"Instagram publiceren mislukt: {msg}")
+    return resp.json()["id"]
+
+
+def _ig_permalink(media_id: str) -> str:
+    """Haal de permalink van een gepubliceerde post op (best effort)."""
+    try:
+        resp = requests.get(
+            f"{_ig_graph_base()}/{media_id}",
+            params={"fields": "permalink", "access_token": INSTAGRAM_ACCESS_TOKEN},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json().get("permalink", "")
+    except Exception as exc:
+        logger.warning("Instagram permalink ophalen mislukt: %s", exc)
+        return ""
+
+
+def post_to_instagram(
+    ig_kop: str,
+    ig_caption: str,
+    kicker: str,
+    src_image_path: str,
+    dry_run: bool = False,
+) -> str:
+    """Post one article to Instagram as a composed 4:5 feed image.
+
+    Pre:  ENABLE_INSTAGRAM_POSTING vereist INSTAGRAM_ACCOUNT_ID en
+          INSTAGRAM_ACCESS_TOKEN (never-expiring Page token);
+          src_image_path is de lokale artikelafbeelding (16:9)
+    Post: returns the Instagram permalink (fallback: media-ID) on success;
+          "" on failure, when disabled, or when no image is available.
+          Nooit raisen — zelfde contract als post_to_bluesky.
+    """
+    if not ENABLE_INSTAGRAM_POSTING:
+        return ""
+
+    if not INSTAGRAM_ACCOUNT_ID or not INSTAGRAM_ACCESS_TOKEN:
+        logger.warning(
+            "Instagram credentials niet geconfigureerd "
+            "(INSTAGRAM_ACCOUNT_ID / INSTAGRAM_ACCESS_TOKEN)"
+        )
+        return ""
+
+    if not src_image_path or not os.path.exists(src_image_path):
+        logger.warning("Geen lokale afbeelding voor Instagram — post overgeslagen")
+        return ""
+
+    if not ig_kop or not ig_caption:
+        logger.warning("ig_kop/ig_caption ontbreekt — Instagram post overgeslagen")
+        return ""
+
+    from instagram_image import compose_instagram_image  # noqa: PLC0415
+
+    composed = compose_instagram_image(src_image_path, ig_kop, kicker, _IG_IMAGE_TMP)
+    if not composed:
+        return ""
+
+    if dry_run:
+        logger.info(
+            "[DRY RUN] Instagram post:\nKop   : %s\nBeeld : %s\nCaption:\n%s",
+            ig_kop, composed, ig_caption,
+        )
+        return "dryrun"
+
+    try:
+        # Publieke URL via de WP media library (los van de WP-post zelf)
+        from wordpress_client import WordPressClient  # noqa: PLC0415
+        media = WordPressClient().upload_image(
+            composed,
+            filename="instagram-post.jpg",
+            alt_text=f"Instagram: {ig_kop}",
+        )
+        if not media or not media.get("url"):
+            logger.error("WP media upload voor Instagram mislukt — post overgeslagen")
+            return ""
+
+        container_id = _ig_create_container(media["url"], ig_caption)
+        _ig_wait_finished(container_id)
+        media_id = _ig_publish(container_id)
+        permalink = _ig_permalink(media_id)
+
+        logger.info("Instagram post gepubliceerd: %s → %s", ig_kop, permalink or media_id)
+        return permalink or media_id
+
+    except Exception as exc:
+        logger.error("Instagram post mislukt voor '%s': %s", ig_kop, exc)
+        return ""
 
 
 def post_articles_to_social(results: list[dict], dry_run: bool = False) -> None:

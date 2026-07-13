@@ -50,6 +50,9 @@ class ProcessedArticle:
     bron_image_url: str = ""
     # Gekozen persoonsvariant voor de gegenereerde afbeelding (generate-modus)
     image_variant: Optional[dict] = None
+    # Instagram-velden: korte kop voor op het beeld + volledig geassembleerde caption
+    ig_kop: str = ""
+    ig_caption: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +359,76 @@ def select_articles(articles: list[Article]) -> list[int]:
 
 
 # ---------------------------------------------------------------------------
+# Instagram-caption assemblage
+# ---------------------------------------------------------------------------
+
+# Vaste onderdelen van elke Instagram-caption. Bewust in code i.p.v. door
+# Claude gegenereerd: de AI-disclosure mag nooit ontbreken en links in
+# captions zijn niet klikbaar (vandaar link-in-bio).
+_IG_LINK_LINE = "🔗 Lees het volledige artikel via de link in bio."
+_IG_AI_DISCLOSURE = "🤖 Beeld gegenereerd met AI."
+_IG_BASE_HASHTAGS = ["#technieuws", "#tech"]
+_IG_MAX_EXTRA_HASHTAGS = 3  # totaal max 5 — meer oogt als spam
+_IG_KOP_MAX_WORDS = 12
+
+
+def _build_ig_hashtags(trefwoorden: str) -> str:
+    """Bouw de hashtagregel: 2 vaste tags + max 3 uit de trefwoorden.
+
+    Pre:  trefwoorden is komma-gescheiden (mag leeg zijn)
+    Post: regel als '#technieuws #tech #woord1 ...'; alleen alfanumerieke
+          tags, zonder duplicaten (case-insensitief)
+    """
+    tags = list(_IG_BASE_HASHTAGS)
+    seen = {t.lower() for t in tags}
+    for kw in trefwoorden.split(","):
+        tag = "#" + re.sub(r"[^\w]", "", kw.strip().lower())
+        if len(tag) > 1 and tag.lower() not in seen:
+            tags.append(tag)
+            seen.add(tag.lower())
+        if len(tags) >= len(_IG_BASE_HASHTAGS) + _IG_MAX_EXTRA_HASHTAGS:
+            break
+    return " ".join(tags)
+
+
+def build_ig_caption(ig_tekst: str, trefwoorden: str) -> str:
+    """Assembleer de volledige Instagram-caption uit de AI-tekst + vaste blokken.
+
+    Pre:  ig_tekst is de hook + context (zonder hashtags/links/disclosure)
+    Post: caption met lege regels tussen de blokken; ruim onder de
+          2200-tekens-limiet van Instagram
+    """
+    return "\n\n".join([
+        ig_tekst.strip(),
+        _IG_LINK_LINE,
+        _IG_AI_DISCLOSURE,
+        _build_ig_hashtags(trefwoorden),
+    ])
+
+
+def _fallback_ig_tekst(samenvatting: str) -> str:
+    """Eerste twee zinnen van de samenvatting als caption-tekst (fallback)."""
+    tekst = ". ".join(samenvatting.split(". ")[:2]).strip()
+    if tekst and not tekst.endswith("."):
+        tekst += "."
+    return tekst
+
+
+def ensure_ig_fields(article: "ProcessedArticle") -> None:
+    """Vul ig_kop/ig_caption in-place met fallbacks als ze leeg zijn.
+
+    Voor artikelen die niet via process_article() zijn gemaakt (oudere flows,
+    adhoc/backfill) zodat post_to_instagram altijd bruikbare velden krijgt.
+    """
+    if not article.ig_kop:
+        article.ig_kop = " ".join(article.titel.split()[:_IG_KOP_MAX_WORDS])
+    if not article.ig_caption:
+        article.ig_caption = build_ig_caption(
+            _fallback_ig_tekst(article.samenvatting), article.trefwoorden
+        )
+
+
+# ---------------------------------------------------------------------------
 # Stap 2b + 2c: Samenvatting en categorie genereren
 # ---------------------------------------------------------------------------
 
@@ -397,13 +470,23 @@ def process_article(article: Article) -> Optional[ProcessedArticle]:
         '  "categorieen": ["cat1", "cat2"],\n'
         '  "meta_description": "...",\n'
         '  "slug": "...",\n'
-        '  "focus_keyword": "..."\n'
+        '  "focus_keyword": "...",\n'
+        '  "ig_kop": "...",\n'
+        '  "ig_tekst": "..."\n'
         "}\n\n"
         "Regels voor de extra SEO-velden:\n"
         "- meta_description: max 155 tekens, bevat het focus-trefwoord, prikkelend voor de lezer\n"
         "- slug: URL-vriendelijke slug van max 5 woorden, geen lidwoorden of stopwoorden, "
         "alleen kleine letters en koppeltekens (bijv. 'openai-lanceert-nieuw-model')\n"
-        "- focus_keyword: het primaire SEO-trefwoord, 1-3 woorden"
+        "- focus_keyword: het primaire SEO-trefwoord, 1-3 woorden\n\n"
+        "Regels voor de Instagram-velden:\n"
+        "- ig_kop: korte kop die óp de afbeelding komt te staan, max 9 woorden, "
+        "actieve vorm, feitelijk en krachtig, geen punt aan het eind, geen "
+        "aanhalingstekens, geen clickbait\n"
+        "- ig_tekst: 2 à 3 zinnen voor de Instagram-caption. De eerste zin is de "
+        "hook (max 125 tekens, sterk maar geen clickbait — dit is wat lezers zien "
+        "vóór de 'meer'-knop), daarna 1 à 2 zinnen context. Geen hashtags, geen "
+        "URL's, geen emoji's"
     )
 
     import time
@@ -434,15 +517,29 @@ def process_article(article: Article) -> Optional[ProcessedArticle]:
             slug = str(data.get("slug", "")).strip().lower()
             focus_keyword = str(data.get("focus_keyword", "")).strip()
 
+            titel = str(data["titel"]).strip()
+            samenvatting = str(data["samenvatting"]).strip()
+            trefwoorden = str(data["trefwoorden"]).strip()
+
+            # Instagram-velden (optioneel — fallback op titel/samenvatting).
+            # De kop wordt hard afgekapt op woorden: het beeld verkleint zelf
+            # het font, maar boven ~12 woorden wordt de balk te vol.
+            ig_kop = str(data.get("ig_kop", "")).strip().rstrip(".") or titel
+            ig_kop = " ".join(ig_kop.split()[:_IG_KOP_MAX_WORDS])
+            ig_tekst = str(data.get("ig_tekst", "")).strip() or _fallback_ig_tekst(samenvatting)
+            ig_caption = build_ig_caption(ig_tekst, trefwoorden)
+
             return ProcessedArticle(
                 original=article,
-                titel=str(data["titel"]).strip(),
-                samenvatting=str(data["samenvatting"]).strip(),
-                trefwoorden=str(data["trefwoorden"]).strip(),
+                titel=titel,
+                samenvatting=samenvatting,
+                trefwoorden=trefwoorden,
                 categorieen=categorieen,
                 meta_description=meta_description,
                 slug=slug,
                 focus_keyword=focus_keyword,
+                ig_kop=ig_kop,
+                ig_caption=ig_caption,
             )
 
         except (RuntimeError, subprocess.TimeoutExpired, json.JSONDecodeError, ValueError) as exc:

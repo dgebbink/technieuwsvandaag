@@ -49,12 +49,18 @@ _TMP_DIR.mkdir(exist_ok=True)
 
 logger = _setup_logging(LOGS_DIR)
 
-from ai_processor import InsufficientCreditsError, process_articles, save_posted_title  # noqa: E402
-from approval_store import update_bluesky_uri  # noqa: E402
-from config import BLUESKY_POST_DELAY_SECONDS, ENABLE_SOCIAL_POSTING, IMAGE_STRATEGY  # noqa: E402
+from ai_processor import InsufficientCreditsError, ensure_ig_fields, process_articles, save_posted_title  # noqa: E402
+from approval_store import update_bluesky_uri, update_instagram_permalink  # noqa: E402
+from config import (  # noqa: E402
+    BLUESKY_POST_DELAY_SECONDS,
+    ENABLE_INSTAGRAM_POSTING,
+    ENABLE_SOCIAL_POSTING,
+    IMAGE_STRATEGY,
+    INSTAGRAM_POST_DELAY_SECONDS,
+)
 from mailer import build_action_buttons, send_balance_warning, send_fal_balance_warning, send_notification  # noqa: E402
 from scraper import download_image, fetch_article_text, save_posted_url, scrape_all_sources  # noqa: E402
-from social_poster import post_to_bluesky  # noqa: E402
+from social_poster import post_to_bluesky, post_to_instagram  # noqa: E402
 from wordpress_client import publish_articles  # noqa: E402
 
 
@@ -325,17 +331,18 @@ def main() -> int:
     send_notification(results, warning_message=warning_message, dry_run=args.dry_run)
 
     # ------------------------------------------------------------------
-    # Stap 6: Bluesky publiceren (met vertraging) en URI opslaan
+    # Stap 6: Social publiceren (Bluesky + Instagram, met vertraging)
     # ------------------------------------------------------------------
     if not args.dry_run and ENABLE_SOCIAL_POSTING and results:
         logger.info(
-            "── Stap 6: Bluesky publiceren (%ds vertraging per artikel) ──",
-            BLUESKY_POST_DELAY_SECONDS,
+            "── Stap 6: Social publiceren (Bluesky %ds, Instagram +%ds vertraging) ──",
+            BLUESKY_POST_DELAY_SECONDS, INSTAGRAM_POST_DELAY_SECONDS,
         )
         for result in results:
             article  = result["article"]
             post     = result["post"]
             post_url = post.get("link", post.get("preview_url", ""))
+            post_id  = post["id"]
 
             logger.info(
                 "Wacht %ds voor Bluesky post: %s",
@@ -352,12 +359,34 @@ def main() -> int:
             )
             logger.info("Bluesky URI: %s", bsky_uri or "MISLUKT")
 
-            post_id = post["id"]
             if bsky_uri and post_id in decline_tokens:
                 update_bluesky_uri(decline_tokens[post_id], bsky_uri)
                 logger.info(
                     "Bluesky URI opgeslagen voor decline token (post %d)", post_id
                 )
+
+            # Instagram: eigen vertraging na Bluesky, eigen toggle. De permalink
+            # gaat naar de token store zodat de decline-pagina kan herinneren
+            # aan handmatig verwijderen (IG-posts kunnen niet via de API weg).
+            if ENABLE_INSTAGRAM_POSTING:
+                logger.info(
+                    "Wacht %ds voor Instagram post: %s",
+                    INSTAGRAM_POST_DELAY_SECONDS, article.titel,
+                )
+                time.sleep(INSTAGRAM_POST_DELAY_SECONDS)
+
+                ensure_ig_fields(article)
+                ig_ref = post_to_instagram(
+                    ig_kop=article.ig_kop,
+                    ig_caption=article.ig_caption,
+                    kicker=" · ".join(article.categorieen[:2]),
+                    src_image_path=article.image_path or "",
+                    dry_run=False,
+                )
+                logger.info("Instagram: %s", ig_ref or "MISLUKT/OVERGESLAGEN")
+
+                if ig_ref and post_id in decline_tokens:
+                    update_instagram_permalink(decline_tokens[post_id], ig_ref)
 
     # ------------------------------------------------------------------
     # Samenvatting

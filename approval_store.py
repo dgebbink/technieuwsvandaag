@@ -64,6 +64,7 @@ def create_tokens(
             "used":        False,
             "meta":        meta or {},
             "bluesky_uri": "",
+            "instagram_permalink": "",
         }
 
     _save(store)
@@ -112,6 +113,24 @@ def update_bluesky_uri(decline_token: str, uri: str) -> None:
     for token_data in store.values():
         if token_data.get("post_id") == post_id:
             token_data["bluesky_uri"] = uri
+    _save(store)
+
+
+def update_instagram_permalink(decline_token: str, permalink: str) -> None:
+    """Updates instagram_permalink on all tokens for the same post_id.
+    Pre:  decline_token exists in store
+    Post: instagram_permalink set on every token sharing that post_id;
+          gebruikt door de decline-pagina om aan handmatig verwijderen te
+          herinneren (Instagram-posts kunnen niet via de API verwijderd worden)
+    """
+    store = _load()
+    entry = store.get(decline_token)
+    if not entry:
+        return
+    post_id = entry["post_id"]
+    for token_data in store.values():
+        if token_data.get("post_id") == post_id:
+            token_data["instagram_permalink"] = permalink
     _save(store)
 
 

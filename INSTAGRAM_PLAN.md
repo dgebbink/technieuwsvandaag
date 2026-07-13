@@ -1,0 +1,223 @@
+# Instagram-integratie — implementatieplan
+
+**Status (2026-07-13):** fase 1 t/m 4 gebouwd en getest (`generate_instagram_assets.py`,
+`instagram_image.py`, `instagram_token.py`, uitbreidingen in `ai_processor.py`,
+`social_poster.py`, `main.py` stap 6, `approval_store.py`, `approval_server.py`,
+`config.py`). Resteert: fase 0 (Meta-accountsetup, handmatig) en fase 5 (testpost +
+activeren). NB: de posting hangt aan `main.py` stap 6 (posts worden direct
+gepubliceerd; de mail heeft alleen Decline) — niet aan een approve-knop zoals
+hieronder oorspronkelijk beschreven.
+
+Doel: elk goedgekeurd artikel wordt automatisch als Instagram-post gepubliceerd op
+**@technieuwsvandaag.nl**, in de stijl van @de_volkskrant: de (al gegenereerde)
+artikelafbeelding met een witte balk eroverheen waarin een korte, heldere kop staat.
+Volledig autopost, AI-transparant, en visueel in lijn met de site
+(navy `#0A1628`, cyaan `#00D4FF`, wit).
+
+---
+
+## Fase 0 — Accountsetup (handmatig, eenmalig)
+
+Instagram autoposting kan alleen via de **Meta Graph API** en vereist een
+Professional (Business) account gekoppeld aan een Facebook-pagina.
+
+1. [ ] Instagram-account `technieuwsvandaag.nl` omzetten naar **Professioneel → Bedrijf**
+       (app: Instellingen → Accounttype).
+2. [ ] Facebook-pagina "TechNieuwsVandaag" aanmaken (mag leeg blijven) en koppelen aan
+       het IG-account (IG app: Bewerk profiel → Pagina).
+       *Deze pagina is meteen ook de basis voor de geplande Facebook-posting.*
+3. [ ] Meta Developer-app aanmaken op https://developers.facebook.com (type "Business")
+       met producten **Instagram Graph API** + **Facebook Login**.
+4. [ ] Via Graph API Explorer een user token genereren met scopes:
+       `instagram_basic`, `instagram_content_publish`, `pages_show_list`,
+       `pages_read_engagement` → omwisselen voor long-lived token.
+5. [ ] **Page token afleiden** (verloopt nooit) — de logica hiervoor bestaat al in
+       `projects/amsterdam/backend/app/services/instagram_poster.py`
+       (`derive_page_token()`); we porten die als helper-script (fase 3).
+6. [ ] `INSTAGRAM_ACCOUNT_ID` ophalen: `GET /{page-id}?fields=instagram_business_account`.
+
+Nieuwe `.env`-variabelen:
+
+```
+ENABLE_INSTAGRAM_POSTING=false      # pas aan het eind op true
+INSTAGRAM_ACCOUNT_ID=
+INSTAGRAM_ACCESS_TOKEN=             # never-expiring Page token
+FACEBOOK_APP_ID=
+FACEBOOK_APP_SECRET=
+INSTAGRAM_POST_DELAY_SECONDS=120    # na Bluesky, niet tegelijk
+INSTAGRAM_API_VERSION=v19.0
+```
+
+---
+
+## Fase 1 — Profielidentiteit (bio + logo)
+
+### Bio (max 150 tekens, regels breken bewust)
+
+```
+⚡ Het belangrijkste technieuws, elke dag in het Nederlands
+🤖 Samengevat met AI, beelden AI-gegenereerd
+👇 Lees de artikelen op de site
+```
+
+Plus profielvelden: categorie "Media/nieuwsbedrijf", link `https://technieuwsvandaag.nl`.
+De AI-transparantie staat bewust al in de bio — dat schept vertrouwen en dekt het
+account als geheel, niet alleen losse posts.
+
+### Logo / profielfoto
+
+Regel voor avatars: leesbaar op 110×110 px in een cirkel. Het huidige Bluesky-avatar
+(3D-glazen "T") is te druk voor dat formaat. Voorstel:
+
+- **Vlakke, geometrische "T"** in wit/cyaan op effen navy `#0A1628`, gecentreerd,
+  ruime marge zodat de cirkelcrop niets afsnijdt. Geen tagline, geen extra tekst.
+- Genereren met een nieuw script `generate_instagram_assets.py` (PIL, deterministisch —
+  géén FAL: een logo moet pixel-precies en reproduceerbaar zijn).
+- Zelfde script genereert ook het wordmark-strookje ("TECHNIEUWSVANDAAG.NL") dat op
+  elke post terugkomt (zie fase 2), zodat avatar en posts uit dezelfde bron komen.
+
+Deliverables: `assets/instagram_avatar.png` (1000×1000), `assets/ig_wordmark.png`.
+
+---
+
+## Fase 2 — Postbeeld in Volkskrant-stijl (`instagram_image.py`)
+
+Nieuwe module die de bestaande WP-afbeelding omzet naar een IG-feedbeeld.
+
+### Formaat & compositie
+
+- Canvas **1080×1350 (4:5 staand)** — maximale feedruimte, de standaard voor
+  nieuwsaccounts. Onze bron is 16:9, dus: schalen tot de hoogte vult en
+  **center-croppen** in de breedte. De FAL-prompts zijn centraal gecomponeerd, dus
+  dat gaat vrijwel altijd goed; de witte balk maskeert bovendien de onderste strook.
+- **Witte balk (de "stripe")**: volle breedte, onderin op ~62% hoogte beginnend,
+  effen wit `#FFFFFF`, met daarin:
+  - **Kicker** (categorie, bijv. "AI · CHIPS"): klein, kapitaal, cyaan `#00D4FF`
+    of rood accent — 1 regel.
+  - **Kop**: zwart `#0A1628`, extra bold (Ubuntu-B / DejaVuSans-Bold, ~64px),
+    max **2 regels / ±10 woorden**. Dit is níét de WP-titel maar een aparte, kortere
+    Instagram-kop (zie fase 4) — Volkskrant-koppen zijn korter en actiever dan
+    webkoppen.
+  - **Wordmark** "TECHNIEUWSVANDAAG.NL" klein onderin de balk, navy.
+- **"AI gegenereerd"-label** blijft zichtbaar op het fotodeel (bestaande
+  `add_ai_label()` staat al op het bronbeeld linksonder — checken dat hij niet onder
+  de balk verdwijnt; zo wel, opnieuw plaatsen op het fotodeel).
+
+### AI-transparantie in het bestand zelf
+
+- **IPTC-metadata `DigitalSourceType = trainedAlgorithmicMedia`** embedden in de JPEG.
+  Meta leest deze metadata en hangt er automatisch het officiële "AI-info"-label aan —
+  dit is de enige betrouwbare route; de Graph API heeft geen expliciete AI-vlag-parameter.
+  Implementatie: klein IPTC/XMP-blok wegschrijven (via `pillow` + handmatig APP13-segment
+  of het `iptcinfo3`/`python-xmp` pakket — uitzoeken wat het lichtst is).
+
+### Interface
+
+```python
+def compose_instagram_image(src_path, headline, kicker, dest_path) -> str | None
+```
+
+Puur PIL, geen netwerk. Los testbaar met een bestaand beeld uit `tmp/`.
+
+---
+
+## Fase 3 — Posting (`social_poster.py` + tokenhelper)
+
+### `post_to_instagram()` naast `post_to_bluesky()`
+
+Port van de amsterdam-flow, maar **synchroon** (requests i.p.v. httpx/async — dit
+project is synchroon):
+
+1. IG-beeld composen (fase 2) vanaf de WP featured image.
+2. **Publieke URL regelen**: Graph API accepteert alleen een publieke `image_url`.
+   We uploaden het IG-beeld gewoon naar de **WordPress media library** (bestaande
+   upload-code in `wordpress_client.py`, niet gekoppeld aan de post) — geen
+   Imgur-fallback nodig zoals bij amsterdam, want WP is publiek bereikbaar.
+3. Container aanmaken: `POST /{ig-account-id}/media` met `image_url` + `caption`.
+4. Pollen op `status_code == FINISHED` (max ~60s).
+5. Publiceren: `POST /{ig-account-id}/media_publish`.
+6. Media-ID loggen. **Let op:** IG-posts kunnen níét via de API verwijderd worden —
+   een decline-achtige rollback bestaat dus niet. Geen probleem: wij posten pas ná
+   goedkeuring.
+
+Foutafhandeling zoals bij Bluesky: loggen, nooit raisen, lege string terug.
+API-limiet (50 gepubliceerde posts/24u) is met max 5 artikelen/dag geen issue.
+
+### Aanhaken in de approval-flow
+
+In `approval_server.py` (`/approve` background thread): na de Bluesky-post ook
+Instagram, met eigen delay `INSTAGRAM_POST_DELAY_SECONDS`. Zelfde patroon in
+`post_articles_to_social()` voor de dry-run/log-variant.
+
+### Tokenhelper `instagram_token.py` (handmatig script)
+
+Port van `derive_page_token()` + `refresh_instagram_token()` uit amsterdam:
+short-lived user token erin → never-expiring Page token in `.env`. Eén keer draaien
+bij setup; daarna alleen als Meta de app-permissies reset.
+
+---
+
+## Fase 4 — Caption & kop (AI, `ai_processor.py`)
+
+Instagram is een ander medium dan de site: links in captions zijn niet klikbaar,
+de eerste ~125 tekens bepalen of iemand "meer" tapt. Daarom per artikel twee extra
+velden laten genereren door Claude (uitbreiding van de bestaande JSON-vraag, géén
+extra API-call):
+
+- `ig_kop` — max 10 woorden, actief, geen punt aan het eind (voor op de witte balk).
+- `ig_caption` — opbouw:
+
+```
+{Sterke openingszin — de hook, max ±125 tekens, geen emoji-spam}
+
+{1–2 zinnen context uit de samenvatting}
+
+🔗 Lees het volledige artikel via de link in bio.
+
+🤖 Beeld gegenereerd met AI.
+
+#technieuws #tech {+2–3 specifieke NL hashtags uit de trefwoorden}
+```
+
+Regels: Nederlands, geen clickbait ("Dit wist je nog niet…"), maximaal 5 hashtags
+(meer oogt als spam en helpt het bereik niet), AI-disclosure altijd aanwezig.
+`ProcessedArticle` dataclass uitbreiden met beide velden; fallback = bestaande
+titel + eerste zinnen samenvatting (zelfde truc als `_build_post_text`).
+
+---
+
+## Fase 5 — Activeren & nazorg
+
+1. [ ] `--dry-run`: caption + gecomposeerd beeld lokaal bekijken (beeld naar `tmp/`).
+2. [ ] Eén handmatige testpost naar het (nog lege) account; check: crop, balk,
+       leesbaarheid op telefoon, AI-info-label zichtbaar, caption-afbreking.
+3. [ ] Profiel invullen (avatar, bio, link) — eventueel eerste post = introductiepost.
+4. [ ] `ENABLE_INSTAGRAM_POSTING=true` in `.env`.
+5. [ ] `daily_digest.py`: Instagram-regel toevoegen (aantal posts vandaag), naast de
+       bestaande Bluesky-stats. *(mag later)*
+6. [ ] CLAUDE.md bijwerken: nieuwe module + env-vars in de architectuursectie.
+
+---
+
+## Volgorde & omvang
+
+| Stap | Bestand(en) | Inschatting |
+|---|---|---|
+| 0. Meta-accountsetup | — (handmatig, Dennis) | 30–45 min |
+| 1. Avatar + wordmark | `generate_instagram_assets.py` | klein |
+| 2. Beeldcompositie | `instagram_image.py` | middelgroot (kern van de stijl) |
+| 3. Posting + token | `social_poster.py`, `instagram_token.py`, `config.py` | middelgroot (port) |
+| 4. Caption/kop | `ai_processor.py` | klein |
+| 5. Approval-hook + rollout | `approval_server.py`, `.env`, docs | klein |
+
+Fase 1, 2 en 4 kunnen volledig gebouwd en getest worden **zonder** dat de
+Meta-accountsetup (fase 0) af is — alleen fase 3/5 hebben de tokens nodig.
+
+## Open keuzes (defaults gekozen, terug te draaien)
+
+- **4:5 staand** i.p.v. 1:1 vierkant — meer feedruimte, standaard bij nieuwsmedia;
+  kost wel meer center-crop van het 16:9-bronbeeld.
+- **Witte balk onderin** (Volkskrant) i.p.v. bovenin — foto krijgt de eerste blik.
+- **WP media library** als publieke image-host i.p.v. aparte export-map op oracle-web.
+- **Geen Stories/Reels** in v1 — alleen feedposts; carrousel en Stories kunnen later
+  op dezelfde container-API.

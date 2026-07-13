@@ -62,6 +62,7 @@ def decline(token: str):
     post_id      = entry["post_id"]
     post_title   = entry["post_title"]
     bluesky_uri  = entry.get("bluesky_uri", "")
+    ig_permalink = entry.get("instagram_permalink", "")
 
     logging.info(f"Declining post {post_id}: {post_title}")
     mark_used(token)
@@ -82,6 +83,15 @@ def decline(token: str):
     else:
         bsky_msg = "Geen Bluesky post gevonden (overgeslagen).<br>"
         logging.info(f"No bluesky_uri for post {post_id} — skipping Bluesky delete")
+
+    # Instagram-posts kunnen niet via de API verwijderd worden — herinner eraan
+    if ig_permalink:
+        bsky_msg += (
+            f'⚠️ De <a href="{ig_permalink}" target="_blank">Instagram-post</a> '
+            f"kan niet automatisch verwijderd worden — verwijder die handmatig "
+            f"in de Instagram-app.<br>"
+        )
+        logging.info(f"Instagram post for {post_id} requires manual deletion: {ig_permalink}")
 
     try:
         delete_post(post_id)

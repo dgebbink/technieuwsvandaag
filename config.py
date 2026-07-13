@@ -85,3 +85,15 @@ ENABLE_SOCIAL_POSTING: bool = os.environ.get("ENABLE_SOCIAL_POSTING", "false").l
 BLUESKY_HANDLE: str = os.environ.get("BLUESKY_HANDLE", "")
 BLUESKY_APP_PASSWORD: str = os.environ.get("BLUESKY_APP_PASSWORD", "")
 BLUESKY_POST_DELAY_SECONDS: int = int(os.environ.get("BLUESKY_POST_DELAY_SECONDS", "60"))
+
+# Instagram (Meta Graph API) — losse toggle naast Bluesky; zie INSTAGRAM_PLAN.md.
+# INSTAGRAM_ACCESS_TOKEN moet een never-expiring Page token zijn
+# (genereren met instagram_token.py).
+ENABLE_INSTAGRAM_POSTING: bool = os.environ.get("ENABLE_INSTAGRAM_POSTING", "false").lower() == "true"
+INSTAGRAM_ACCOUNT_ID: str = os.environ.get("INSTAGRAM_ACCOUNT_ID", "")
+INSTAGRAM_ACCESS_TOKEN: str = os.environ.get("INSTAGRAM_ACCESS_TOKEN", "")
+INSTAGRAM_API_VERSION: str = os.environ.get("INSTAGRAM_API_VERSION", "v19.0")
+# Extra wachttijd ná de Bluesky-post voordat het artikel naar Instagram gaat
+INSTAGRAM_POST_DELAY_SECONDS: int = int(os.environ.get("INSTAGRAM_POST_DELAY_SECONDS", "120"))
+FACEBOOK_APP_ID: str = os.environ.get("FACEBOOK_APP_ID", "")
+FACEBOOK_APP_SECRET: str = os.environ.get("FACEBOOK_APP_SECRET", "")
