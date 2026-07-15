@@ -21,20 +21,20 @@ Volledig autopost, AI-transparant, en visueel in lijn met de site
 Instagram autoposting kan alleen via de **Meta Graph API** en vereist een
 Professional (Business) account gekoppeld aan een Facebook-pagina.
 
-1. [ ] Instagram-account `technieuwsvandaag.nl` omzetten naar **Professioneel → Bedrijf**
+1. [x] Instagram-account `technieuwsvandaag.nl` omzetten naar **Professioneel → Bedrijf**
        (app: Instellingen → Accounttype).
-2. [ ] Facebook-pagina "TechNieuwsVandaag" aanmaken (mag leeg blijven) en koppelen aan
+2. [x] Facebook-pagina "TechNieuwsVandaag" aanmaken (mag leeg blijven) en koppelen aan
        het IG-account (IG app: Bewerk profiel → Pagina).
        *Deze pagina is meteen ook de basis voor de geplande Facebook-posting.*
-3. [ ] Meta Developer-app aanmaken op https://developers.facebook.com (type "Business")
+3. [x] Meta Developer-app aanmaken op https://developers.facebook.com (type "Business")
        met producten **Instagram Graph API** + **Facebook Login**.
-4. [ ] Via Graph API Explorer een user token genereren met scopes:
+4. [x] Via Graph API Explorer een user token genereren met scopes:
        `instagram_basic`, `instagram_content_publish`, `pages_show_list`,
        `pages_read_engagement` → omwisselen voor long-lived token.
-5. [ ] **Page token afleiden** (verloopt nooit) — de logica hiervoor bestaat al in
+5. [x] **Page token afleiden** (verloopt nooit) — de logica hiervoor bestaat al in
        `projects/amsterdam/backend/app/services/instagram_poster.py`
        (`derive_page_token()`); we porten die als helper-script (fase 3).
-6. [ ] `INSTAGRAM_ACCOUNT_ID` ophalen: `GET /{page-id}?fields=instagram_business_account`.
+6. [x] `INSTAGRAM_ACCOUNT_ID` ophalen: `GET /{page-id}?fields=instagram_business_account`.
 
 Nieuwe `.env`-variabelen:
 
@@ -188,11 +188,41 @@ titel + eerste zinnen samenvatting (zelfde truc als `_build_post_text`).
 
 ## Fase 5 — Activeren & nazorg
 
-1. [ ] `--dry-run`: caption + gecomposeerd beeld lokaal bekijken (beeld naar `tmp/`).
-2. [ ] Eén handmatige testpost naar het (nog lege) account; check: crop, balk,
-       leesbaarheid op telefoon, AI-info-label zichtbaar, caption-afbreking.
+1. [x] `--dry-run`: caption + gecomposeerd beeld lokaal bekijken (beeld naar `tmp/`).
+2. [x] Eén handmatige testpost naar het (nog lege) account:
+       https://www.instagram.com/p/Daz2JcSjgfD/ — crop, witte balk, wordmark en
+       caption-afbreking zien er goed uit. **AI-info-label NIET zichtbaar** — zie
+       bekende bug hieronder; deze post staat zonder XMP-metadata (kan niet
+       verwijderd worden via de API, dus blijft zo staan).
+
+   > **Bug (2026-07-15, opgelost):** `compose_instagram_image()`s XMP-blok
+   > (`Iptc4xmpExt:DigitalSourceType`) liet de WordPress media-upload
+   > (`wp-json/wp/v2/media`) crashen met een 500 — vermoedelijk PHP-Imagick dat
+   > vastloopt op het XMP-profiel tijdens thumbnail-regeneratie. Gereproduceerd via
+   > bisectie: zelfs een lege `<x:xmpmeta xmlns:x="adobe:ns:meta/"></x:xmpmeta>`
+   > triggerde het al; platte tekst in het xmp-veld werkte wel.
+   >
+   > **Echte fix (2026-07-15):** het Instagram-beeld gaat niet meer via de WP
+   > media library. Nieuwe publieke image-host **los van WordPress**:
+   > `ig-media.gebbink.nl` → nginx:alpine static server op **meterkast**
+   > (`192.168.2.56`, compose-group `ig-media`), TLS via de bestaande Caddy
+   > (`192.168.2.40`). `social_poster._publish_image_publicly()` scp't het
+   > gecomponeerde beeld naar `/mnt/data/containers/ig-media/html/` (SSH-alias
+   > `meterkast`) en ruimt bij elke upload bestanden ouder dan
+   > `INSTAGRAM_MEDIA_RETENTION_DAYS` (default 2) op — Meta haalt het beeld toch
+   > maar één keer op, bij het aanmaken van de media container.
+   > `_XMP_METADATA_ENABLED` staat weer op `True` in `instagram_image.py`.
+   > Geen nieuwe router-poort nodig: 80/443 stonden al open naar Caddy (zelfde
+   > pad als `garage.gebbink.nl`/`recorder.gebbink.nl`).
+   >
+   > **Resterend:** publieke DNS A-record `ig-media.gebbink.nl → 82.169.132.41`
+   > toevoegen (het wildcard-record voor `*.gebbink.nl` wijst naar oracle-web,
+   > dus dit domein heeft een eigen record nodig, zoals ook `garage`/`recorder`
+   > dat hebben). Caddy staat al klaar en probeert het Let's Encrypt-certificaat
+   > automatisch op te halen zodra de DNS live is (geen verdere actie nodig na
+   > het toevoegen van het record).
 3. [ ] Profiel invullen (avatar, bio, link) — eventueel eerste post = introductiepost.
-4. [ ] `ENABLE_INSTAGRAM_POSTING=true` in `.env`.
+4. [x] `ENABLE_INSTAGRAM_POSTING=true` in `.env`.
 5. [ ] `daily_digest.py`: Instagram-regel toevoegen (aantal posts vandaag), naast de
        bestaande Bluesky-stats. *(mag later)*
 6. [ ] CLAUDE.md bijwerken: nieuwe module + env-vars in de architectuursectie.

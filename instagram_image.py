@@ -30,6 +30,13 @@ KICKER_CYAN = (0, 132, 168)  # #0084A8
 HEADLINE_MAX_LINES = 2
 HEADLINE_FONT_SIZES = (68, 64, 60, 56, 52, 48)
 
+# Weer AAN (2026-07-15): de "bekende bug" uit INSTAGRAM_PLAN.md fase 5 was dat
+# WordPress' media-upload crashte op dit XMP-blok (vermoedelijk PHP-Imagick dat
+# vastloopt tijdens thumbnail-regeneratie). Fix: het beeld gaat niet meer via de
+# WP media library — social_poster.py host het nu rechtstreeks op ig-media.gebbink.nl
+# (nginx op meterkast), dus WP/Imagick raakt dit bestand nooit meer aan.
+_XMP_METADATA_ENABLED = True
+
 # IPTC NewsCodes: gesynthetiseerd beeld uit een generatief model
 _XMP_AI_METADATA = (
     '<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>\n'
@@ -201,8 +208,8 @@ def compose_instagram_image(src_path: str, headline: str, kicker: str,
 
         # --- AI-label op het fotodeel + AI-metadata in het bestand ---
         canvas = _draw_ai_label(canvas)
-        canvas.convert("RGB").save(dest_path, "JPEG", quality=92,
-                                   xmp=_XMP_AI_METADATA)
+        save_kwargs = {"xmp": _XMP_AI_METADATA} if _XMP_METADATA_ENABLED else {}
+        canvas.convert("RGB").save(dest_path, "JPEG", quality=92, **save_kwargs)
         logger.info("Instagram-beeld gecomponeerd: %s (kop: %s)", dest_path, headline)
         return dest_path
 

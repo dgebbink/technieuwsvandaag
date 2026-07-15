@@ -97,3 +97,19 @@ INSTAGRAM_API_VERSION: str = os.environ.get("INSTAGRAM_API_VERSION", "v19.0")
 INSTAGRAM_POST_DELAY_SECONDS: int = int(os.environ.get("INSTAGRAM_POST_DELAY_SECONDS", "120"))
 FACEBOOK_APP_ID: str = os.environ.get("FACEBOOK_APP_ID", "")
 FACEBOOK_APP_SECRET: str = os.environ.get("FACEBOOK_APP_SECRET", "")
+
+# Publieke image-host voor Instagram-postbeelden (los van WordPress — zie
+# INSTAGRAM_PLAN.md fase 5 "bekende bug": WP/Imagick crasht op het XMP-blok
+# dat het AI-label triggert). Static nginx-container op meterkast
+# (ig-media.gebbink.nl, 192.168.2.56), bereikt via scp over het bestaande
+# SSH-alias in ~/.ssh/config.
+INSTAGRAM_MEDIA_SSH_HOST: str = os.environ.get("INSTAGRAM_MEDIA_SSH_HOST", "meterkast")
+INSTAGRAM_MEDIA_REMOTE_DIR: str = os.environ.get(
+    "INSTAGRAM_MEDIA_REMOTE_DIR", "/mnt/data/containers/ig-media/html"
+)
+INSTAGRAM_MEDIA_BASE_URL: str = os.environ.get(
+    "INSTAGRAM_MEDIA_BASE_URL", "https://ig-media.gebbink.nl"
+)
+# Bestanden ouder dan dit worden opgeruimd bij elke nieuwe upload (Meta haalt
+# het beeld maar één keer op, bij het aanmaken van de media container)
+INSTAGRAM_MEDIA_RETENTION_DAYS: int = int(os.environ.get("INSTAGRAM_MEDIA_RETENTION_DAYS", "2"))

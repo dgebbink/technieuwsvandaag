@@ -10,6 +10,8 @@ Embed-strategie:
 import logging
 import os
 import re
+import secrets
+import subprocess
 import time
 import unicodedata
 from datetime import datetime, timezone
@@ -30,6 +32,10 @@ from config import (
     INSTAGRAM_ACCESS_TOKEN,
     INSTAGRAM_ACCOUNT_ID,
     INSTAGRAM_API_VERSION,
+    INSTAGRAM_MEDIA_BASE_URL,
+    INSTAGRAM_MEDIA_REMOTE_DIR,
+    INSTAGRAM_MEDIA_RETENTION_DAYS,
+    INSTAGRAM_MEDIA_SSH_HOST,
 )
 
 logger = logging.getLogger(__name__)
@@ -480,14 +486,53 @@ def delete_bluesky_post(post_uri: str) -> bool:
 # ---------------------------------------------------------------------------
 # Instagram (Meta Graph API)
 # ---------------------------------------------------------------------------
-# Flow (zie INSTAGRAM_PLAN.md): beeld componeren (instagram_image.py) →
-# uploaden naar de WP media library (Graph API accepteert alleen een publieke
-# image_url) → container aanmaken → pollen tot FINISHED → publiceren.
+# Flow (zie INSTAGRAM_PLAN.md): beeld componeren (instagram_image.py) → scp naar
+# de ig-media host op meterkast (publieke image_url — de WP media library kon
+# dit niet aan, zie de "bekende bug" in INSTAGRAM_PLAN.md fase 5: WP/Imagick
+# crasht op het XMP-blok dat Meta's AI-label triggert) → container aanmaken →
+# pollen tot FINISHED → publiceren.
 # Let op: Instagram-posts kunnen NIET via de API verwijderd worden.
 
 _IG_IMAGE_TMP = str(_TMP_DIR / "tnv_instagram.jpg")
 _IG_POLL_ATTEMPTS = 30
 _IG_POLL_DELAY = 2.0
+
+
+def _publish_image_publicly(local_path: str) -> str | None:
+    """Scp een gecomponeerd beeld naar de ig-media host en geef de publieke URL terug.
+
+    Ruimt bij elke aanroep ook bestanden op ouder dan INSTAGRAM_MEDIA_RETENTION_DAYS
+    — Meta haalt het beeld maar één keer op (bij het aanmaken van de media
+    container), dus een korte bewaartermijn is voldoende.
+
+    Pre:  local_path bestaat; SSH-alias INSTAGRAM_MEDIA_SSH_HOST is bereikbaar
+          zonder wachtwoord (bestaande key-auth, zie ~/.ssh/config)
+    Post: retourneert de publieke https-URL, of None bij elke fout (nooit raisen)
+    """
+    remote_name = f"ig-{secrets.token_hex(8)}.jpg"
+    remote_path = f"{INSTAGRAM_MEDIA_REMOTE_DIR}/{remote_name}"
+
+    try:
+        subprocess.run(
+            ["scp", "-q", local_path, f"{INSTAGRAM_MEDIA_SSH_HOST}:{remote_path}"],
+            check=True, timeout=30, capture_output=True, text=True,
+        )
+    except Exception as exc:
+        detail = exc.stderr if isinstance(exc, subprocess.CalledProcessError) else str(exc)
+        logger.error("Instagram-beeld uploaden naar ig-media mislukt: %s", detail)
+        return None
+
+    try:
+        subprocess.run(
+            ["ssh", INSTAGRAM_MEDIA_SSH_HOST,
+             f"find {INSTAGRAM_MEDIA_REMOTE_DIR} -name 'ig-*.jpg' "
+             f"-mtime +{INSTAGRAM_MEDIA_RETENTION_DAYS} -delete"],
+            timeout=20, capture_output=True, text=True,
+        )
+    except Exception as exc:
+        logger.warning("Opruimen oude ig-media bestanden mislukt (niet fataal): %s", exc)
+
+    return f"{INSTAGRAM_MEDIA_BASE_URL}/{remote_name}"
 
 
 def _ig_graph_base() -> str:
@@ -605,18 +650,12 @@ def post_to_instagram(
         return "dryrun"
 
     try:
-        # Publieke URL via de WP media library (los van de WP-post zelf)
-        from wordpress_client import WordPressClient  # noqa: PLC0415
-        media = WordPressClient().upload_image(
-            composed,
-            filename="instagram-post.jpg",
-            alt_text=f"Instagram: {ig_kop}",
-        )
-        if not media or not media.get("url"):
-            logger.error("WP media upload voor Instagram mislukt — post overgeslagen")
+        image_url = _publish_image_publicly(composed)
+        if not image_url:
+            logger.error("Instagram-beeld publiek hosten mislukt — post overgeslagen")
             return ""
 
-        container_id = _ig_create_container(media["url"], ig_caption)
+        container_id = _ig_create_container(image_url, ig_caption)
         _ig_wait_finished(container_id)
         media_id = _ig_publish(container_id)
         permalink = _ig_permalink(media_id)
