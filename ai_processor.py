@@ -5,6 +5,7 @@ AI-verwerking via de Claude Code CLI:
 """
 import json
 import logging
+import random
 import re
 import shutil
 import subprocess
@@ -444,12 +445,18 @@ def process_article(article: Article) -> Optional[ProcessedArticle]:
         logger.info("Excerpt te kort, volledige tekst ophalen voor: %s", article.url)
         artikel_tekst = fetch_article_text(article.url) or artikel_tekst
 
+    # Gevarieerde artikellengte i.p.v. een vaste ~300 woorden: voorkomt dunne,
+    # uniforme content (relevant voor AdSense-review) en maakt de in-article
+    # ad-drempel (>500 woorden) daadwerkelijk af en toe actief.
+    target_words = random.randint(300, 1000)
+    paragraph_range = "2 - 4" if target_words < 500 else "4 - 7"
+
     prompt = (
-        "Je bent een ervaren auteur en je schrijft samenvattingen van artikelen voor een website "
-        "die dagelijks korte berichten plaatst. "
+        "Je bent een ervaren auteur en je schrijft artikelen voor een website "
+        "die dagelijks nieuwsberichten plaatst. "
         "Lees het artikel via de meegeleverde link aandachtig door. "
-        "Vat de inhoud samen in ongeveer 300 woorden, 2 - 4 paragrafen en in foutloos Nederlands "
-        "op taalniveau 2F. "
+        f"Vat de inhoud samen in ongeveer {target_words} woorden, {paragraph_range} paragrafen "
+        "en in foutloos Nederlands op taalniveau 2F. "
         "Zorg dat de samenvatting de kernboodschap van het artikel duidelijk overbrengt. "
         "Suggereer daarnaast één aantrekkelijke en relevante titel van maximaal 5 - 8 woorden "
         "die nieuwsgierigheid opwekt en het artikel uitnodigend maakt voor lezers. "
@@ -493,7 +500,10 @@ def process_article(article: Article) -> Optional[ProcessedArticle]:
     last_exc: Exception = RuntimeError("onbekende fout")
     for attempt in range(1, 4):
         try:
-            response_text = _call_claude(prompt, timeout=240)
+            # Timeout ruim boven 240s: bij target_words richting de 1000 duurt
+            # generatie langer en liep de eerste poging anders vaak tegen de
+            # oude 240s-limiet aan.
+            response_text = _call_claude(prompt, timeout=360)
             data = _extract_json(response_text)
 
             if not isinstance(data, dict):
