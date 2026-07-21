@@ -264,10 +264,11 @@ def is_similar_to_recent(
     Two-stage, cost-aware:
       1. Cheap: word-overlap of the Dutch title against each recent title.
       2. Inconclusive → one short, cheap Claude call comparing the candidate
-         title + first sentences against the recent titles (no full body needed).
+         title + first sentences against the recent titles + excerpts
+         (no full body needed).
 
     Pre:  candidate has .titel and .samenvatting; recent_articles is a list of
-          dicts with a 'title' key (newest first)
+          dicts with 'title' and 'excerpt' keys (newest first)
     Post: returns (is_similar, reason); reason names the matched recent title.
     """
     if not recent_articles:
@@ -280,16 +281,21 @@ def is_similar_to_recent(
         if ratio > title_threshold:
             return True, f"titel-overlap {ratio * 100:.0f}% met recent '{art['title']}'"
 
-    # Stap 2 — kort Claude-oordeel; alleen titels + eerste zinnen, dus goedkoop
+    # Stap 2 — kort Claude-oordeel; titels + excerpt, dus nog steeds goedkoop
+    # (geen volledige artikeltekst nodig)
     first_sentences = " ".join(candidate.samenvatting.split(". ")[:2]).strip()
     recent_titles = "\n".join(
-        f"{i + 1}. {a.get('title', '')}" for i, a in enumerate(recent_articles)
+        f"{i + 1}. {a.get('title', '')} — {a.get('excerpt', '')[:200]}"
+        for i, a in enumerate(recent_articles)
     )
     prompt = (
         "Je bent eindredacteur. Bepaal of het KANDIDAAT-artikel hetzelfde "
         "onderwerp of nieuwsfeit behandelt als een van de RECENT gepubliceerde "
         "artikelen. Zelfde bedrijf + product + type nieuws telt als duplicaat; "
-        "een ander aspect van een breed thema (bv. ander product, andere invalshoek) "
+        "ook wanneer het KANDIDAAT en een recent artikel over dezelfde hoofdpersoon "
+        "of organisatie gaan telt dat als duplicaat, tenzij het nieuwsfeit "
+        "duidelijk en wezenlijk anders is. Een écht ander aspect van een breed "
+        "thema (bv. ander product, andere onderneming, andere invalshoek) "
         "telt NIET als duplicaat.\n\n"
         f"KANDIDAAT:\nTitel: {candidate.titel}\n{first_sentences}\n\n"
         f"RECENT GEPUBLICEERD:\n{recent_titles}\n\n"
