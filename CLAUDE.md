@@ -144,3 +144,9 @@ HTTP Basic met base64-encoded `WP_USERNAME:WP_APP_PASSWORD`. Custom field `bron_
 
 - Dagelijkse runs: `logs/run_YYYY-MM-DD_HH-MM-SS.log`
 - Approval server: `logs/approval_server.log`
+
+## Versiebeheer
+
+`origin` → github.com/dgebbink/technieuwsvandaag (**publiek**, bewust zo
+gekozen — niet omzetten naar privé zonder overleg). Commit en push gewoon
+naar `origin` na wijzigingen.
