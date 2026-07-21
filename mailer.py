@@ -86,11 +86,6 @@ def _article_section(index: int, data: dict, buttons_html: str | None = None) ->
     article: ProcessedArticle = data["article"]
     post: dict = data["post"]
 
-    words = article.samenvatting.split()
-    preview = " ".join(words[:150])
-    if len(words) > 150:
-        preview += " …"
-
     image_html = ""
     if post.get("image_url"):
         image_html = (
@@ -122,6 +117,26 @@ def _article_section(index: int, data: dict, buttons_html: str | None = None) ->
           <td style="padding:6px 0;">{describe_variant(article.image_variant)}</td>
         </tr>"""
 
+    full_text_html = "".join(
+        f'<p style="color:#555; line-height:1.7; margin:0 0 12px;">{p}</p>'
+        for p in article.samenvatting.split("\n") if p.strip()
+    )
+
+    word_count = article.target_words or len(article.samenvatting.split())
+    image_prompt_html = ""
+    if article.image_prompt:
+        image_prompt_html = f"""
+        <p style="margin:12px 0 0; font-size:12px; color:#888;">
+          <strong>Beeldprompt (FAL.ai):</strong> {article.image_prompt}
+        </p>"""
+
+    meta_footer_html = f"""
+      <div style="margin-top:16px; padding-top:12px; border-top:1px solid #eee;
+                  font-size:12px; color:#888;">
+        <p style="margin:0;"><strong>Aantal woorden:</strong> {word_count}</p>
+        {image_prompt_html}
+      </div>"""
+
     return f"""
     <div style="border:1px solid #e0e0e0; border-radius:8px; padding:24px;
                 margin:20px 0; background:#ffffff;">
@@ -131,8 +146,8 @@ def _article_section(index: int, data: dict, buttons_html: str | None = None) ->
 
       {image_html}
 
-      <h3 style="color:#333; margin:0 0 8px; font-size:15px;">Samenvatting preview</h3>
-      <p style="color:#555; line-height:1.7; margin:0 0 16px;">{preview}</p>
+      <h3 style="color:#333; margin:0 0 8px; font-size:15px;">Volledige artikeltekst</h3>
+      {full_text_html}
 
       <table style="width:100%; border-collapse:collapse; font-size:14px;">
         <tr>
@@ -160,6 +175,8 @@ def _article_section(index: int, data: dict, buttons_html: str | None = None) ->
         </a>
       </p>
       {buttons_html}
+
+      {meta_footer_html}
     </div>
     """
 

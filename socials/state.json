@@ -1,0 +1,111 @@
+{
+  "_comment": "State voor de social-groei-taak. Bijgewerkt aan het begin/einde van elke run.",
+  "last_run": "2026-07-20T00:00:00+02:00",
+  "runs_today": 1,
+  "today_counters": {
+    "date": "2026-07-20",
+    "follows": { "bluesky": 8, "instagram": 0 },
+    "mails_outreach": 1,
+    "dms_instagram": 0
+  },
+  "followed": {
+    "bluesky": [
+      {
+        "handle": "tweakers.net",
+        "did": "did:plc:r74rn6trtpqwfn62qid7e7nl",
+        "date": "2026-07-20",
+        "reason": "bronsite (NL) uit sources.txt"
+      },
+      {
+        "handle": "brightnl.bsky.social",
+        "did": "did:plc:m62lj6gwpnmijgklma4abecm",
+        "date": "2026-07-20",
+        "reason": "bronsite (NL) uit sources.txt"
+      },
+      {
+        "handle": "dutchcowboys.bsky.social",
+        "did": "did:plc:u653gem34okeoadrdeyltxri",
+        "date": "2026-07-20",
+        "reason": "bronsite (NL) uit sources.txt"
+      },
+      {
+        "handle": "androidworldnl.bsky.social",
+        "did": "did:plc:waknpxx7lobp6rnoeu2a6ers",
+        "date": "2026-07-20",
+        "reason": "bronsite (NL) uit sources.txt"
+      },
+      {
+        "handle": "techcrunch.com",
+        "did": "did:plc:vtpyqvwce4x6gpa5dcizqecy",
+        "date": "2026-07-20",
+        "reason": "bronsite (EN) uit sources.txt"
+      },
+      {
+        "handle": "theverge.com",
+        "did": "did:plc:7exlcsle4mjfhu3wnhcgizz6",
+        "date": "2026-07-20",
+        "reason": "bronsite (EN) uit sources.txt"
+      },
+      {
+        "handle": "arstechnica.com",
+        "did": "did:plc:wld6fad6xsm4tz4kfkoikun2",
+        "date": "2026-07-20",
+        "reason": "bronsite (EN) uit sources.txt"
+      },
+      {
+        "handle": "wired.com",
+        "did": "did:plc:inz4fkbbp7ms3ixufw6xuvdi",
+        "date": "2026-07-20",
+        "reason": "bronsite (EN) uit sources.txt"
+      }
+    ],
+    "instagram": []
+  },
+  "outreach": {
+    "mails": [
+      {
+        "target": "tech@insiderpodcast.nl",
+        "name": "Tech Insider Podcast (Martijn van der Hoeden)",
+        "date": "2026-07-20",
+        "status": "draft_sent_to_dennis",
+        "summary": "B2B-podcast over SaaS/AI/Nederlandse techmarkt, geen concurrent. Kennismaking + lichte aftasting voor wederzijdse zichtbaarheid."
+      }
+    ],
+    "dms": []
+  },
+  "pending_drafts": [
+    {
+      "type": "outreach_mail",
+      "target": "tech@insiderpodcast.nl",
+      "subject": "[DRAFT] Tech Insider Podcast (Martijn van der Hoeden)",
+      "sent_to_dennis": "2026-07-20"
+    }
+  ],
+  "known_blockers": {
+    "instagram_follow": "Niet mogelijk via Graph API (geen follow-endpoint voor enig accounttype). Zie mail aan Dennis 2026-07-20.",
+    "instagram_dm_cold_outreach": "Niet mogelijk via Instagram Messaging API buiten het 24u/7d customer-service-window (gebruiker moet eerst zelf berichten). Zie mail aan Dennis 2026-07-20."
+  },
+  "instagram_manual_follow_suggestions": {
+    "_comment": "IG-follows kunnen niet geautomatiseerd. Onderzocht via websearch (geen login/browsersessie) en per mail naar Dennis gestuurd op 2026-07-20 zodat hij ze handmatig kan volgen. Niet opnieuw voorstellen.",
+    "sent_to_dennis": "2026-07-20",
+    "accounts": [
+      "tweakersnet", "bright_nl", "dutchcowboys", "androidworldnl",
+      "techcrunch", "verge", "arstechnica", "engadget", "gizmodo",
+      "9to5mac", "toms.hardware", "ieeespectrum", "technologyreview", "techmeetups"
+    ],
+    "not_yet_researched": ["cnet.com", "zdnet.com", "anandtech.com", "techrepublic.com", "slashdot.org", "infoq.com", "news.ycombinator.com"],
+    "uncertain": ["wired.com — hoofdaccount niet met zekerheid vastgesteld, Dennis moet zelf checken"]
+  },
+  "nachtwacht_integratie": {
+    "date": "2026-07-20",
+    "summary": "IG-volgersteller (alleen followers_count, geen volgerslijst mogelijk) toegevoegd aan het nachtrapport voor beide accounts.",
+    "technieuwsvandaag": "instagram_monitor.py toegevoegd, aangehaakt in Nachtwacht Stap 7c-bis + Stap 15 sjabloon. Werkt (getest: 2 volgers).",
+    "cultureelamsterdam": "Nieuw endpoint GET /api/admin/instagram/followers in amsterdam backend admin.py, aangehaakt in Nachtwacht Stap 6f-bis + Stap 15 sjabloon. NOG NIET GEDEPLOYED — amsterdam-backend heeft al veel ongerelateerd ongecommit werk staan, dus geen rebuild getriggerd. Geeft tot deploy een 404 in het nachtrapport, dat is verwacht."
+  },
+  "notes": [
+    "Eerste run (2026-07-20): socials/ was leeg, state.json bestond nog niet, geen replies om te verwerken.",
+    "technieuwsvandaag.nl heeft al Instagram- en Bluesky-links in header/footer — geen actie nodig.",
+    "socials/bluesky_actions.py toegevoegd: herbruikbaar follow-script met 2-5 min spacing tussen follows.",
+    "Instagram followers_count is wel opvraagbaar (Graph API, instagram_basic-scope) ondanks dat follow/DM niet kan — account had bij navraag al 2 volgers, niet 0 zoals in de opdracht stond."
+  ]
+}

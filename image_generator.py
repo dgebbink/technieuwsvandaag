@@ -388,13 +388,15 @@ def generate_image_for_article(
     dest_path: str,
     dry_run: bool = False,
     variant_out: Optional[dict] = None,
+    prompt_out: Optional[dict] = None,
 ) -> Optional[str]:
     """Generate an AI image for one article: prompt via Claude, image via FAL.ai.
 
     Pre:  title is non-empty; dest_path is writable
     Post: returns dest_path on success, None on any failure or in dry-run.
           Als variant_out is meegegeven, wordt die gevuld met de gekozen
-          persoonsvariant (gender/ethnicity/age).
+          persoonsvariant (gender/ethnicity/age). Als prompt_out is meegegeven,
+          wordt die gevuld met de gegenereerde FAL.ai-prompt onder key 'prompt'.
     """
     if dry_run:
         logger.info("[DRY RUN] Zou FAL.ai afbeelding genereren voor: %s", title)
@@ -404,6 +406,8 @@ def generate_image_for_article(
         image_prompt, variant = generate_image_prompt(title, article_text)
         if variant_out is not None:
             variant_out.update(variant)
+        if prompt_out is not None:
+            prompt_out["prompt"] = image_prompt
         logger.info("Gegenereerde prompt: %s", image_prompt)
 
         result = generate_fal_image(image_prompt, dest_path)

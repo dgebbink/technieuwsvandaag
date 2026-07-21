@@ -51,6 +51,10 @@ class ProcessedArticle:
     bron_image_url: str = ""
     # Gekozen persoonsvariant voor de gegenereerde afbeelding (generate-modus)
     image_variant: Optional[dict] = None
+    # Prompt waarmee de FAL.ai-afbeelding gegenereerd is (generate-modus)
+    image_prompt: str = ""
+    # Gerandomiseerd woordaantal waarmee de samenvatting is opgevraagd (300-1000)
+    target_words: int = 0
     # Instagram-velden: korte kop voor op het beeld + volledig geassembleerde caption
     ig_kop: str = ""
     ig_caption: str = ""
@@ -548,6 +552,7 @@ def process_article(article: Article) -> Optional[ProcessedArticle]:
                 meta_description=meta_description,
                 slug=slug,
                 focus_keyword=focus_keyword,
+                target_words=target_words,
                 ig_kop=ig_kop,
                 ig_caption=ig_caption,
             )
