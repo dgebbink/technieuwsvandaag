@@ -193,6 +193,43 @@ def extract_image_from_page(url: str, session: requests.Session) -> Optional[str
     return None
 
 
+def extract_outbound_domains(url: str, session: requests.Session) -> set[str]:
+    """Fetch an article page and return external domains it links to.
+    Pre:  session is a configured requests.Session
+    Post: returns lowercase netlocs (without 'www.'), excluding url's own
+          domain; empty set on failure
+    """
+    try:
+        resp = session.get(url, timeout=REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "lxml")
+        own_domain = urlparse(url).netloc.lower().removeprefix("www.")
+
+        container = None
+        for tag in ("article", "main"):
+            container = soup.find(tag)
+            if container:
+                break
+        if container is None:
+            container = soup
+
+        domains: set[str] = set()
+        for a_tag in container.find_all("a", href=True):
+            href = urljoin(url, a_tag["href"])
+            parsed = urlparse(href)
+            if parsed.scheme not in ("http", "https"):
+                continue
+            domain = parsed.netloc.lower().removeprefix("www.")
+            if domain and domain != own_domain:
+                domains.add(domain)
+
+        return domains
+
+    except Exception as exc:
+        logger.debug("Uitgaande links ophalen mislukt voor %s: %s", url, exc)
+        return set()
+
+
 # ---------------------------------------------------------------------------
 # Artikel-tekst ophalen voor AI-verwerking
 # ---------------------------------------------------------------------------

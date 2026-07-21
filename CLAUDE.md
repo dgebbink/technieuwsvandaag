@@ -49,6 +49,13 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
 - **Service watchdog**: `service_watchdog.sh` elke 5 min via cron (in de
   scheduler-template) — herstart gestopte supervisor-services, herstelt
   log-permissies, meldt via Telegram (credentials uit `.env`).
+- **Bronnenlijst-uitbreiding**: zondag 04:00 UTC `source_discovery.py` (in de
+  scheduler-template) — breidt `sources.txt` automatisch uit met domeinen die
+  deze week door ≥2 bestaande bronnen werden gelinkt, plus een korte
+  Claude-suggestie van ontbrekende gerenommeerde tech-sites. Kandidaten moeten
+  eerst een bereikbaarheids-/RSS-check én een Claude-reputatie-oordeel
+  doorstaan. Toevoegingen (en dry-run-resultaten) staan in
+  `source_discovery_log.txt` — controleer/draai daar desgewenst iets terug.
 - **Op oracle-web**: cron (ubuntu) 06:00+18:00 draait `nginx_stats.py` → JSON-cache
   voor de analytics-pagina; root-cron 05:15 UTC draait
   `/usr/local/bin/ssl_watchdog.sh` (kopie van `ssl_watchdog.sh` hier) — controleert

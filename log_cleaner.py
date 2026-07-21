@@ -41,6 +41,7 @@ RETENTION: list[tuple[str, int]] = [
     ("backfill_*.log",        30),
     ("scheduler.log",         30),
     ("daily_schedule.log",    30),
+    ("source_discovery.log",  90),
 ]
 
 ROTATE_FILES: list[tuple[str, int]] = []
