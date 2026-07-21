@@ -3,6 +3,8 @@ www.Tweakers.net|https://tweakers.net/feeds/mixed.xml
 www.Bright.nl
 www.Dutchcowboys.nl|https://www.dutchcowboys.nl/sitemap/news.xml
 www.Androidworld.nl
+emerce.nl|https://emerce.nl/feed
+security.nl
 // EN
 www.techcrunch.com
 www.wired.com
@@ -21,3 +23,6 @@ www.9to5mac.com
 www.slashdot.org
 www.infoq.com
 www.techrepublic.com
+howtogeek.com|https://howtogeek.com/feed
+theregister.com|https://theregister.com/feed
+macrumors.com|https://macrumors.com/rss.xml
