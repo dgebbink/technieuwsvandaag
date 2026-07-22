@@ -1,12 +1,13 @@
 # Instagram-integratie — implementatieplan
 
-**Status (2026-07-13):** fase 1 t/m 4 gebouwd en getest (`generate_instagram_assets.py`,
-`instagram_image.py`, `instagram_token.py`, uitbreidingen in `ai_processor.py`,
-`social_poster.py`, `main.py` stap 6, `approval_store.py`, `approval_server.py`,
-`config.py`). Resteert: fase 0 (Meta-accountsetup, handmatig) en fase 5 (testpost +
-activeren). NB: de posting hangt aan `main.py` stap 6 (posts worden direct
-gepubliceerd; de mail heeft alleen Decline) — niet aan een approve-knop zoals
-hieronder oorspronkelijk beschreven.
+**Status (2026-07-22):** fase 0 t/m 5 klaar en live. Sinds fase 6 (2026-07-22)
+post `main.py` niet meer direct naar Instagram per artikel — bij een klein
+aantal volgers waren 5 losse posts/dag te veel. Artikelen komen in
+`instagram_queue.json` terecht (`social_poster.queue_instagram_post()`) en
+`instagram_digest.py` bundelt die om 19:45 CET tot één post: 1 artikel → los
+beeld, 2+ → carousel (`social_poster.post_instagram_digest()`). Decline vóór
+19:45 haalt het artikel gewoon uit de wachtrij (`remove_from_instagram_queue`);
+ná de digest-post kan dat niet meer (zie bekende beperking hieronder).
 
 Doel: elk goedgekeurd artikel wordt automatisch als Instagram-post gepubliceerd op
 **@technieuwsvandaag.nl**, in de stijl van @de_volkskrant: de (al gegenereerde)
@@ -225,7 +226,39 @@ titel + eerste zinnen samenvatting (zelfde truc als `_build_post_text`).
 4. [x] `ENABLE_INSTAGRAM_POSTING=true` in `.env`.
 5. [ ] `daily_digest.py`: Instagram-regel toevoegen (aantal posts vandaag), naast de
        bestaande Bluesky-stats. *(mag later)*
-6. [ ] CLAUDE.md bijwerken: nieuwe module + env-vars in de architectuursectie.
+6. [x] CLAUDE.md bijwerken: Instagram-digest job in de scheduling-sectie.
+
+---
+
+## Fase 6 — Dagelijkse digest (batching, 2026-07-22)
+
+**Aanleiding:** lage volgersaantallen rechtvaardigen geen 5 losse Instagram-posts
+per dag (één per `main.py`-run). Nieuwe flow: verzamelen overdag, bundelen 's avonds.
+
+- `ai_processor.ProcessedArticle` kreeg een `ig_tekst`-veld (de losse hook, náást de
+  al samengestelde `ig_caption`) zodat een dagcaption meerdere hooks kan combineren
+  zonder de link/disclosure/hashtag-blokken te dupliceren
+  (`ai_processor.build_daily_ig_caption()`).
+- `social_poster.post_to_instagram()` is vervangen door
+  `social_poster.queue_instagram_post()`: componeert en host het beeld zoals
+  voorheen, maar post niet — schrijft een entry naar `instagram_queue.json`
+  (pad in `config.INSTAGRAM_QUEUE_FILE`, gitignored, zelfde stijl als
+  `approval_tokens.json`).
+- Nieuw script `instagram_digest.py`, cron 19:45 CET (`scheduler.py`, ruim ná het
+  laatste artikel-slot van 07:00–19:00 en vóór `daily_digest.py` om 20:00): leest de
+  wachtrij, bouwt de gecombineerde caption, post 1 beeld los of 2+ als carousel
+  (`social_poster.post_instagram_digest()`, Graph API-limiet 10 items/carousel), en
+  leegt de wachtrij bij succes. Wachtrij blijft staan bij een mislukte post, voor een
+  volgende poging.
+- `approval_server.py` decline haalt het artikel eerst uit de wachtrij
+  (`remove_from_instagram_queue`) zodat een gedeclineerd artikel nooit meepost. Dat
+  werkt alleen vóór 19:45 — de decline-tokens verlopen sowieso al na 4 uur
+  (`approval_store.TTL_HOURS`), dus in de praktijk is dit vrijwel altijd op tijd.
+- **Bekende beperking:** staat een artikel eenmaal in een gepubliceerde
+  (carousel-)post, dan kan een los item daar niet meer uit via de API — net zomin
+  als voorheen een hele post verwijderd kon worden. De decline-pagina herinnert dan
+  alleen nog aan handmatig verwijderen (van de hele post, incl. de andere
+  artikelen erin).
 
 ---
 

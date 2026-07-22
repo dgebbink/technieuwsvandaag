@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 
 from approval_store import get_token, mark_used, cleanup_expired, update_bluesky_uri
 from wordpress_client import delete_post, update_featured_image
-from social_poster import delete_bluesky_post
+from social_poster import delete_bluesky_post, remove_from_instagram_queue
 from mailer import send_reimage_email
 
 load_dotenv()
@@ -84,12 +84,18 @@ def decline(token: str):
         bsky_msg = "Geen Bluesky post gevonden (overgeslagen).<br>"
         logging.info(f"No bluesky_uri for post {post_id} — skipping Bluesky delete")
 
-    # Instagram-posts kunnen niet via de API verwijderd worden — herinner eraan
-    if ig_permalink:
+    # Instagram: zolang de dagdigest nog niet geweest is, gewoon uit de
+    # wachtrij halen — dan wordt dit artikel nooit gepost. Staat het al in
+    # een gepubliceerde (carousel-)post, dan kan dat niet via de API terug;
+    # dan alleen herinneren aan handmatig verwijderen.
+    if remove_from_instagram_queue(post_id):
+        bsky_msg += "Artikel uit de Instagram-wachtrij gehaald (nog niet gepost).<br>"
+        logging.info(f"Removed post {post_id} from Instagram queue on decline")
+    elif ig_permalink:
         bsky_msg += (
             f'⚠️ De <a href="{ig_permalink}" target="_blank">Instagram-post</a> '
-            f"kan niet automatisch verwijderd worden — verwijder die handmatig "
-            f"in de Instagram-app.<br>"
+            f"bevat mogelijk dit artikel en kan niet automatisch verwijderd worden "
+            f"— verwijder die handmatig in de Instagram-app.<br>"
         )
         logging.info(f"Instagram post for {post_id} requires manual deletion: {ig_permalink}")
 

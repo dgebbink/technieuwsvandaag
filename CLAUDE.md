@@ -40,8 +40,16 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
 
 - **Cron (user)**: 00:00 `scheduler.py` regenereert het schema → 5× `main.py` op
   random tijden (07:00–19:00 CET, min. 90 min tussenruimte), 00:00 `log_cleaner.py`,
-  18:00 UTC `daily_digest.py` (gecombineerd dagoverzicht: artikelen + Bluesky +
-  FAL.ai-tegoed via `bluesky_monitor.py` + `budget_monitor.py`).
+  19:45 CET `instagram_digest.py` (bundelt de dagelijkse Instagram-artikelen — zie
+  hieronder — tot 1 post), 18:00 UTC `daily_digest.py` (gecombineerd dagoverzicht:
+  artikelen + Bluesky + FAL.ai-tegoed via `bluesky_monitor.py` + `budget_monitor.py`).
+- **Instagram-posting is een dagdigest, geen post per artikel**: elke `main.py`-run
+  zet gequeuede artikelen in `instagram_queue.json` (`social_poster.queue_instagram_post()`)
+  i.p.v. direct te posten — bij lage volgersaantallen zijn 5 losse posts/dag te
+  veel. `instagram_digest.py` bundelt de wachtrij 's avonds tot één post (carousel
+  bij 2+ artikelen). Details en de bekende beperking (gedeclineerd artikel na de
+  digest-post niet meer uit een gepubliceerde carousel te halen) staan in
+  `INSTAGRAM_PLAN.md` fase 6.
 - **Approval server**: system-supervisord service `tnv-approval-server`
   (`/etc/supervisor/conf.d/user/tnv-approval-server.conf`); `supervisorctl` vereist
   sudo. `APPROVAL_BASE_URL` staat op een LAN-adres — de knoppen in de mail werken

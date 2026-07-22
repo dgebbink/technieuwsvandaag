@@ -50,17 +50,16 @@ _TMP_DIR.mkdir(exist_ok=True)
 logger = _setup_logging(LOGS_DIR)
 
 from ai_processor import InsufficientCreditsError, ensure_ig_fields, process_articles, save_posted_title  # noqa: E402
-from approval_store import update_bluesky_uri, update_instagram_permalink  # noqa: E402
+from approval_store import update_bluesky_uri  # noqa: E402
 from config import (  # noqa: E402
     BLUESKY_POST_DELAY_SECONDS,
     ENABLE_INSTAGRAM_POSTING,
     ENABLE_SOCIAL_POSTING,
     IMAGE_STRATEGY,
-    INSTAGRAM_POST_DELAY_SECONDS,
 )
 from mailer import build_action_buttons, send_balance_warning, send_fal_balance_warning, send_notification  # noqa: E402
 from scraper import download_image, fetch_article_text, save_posted_url, scrape_all_sources  # noqa: E402
-from social_poster import post_to_bluesky, post_to_instagram  # noqa: E402
+from social_poster import post_to_bluesky, queue_instagram_post  # noqa: E402
 from wordpress_client import publish_articles  # noqa: E402
 
 
@@ -334,12 +333,13 @@ def main() -> int:
     send_notification(results, warning_message=warning_message, dry_run=args.dry_run)
 
     # ------------------------------------------------------------------
-    # Stap 6: Social publiceren (Bluesky + Instagram, met vertraging)
+    # Stap 6: Social publiceren (Bluesky direct, Instagram in dagwachtrij)
     # ------------------------------------------------------------------
     if not args.dry_run and ENABLE_SOCIAL_POSTING and results:
         logger.info(
-            "── Stap 6: Social publiceren (Bluesky %ds, Instagram +%ds vertraging) ──",
-            BLUESKY_POST_DELAY_SECONDS, INSTAGRAM_POST_DELAY_SECONDS,
+            "── Stap 6: Social publiceren (Bluesky %ds vertraging, "
+            "Instagram → dagwachtrij) ──",
+            BLUESKY_POST_DELAY_SECONDS,
         )
         for result in results:
             article  = result["article"]
@@ -368,28 +368,24 @@ def main() -> int:
                     "Bluesky URI opgeslagen voor decline token (post %d)", post_id
                 )
 
-            # Instagram: eigen vertraging na Bluesky, eigen toggle. De permalink
-            # gaat naar de token store zodat de decline-pagina kan herinneren
-            # aan handmatig verwijderen (IG-posts kunnen niet via de API weg).
+            # Instagram: geen losse post per artikel meer — instagram_digest.py
+            # bundelt de dagwachtrij aan het eind van de dag tot één post.
             if ENABLE_INSTAGRAM_POSTING:
-                logger.info(
-                    "Wacht %ds voor Instagram post: %s",
-                    INSTAGRAM_POST_DELAY_SECONDS, article.titel,
-                )
-                time.sleep(INSTAGRAM_POST_DELAY_SECONDS)
-
                 ensure_ig_fields(article)
-                ig_ref = post_to_instagram(
+                queued = queue_instagram_post(
                     ig_kop=article.ig_kop,
-                    ig_caption=article.ig_caption,
+                    ig_tekst=article.ig_tekst,
+                    trefwoorden=article.trefwoorden,
                     kicker=" · ".join(article.categorieen[:2]),
                     src_image_path=article.image_path or "",
+                    post_id=post_id,
+                    decline_token=decline_tokens.get(post_id, ""),
                     dry_run=False,
                 )
-                logger.info("Instagram: %s", ig_ref or "MISLUKT/OVERGESLAGEN")
-
-                if ig_ref and post_id in decline_tokens:
-                    update_instagram_permalink(decline_tokens[post_id], ig_ref)
+                logger.info(
+                    "Instagram: %s",
+                    "in dagwachtrij gezet" if queued else "MISLUKT/OVERGESLAGEN",
+                )
 
     # ------------------------------------------------------------------
     # Samenvatting

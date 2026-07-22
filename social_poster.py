@@ -22,6 +22,8 @@ from PIL import Image
 
 from pathlib import Path
 
+import json
+
 from config import (
     BASE_DIR,
     BLUESKY_APP_PASSWORD,
@@ -36,6 +38,7 @@ from config import (
     INSTAGRAM_MEDIA_REMOTE_DIR,
     INSTAGRAM_MEDIA_RETENTION_DAYS,
     INSTAGRAM_MEDIA_SSH_HOST,
+    INSTAGRAM_QUEUE_FILE,
 )
 
 logger = logging.getLogger(__name__)
@@ -486,14 +489,16 @@ def delete_bluesky_post(post_uri: str) -> bool:
 # ---------------------------------------------------------------------------
 # Instagram (Meta Graph API)
 # ---------------------------------------------------------------------------
-# Flow (zie INSTAGRAM_PLAN.md): beeld componeren (instagram_image.py) → scp naar
-# de ig-media host op meterkast (publieke image_url — de WP media library kon
-# dit niet aan, zie de "bekende bug" in INSTAGRAM_PLAN.md fase 5: WP/Imagick
-# crasht op het XMP-blok dat Meta's AI-label triggert) → container aanmaken →
-# pollen tot FINISHED → publiceren.
+# Flow (zie INSTAGRAM_PLAN.md fase 6): per artikel beeld componeren
+# (instagram_image.py) → scp naar de ig-media host op meterkast (publieke
+# image_url — de WP media library kon dit niet aan, zie de "bekende bug" in
+# INSTAGRAM_PLAN.md fase 5: WP/Imagick crasht op het XMP-blok dat Meta's
+# AI-label triggert) → entry in INSTAGRAM_QUEUE_FILE (queue_instagram_post).
+# Aan het eind van de dag bundelt instagram_digest.py de wachtrij tot één
+# post: 1 beeld → los, 2+ → carousel (container aanmaken → pollen tot
+# FINISHED → publiceren, zie post_instagram_digest).
 # Let op: Instagram-posts kunnen NIET via de API verwijderd worden.
 
-_IG_IMAGE_TMP = str(_TMP_DIR / "tnv_instagram.jpg")
 _IG_POLL_ATTEMPTS = 30
 _IG_POLL_DELAY = 2.0
 
@@ -602,23 +607,173 @@ def _ig_permalink(media_id: str) -> str:
         return ""
 
 
-def post_to_instagram(
+def _load_instagram_queue() -> list[dict]:
+    """Laad de dagelijkse Instagram-wachtrij.
+    Post: lege lijst als het bestand nog niet bestaat
+    """
+    if not INSTAGRAM_QUEUE_FILE.exists():
+        return []
+    with open(INSTAGRAM_QUEUE_FILE, "r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def load_instagram_queue() -> list[dict]:
+    """Publieke lezer voor instagram_digest.py."""
+    return _load_instagram_queue()
+
+
+def clear_instagram_queue() -> None:
+    """Leegt de wachtrij nadat de dagdigest gepost is (of geen entries had)."""
+    with open(INSTAGRAM_QUEUE_FILE, "w", encoding="utf-8") as fh:
+        json.dump([], fh)
+
+
+def remove_from_instagram_queue(post_id: int) -> bool:
+    """Haalt een artikel uit de dagwachtrij (bij Decline, vóórdat de digest post).
+
+    Pre:  post_id is het WordPress post-ID
+    Post: entry verwijderd indien aanwezig, wachtrij herschreven; returns
+          True als er iets verwijderd is, anders False (ook als het bestand
+          nog niet bestaat — nooit raisen)
+    """
+    queue = _load_instagram_queue()
+    filtered = [entry for entry in queue if entry.get("post_id") != post_id]
+    if len(filtered) == len(queue):
+        return False
+    with open(INSTAGRAM_QUEUE_FILE, "w", encoding="utf-8") as fh:
+        json.dump(filtered, fh, indent=2)
+    return True
+
+
+def queue_instagram_post(
     ig_kop: str,
-    ig_caption: str,
+    ig_tekst: str,
+    trefwoorden: str,
     kicker: str,
     src_image_path: str,
+    post_id: int,
+    decline_token: str,
     dry_run: bool = False,
-) -> str:
-    """Post one article to Instagram as a composed 4:5 feed image.
+) -> bool:
+    """Componeer het artikelbeeld en zet het klaar voor de dagelijkse IG-digest.
+
+    Bij lage volgersaantallen is 5 losse Instagram-posts/dag te veel — dit
+    vervangt de vroegere directe post_to_instagram(): elk artikel wordt hier
+    alleen gecomponeerd + publiek gehost; instagram_digest.py bundelt de
+    wachtrij aan het eind van de dag tot één (carousel-)post.
 
     Pre:  ENABLE_INSTAGRAM_POSTING vereist INSTAGRAM_ACCOUNT_ID en
-          INSTAGRAM_ACCESS_TOKEN (never-expiring Page token);
-          src_image_path is de lokale artikelafbeelding (16:9)
-    Post: returns the Instagram permalink (fallback: media-ID) on success;
-          "" on failure, when disabled, or when no image is available.
-          Nooit raisen — zelfde contract als post_to_bluesky.
+          INSTAGRAM_ACCESS_TOKEN; src_image_path is de lokale artikelafbeelding (16:9)
+    Post: bij succes: entry toegevoegd aan INSTAGRAM_QUEUE_FILE, True.
+          False bij fout/uitgeschakeld/ontbrekende velden — nooit raisen.
     """
     if not ENABLE_INSTAGRAM_POSTING:
+        return False
+
+    if not INSTAGRAM_ACCOUNT_ID or not INSTAGRAM_ACCESS_TOKEN:
+        logger.warning(
+            "Instagram credentials niet geconfigureerd "
+            "(INSTAGRAM_ACCOUNT_ID / INSTAGRAM_ACCESS_TOKEN)"
+        )
+        return False
+
+    if not src_image_path or not os.path.exists(src_image_path):
+        logger.warning("Geen lokale afbeelding voor Instagram — artikel overgeslagen")
+        return False
+
+    if not ig_kop or not ig_tekst:
+        logger.warning("ig_kop/ig_tekst ontbreekt — artikel overgeslagen voor Instagram")
+        return False
+
+    from instagram_image import compose_instagram_image  # noqa: PLC0415
+
+    dest_path = str(_TMP_DIR / f"tnv_instagram_{post_id}.jpg")
+    composed = compose_instagram_image(src_image_path, ig_kop, kicker, dest_path)
+    if not composed:
+        return False
+
+    if dry_run:
+        logger.info(
+            "[DRY RUN] Instagram queue:\nKop  : %s\nBeeld: %s\nTekst:\n%s",
+            ig_kop, composed, ig_tekst,
+        )
+        return True
+
+    image_url = _publish_image_publicly(composed)
+    if not image_url:
+        logger.error("Instagram-beeld publiek hosten mislukt — artikel overgeslagen")
+        return False
+
+    queue = _load_instagram_queue()
+    queue.append({
+        "post_id":       post_id,
+        "decline_token": decline_token,
+        "ig_kop":        ig_kop,
+        "ig_tekst":      ig_tekst,
+        "trefwoorden":   trefwoorden,
+        "image_url":     image_url,
+        "queued_at":     datetime.now(timezone.utc).isoformat(),
+    })
+    with open(INSTAGRAM_QUEUE_FILE, "w", encoding="utf-8") as fh:
+        json.dump(queue, fh, indent=2)
+
+    logger.info("Instagram-artikel in dagwachtrij gezet: %s", ig_kop)
+    return True
+
+
+_IG_CAROUSEL_MAX = 10  # Graph API-limiet voor carousel-items
+
+
+def _ig_create_carousel_child(image_url: str) -> str:
+    """Maak een carousel-item aan (geen eigen caption); retourneert container-ID."""
+    resp = requests.post(
+        f"{_ig_graph_base()}/{INSTAGRAM_ACCOUNT_ID}/media",
+        params={
+            "image_url": image_url,
+            "is_carousel_item": "true",
+            "access_token": INSTAGRAM_ACCESS_TOKEN,
+        },
+        timeout=30,
+    )
+    if not resp.ok:
+        msg = resp.json().get("error", {}).get("message", resp.text[:200])
+        raise RuntimeError(f"Instagram carousel-item aanmaken mislukt: {msg}")
+    return resp.json()["id"]
+
+
+def _ig_create_carousel_container(children_ids: list[str], caption: str) -> str:
+    """Maak de carousel-ouder aan; retourneert container-ID."""
+    resp = requests.post(
+        f"{_ig_graph_base()}/{INSTAGRAM_ACCOUNT_ID}/media",
+        params={
+            "media_type": "CAROUSEL",
+            "children": ",".join(children_ids),
+            "caption": caption,
+            "access_token": INSTAGRAM_ACCESS_TOKEN,
+        },
+        timeout=30,
+    )
+    if not resp.ok:
+        msg = resp.json().get("error", {}).get("message", resp.text[:200])
+        raise RuntimeError(f"Instagram carousel aanmaken mislukt: {msg}")
+    return resp.json()["id"]
+
+
+def post_instagram_digest(
+    image_urls: list[str],
+    caption: str,
+    dry_run: bool = False,
+) -> str:
+    """Post de gequeuede artikelen van de dag als één Instagram-post.
+
+    Pre:  image_urls bevat 1..INSTAGRAM_CAROUSEL_MAX al publiek gehoste
+          beeld-URL's (zie queue_instagram_post); caption is al samengesteld
+          (zie ai_processor.build_daily_ig_caption)
+    Post: 1 URL → los beeld; 2+ URL's → carousel-post.
+          Returns permalink (fallback media-ID) bij succes, "" bij fout/leeg.
+          Nooit raisen — zelfde contract als post_to_bluesky.
+    """
+    if not image_urls:
         return ""
 
     if not INSTAGRAM_ACCOUNT_ID or not INSTAGRAM_ACCESS_TOKEN:
@@ -628,43 +783,34 @@ def post_to_instagram(
         )
         return ""
 
-    if not src_image_path or not os.path.exists(src_image_path):
-        logger.warning("Geen lokale afbeelding voor Instagram — post overgeslagen")
-        return ""
-
-    if not ig_kop or not ig_caption:
-        logger.warning("ig_kop/ig_caption ontbreekt — Instagram post overgeslagen")
-        return ""
-
-    from instagram_image import compose_instagram_image  # noqa: PLC0415
-
-    composed = compose_instagram_image(src_image_path, ig_kop, kicker, _IG_IMAGE_TMP)
-    if not composed:
-        return ""
-
     if dry_run:
         logger.info(
-            "[DRY RUN] Instagram post:\nKop   : %s\nBeeld : %s\nCaption:\n%s",
-            ig_kop, composed, ig_caption,
+            "[DRY RUN] Instagram digest: %d beeld(en)\nCaption:\n%s",
+            len(image_urls), caption,
         )
         return "dryrun"
 
     try:
-        image_url = _publish_image_publicly(composed)
-        if not image_url:
-            logger.error("Instagram-beeld publiek hosten mislukt — post overgeslagen")
-            return ""
+        if len(image_urls) == 1:
+            container_id = _ig_create_container(image_urls[0], caption)
+        else:
+            children = [_ig_create_carousel_child(url) for url in image_urls]
+            for child_id in children:
+                _ig_wait_finished(child_id)
+            container_id = _ig_create_carousel_container(children, caption)
 
-        container_id = _ig_create_container(image_url, ig_caption)
         _ig_wait_finished(container_id)
         media_id = _ig_publish(container_id)
         permalink = _ig_permalink(media_id)
 
-        logger.info("Instagram post gepubliceerd: %s → %s", ig_kop, permalink or media_id)
+        logger.info(
+            "Instagram digest gepubliceerd (%d beeld(en)): %s",
+            len(image_urls), permalink or media_id,
+        )
         return permalink or media_id
 
     except Exception as exc:
-        logger.error("Instagram post mislukt voor '%s': %s", ig_kop, exc)
+        logger.error("Instagram digest mislukt: %s", exc)
         return ""
 
 

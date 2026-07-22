@@ -55,8 +55,10 @@ class ProcessedArticle:
     image_prompt: str = ""
     # Gerandomiseerd woordaantal waarmee de samenvatting is opgevraagd (300-1000)
     target_words: int = 0
-    # Instagram-velden: korte kop voor op het beeld + volledig geassembleerde caption
+    # Instagram-velden: korte kop voor op het beeld, de losse hook-tekst (voor
+    # hergebruik in de dagdigest-caption) en de volledig geassembleerde caption
     ig_kop: str = ""
+    ig_tekst: str = ""
     ig_caption: str = ""
 
 
@@ -433,17 +435,40 @@ def _fallback_ig_tekst(samenvatting: str) -> str:
 
 
 def ensure_ig_fields(article: "ProcessedArticle") -> None:
-    """Vul ig_kop/ig_caption in-place met fallbacks als ze leeg zijn.
+    """Vul ig_kop/ig_tekst/ig_caption in-place met fallbacks als ze leeg zijn.
 
     Voor artikelen die niet via process_article() zijn gemaakt (oudere flows,
-    adhoc/backfill) zodat post_to_instagram altijd bruikbare velden krijgt.
+    adhoc/backfill) zodat queue_instagram_post altijd bruikbare velden krijgt.
     """
     if not article.ig_kop:
         article.ig_kop = " ".join(article.titel.split()[:_IG_KOP_MAX_WORDS])
+    if not article.ig_tekst:
+        article.ig_tekst = _fallback_ig_tekst(article.samenvatting)
     if not article.ig_caption:
-        article.ig_caption = build_ig_caption(
-            _fallback_ig_tekst(article.samenvatting), article.trefwoorden
+        article.ig_caption = build_ig_caption(article.ig_tekst, article.trefwoorden)
+
+
+def build_daily_ig_caption(entries: list[dict]) -> str:
+    """Combineert de dagelijkse artikel-hooks tot één Instagram-digestcaption.
+
+    Pre:  entries is niet-leeg, elk dict heeft 'ig_tekst' en 'trefwoorden'
+    Post: bij 1 entry gewoon de hook; bij meerdere een genummerde lijst.
+          Vaste link/disclosure/hashtag-blokken komen er, net als bij een
+          losse post, precies één keer bij — niet per artikel.
+    """
+    if len(entries) == 1:
+        body = entries[0]["ig_tekst"].strip()
+    else:
+        body = "\n\n".join(
+            f"{i}. {entry['ig_tekst'].strip()}" for i, entry in enumerate(entries, 1)
         )
+    alle_trefwoorden = ", ".join(entry.get("trefwoorden", "") for entry in entries)
+    return "\n\n".join([
+        body,
+        _IG_LINK_LINE,
+        _IG_AI_DISCLOSURE,
+        _build_ig_hashtags(alle_trefwoorden),
+    ])
 
 
 # ---------------------------------------------------------------------------
@@ -567,6 +592,7 @@ def process_article(article: Article) -> Optional[ProcessedArticle]:
                 focus_keyword=focus_keyword,
                 target_words=target_words,
                 ig_kop=ig_kop,
+                ig_tekst=ig_tekst,
                 ig_caption=ig_caption,
             )
 

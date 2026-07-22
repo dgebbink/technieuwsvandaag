@@ -93,10 +93,13 @@ ENABLE_INSTAGRAM_POSTING: bool = os.environ.get("ENABLE_INSTAGRAM_POSTING", "fal
 INSTAGRAM_ACCOUNT_ID: str = os.environ.get("INSTAGRAM_ACCOUNT_ID", "")
 INSTAGRAM_ACCESS_TOKEN: str = os.environ.get("INSTAGRAM_ACCESS_TOKEN", "")
 INSTAGRAM_API_VERSION: str = os.environ.get("INSTAGRAM_API_VERSION", "v19.0")
-# Extra wachttijd ná de Bluesky-post voordat het artikel naar Instagram gaat
-INSTAGRAM_POST_DELAY_SECONDS: int = int(os.environ.get("INSTAGRAM_POST_DELAY_SECONDS", "120"))
 FACEBOOK_APP_ID: str = os.environ.get("FACEBOOK_APP_ID", "")
 FACEBOOK_APP_SECRET: str = os.environ.get("FACEBOOK_APP_SECRET", "")
+
+# Artikelen worden per main.py-run niet meer los gepost, maar opgestapeld in
+# deze wachtrij; instagram_digest.py bundelt ze aan het eind van de dag tot
+# één (carousel-)post — lage volgers rechtvaardigen geen 5 posts/dag.
+INSTAGRAM_QUEUE_FILE: Path = BASE_DIR / "instagram_queue.json"
 
 # Publieke image-host voor Instagram-postbeelden (los van WordPress — zie
 # INSTAGRAM_PLAN.md fase 5 "bekende bug": WP/Imagick crasht op het XMP-blok

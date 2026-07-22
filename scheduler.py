@@ -116,6 +116,19 @@ def build_crontab(
         f">> {project_path}/logs/log_cleaner.log 2>&1",
     ]
 
+    # Instagram-digest om 19:45 CET — bundelt de dagwachtrij tot één post,
+    # ruim ná het laatste artikel-slot (uiterlijk 19:00) en vóór het
+    # dagoverzicht, zodat die de post nog kan meenemen als hij dat ooit doet
+    ig_digest_cet = (19, 45)
+    ig_digest_utc = cet_to_utc([ig_digest_cet])[0]
+    lines += [
+        "",
+        "# Instagram-digest om 19:45 CET (bundelt de dagartikelen tot 1 post)",
+        f"{ig_digest_utc[1]} {ig_digest_utc[0]} * * * cd {project_path} && "
+        f"{PYTHON} instagram_digest.py "
+        f">> {project_path}/logs/cron_instagram_digest.log 2>&1",
+    ]
+
     # Gecombineerd dagoverzicht om 20:00 CET (artikelen + Bluesky + tegoed)
     digest_cet = (20, 0)
     digest_utc = cet_to_utc([digest_cet])[0]
