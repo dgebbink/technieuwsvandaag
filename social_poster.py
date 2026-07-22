@@ -540,6 +540,40 @@ def _publish_image_publicly(local_path: str) -> str | None:
     return f"{INSTAGRAM_MEDIA_BASE_URL}/{remote_name}"
 
 
+def publish_video_publicly(local_path: str) -> str | None:
+    """Scp een gecomponeerde Reel-video naar de ig-media host, publieke variant
+    van _publish_image_publicly (zelfde host, eigen bestandsprefix 'reel-' zodat
+    de cleanup-glob's elkaar niet raken).
+
+    Pre:  local_path bestaat (zie instagram_reel.build_reel_video)
+    Post: retourneert de publieke https-URL, of None bij elke fout (nooit raisen)
+    """
+    remote_name = f"reel-{secrets.token_hex(8)}.mp4"
+    remote_path = f"{INSTAGRAM_MEDIA_REMOTE_DIR}/{remote_name}"
+
+    try:
+        subprocess.run(
+            ["scp", "-q", local_path, f"{INSTAGRAM_MEDIA_SSH_HOST}:{remote_path}"],
+            check=True, timeout=60, capture_output=True, text=True,
+        )
+    except Exception as exc:
+        detail = exc.stderr if isinstance(exc, subprocess.CalledProcessError) else str(exc)
+        logger.error("Reel-video uploaden naar ig-media mislukt: %s", detail)
+        return None
+
+    try:
+        subprocess.run(
+            ["ssh", INSTAGRAM_MEDIA_SSH_HOST,
+             f"find {INSTAGRAM_MEDIA_REMOTE_DIR} -name 'reel-*.mp4' "
+             f"-mtime +{INSTAGRAM_MEDIA_RETENTION_DAYS} -delete"],
+            timeout=20, capture_output=True, text=True,
+        )
+    except Exception as exc:
+        logger.warning("Opruimen oude reel-bestanden mislukt (niet fataal): %s", exc)
+
+    return f"{INSTAGRAM_MEDIA_BASE_URL}/{remote_name}"
+
+
 def _ig_graph_base() -> str:
     return f"https://graph.facebook.com/{INSTAGRAM_API_VERSION}"
 
@@ -561,9 +595,18 @@ def _ig_create_container(image_url: str, caption: str) -> str:
     return resp.json()["id"]
 
 
-def _ig_wait_finished(container_id: str) -> None:
-    """Poll de containerstatus tot FINISHED; raist bij ERROR/EXPIRED/timeout."""
-    for attempt in range(_IG_POLL_ATTEMPTS):
+def _ig_wait_finished(
+    container_id: str,
+    attempts: int = _IG_POLL_ATTEMPTS,
+    delay: float = _IG_POLL_DELAY,
+) -> None:
+    """Poll de containerstatus tot FINISHED; raist bij ERROR/EXPIRED/timeout.
+
+    Reel-containers verwerken trager dan een los beeld (video-encoding aan
+    Meta's kant) — post_instagram_reel geeft daarom een ruimere attempts/delay
+    mee dan de standaard image/carousel-flow.
+    """
+    for attempt in range(attempts):
         resp = requests.get(
             f"{_ig_graph_base()}/{container_id}",
             params={"fields": "status_code", "access_token": INSTAGRAM_ACCESS_TOKEN},
@@ -575,7 +618,7 @@ def _ig_wait_finished(container_id: str) -> None:
             return
         if status in ("ERROR", "EXPIRED"):
             raise RuntimeError(f"Instagram container {container_id} status: {status}")
-        time.sleep(_IG_POLL_DELAY)
+        time.sleep(delay)
     raise RuntimeError(f"Timeout op Instagram container {container_id}")
 
 
@@ -604,6 +647,64 @@ def _ig_permalink(media_id: str) -> str:
         return resp.json().get("permalink", "")
     except Exception as exc:
         logger.warning("Instagram permalink ophalen mislukt: %s", exc)
+        return ""
+
+
+_IG_REEL_POLL_ATTEMPTS = 60  # video-encoding duurt langer dan een los beeld
+_IG_REEL_POLL_DELAY = 5.0    # max ~5 min wachten
+
+
+def _ig_create_reel_container(video_url: str, caption: str) -> str:
+    """Maak een Reel media container aan; retourneert container-ID, raist op fout."""
+    resp = requests.post(
+        f"{_ig_graph_base()}/{INSTAGRAM_ACCOUNT_ID}/media",
+        params={
+            "media_type": "REELS",
+            "video_url": video_url,
+            "caption": caption,
+            "access_token": INSTAGRAM_ACCESS_TOKEN,
+        },
+        timeout=30,
+    )
+    if not resp.ok:
+        msg = resp.json().get("error", {}).get("message", resp.text[:200])
+        raise RuntimeError(f"Instagram Reel aanmaken mislukt: {msg}")
+    return resp.json()["id"]
+
+
+def post_instagram_reel(video_url: str, caption: str, dry_run: bool = False) -> str:
+    """Post een silent 9:16-slideshow als Instagram Reel (weekly_reel.py).
+
+    Pre:  video_url is een al publiek gehoste .mp4 (zie instagram_reel.py +
+          publish_video_publicly); caption is al samengesteld
+    Post: returns permalink (fallback media-ID) bij succes, "" bij fout/leeg.
+          Nooit raisen — zelfde contract als de andere post_*-functies.
+    """
+    if not video_url:
+        return ""
+
+    if not INSTAGRAM_ACCOUNT_ID or not INSTAGRAM_ACCESS_TOKEN:
+        logger.warning(
+            "Instagram credentials niet geconfigureerd "
+            "(INSTAGRAM_ACCOUNT_ID / INSTAGRAM_ACCESS_TOKEN)"
+        )
+        return ""
+
+    if dry_run:
+        logger.info("[DRY RUN] Instagram Reel:\nVideo: %s\nCaption:\n%s", video_url, caption)
+        return "dryrun"
+
+    try:
+        container_id = _ig_create_reel_container(video_url, caption)
+        _ig_wait_finished(container_id, attempts=_IG_REEL_POLL_ATTEMPTS, delay=_IG_REEL_POLL_DELAY)
+        media_id = _ig_publish(container_id)
+        permalink = _ig_permalink(media_id)
+
+        logger.info("Instagram Reel gepubliceerd: %s", permalink or media_id)
+        return permalink or media_id
+
+    except Exception as exc:
+        logger.error("Instagram Reel mislukt: %s", exc)
         return ""
 
 

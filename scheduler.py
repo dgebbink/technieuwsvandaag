@@ -129,6 +129,19 @@ def build_crontab(
         f">> {project_path}/logs/cron_instagram_digest.log 2>&1",
     ]
 
+    # Wekelijkse Instagram-Reel om 19:00 CET op zondag — silent 9:16-slideshow
+    # van de week (zie INSTAGRAM_PLAN.md fase 7). Vóór de gewone digest-slot
+    # (19:45) en het dagoverzicht (20:00), los van de dagwachtrij.
+    weekly_reel_cet = (19, 0)
+    weekly_reel_utc = cet_to_utc([weekly_reel_cet])[0]
+    lines += [
+        "",
+        "# Wekelijkse Instagram-Reel, zondag 19:00 CET",
+        f"{weekly_reel_utc[1]} {weekly_reel_utc[0]} * * 0 cd {project_path} && "
+        f"{PYTHON} weekly_reel.py "
+        f">> {project_path}/logs/cron_weekly_reel.log 2>&1",
+    ]
+
     # Gecombineerd dagoverzicht om 20:00 CET (artikelen + Bluesky + tegoed)
     digest_cet = (20, 0)
     digest_utc = cet_to_utc([digest_cet])[0]

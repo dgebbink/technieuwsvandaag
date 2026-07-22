@@ -13,7 +13,7 @@ import argparse
 import logging
 import sys
 
-from ai_processor import build_daily_ig_caption
+from ai_processor import build_combined_ig_caption
 from approval_store import update_instagram_permalink
 from config import ENABLE_INSTAGRAM_POSTING
 from social_poster import clear_instagram_queue, load_instagram_queue, post_instagram_digest
@@ -53,7 +53,7 @@ def main() -> None:
         )
         entries = entries[:_IG_CAROUSEL_MAX]
 
-    caption = build_daily_ig_caption(entries)
+    caption = build_combined_ig_caption(entries)
     image_urls = [entry["image_url"] for entry in entries]
 
     logger.info("Instagram-digest: %d artikel(en) → posten", len(entries))

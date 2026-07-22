@@ -43,6 +43,7 @@ RETENTION: list[tuple[str, int]] = [
     ("daily_schedule.log",    30),
     ("source_discovery.log",  90),
     ("cron_instagram_digest.log", 30),
+    ("cron_weekly_reel.log",       30),
 ]
 
 ROTATE_FILES: list[tuple[str, int]] = []

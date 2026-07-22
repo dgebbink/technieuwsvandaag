@@ -448,8 +448,9 @@ def ensure_ig_fields(article: "ProcessedArticle") -> None:
         article.ig_caption = build_ig_caption(article.ig_tekst, article.trefwoorden)
 
 
-def build_daily_ig_caption(entries: list[dict]) -> str:
-    """Combineert de dagelijkse artikel-hooks tot één Instagram-digestcaption.
+def build_combined_ig_caption(entries: list[dict]) -> str:
+    """Combineert meerdere artikel-hooks tot één Instagram-caption (dagdigest
+    of wekelijkse Reel-recap — beide bundelen meerdere artikelen in 1 post).
 
     Pre:  entries is niet-leeg, elk dict heeft 'ig_tekst' en 'trefwoorden'
     Post: bij 1 entry gewoon de hook; bij meerdere een genummerde lijst.

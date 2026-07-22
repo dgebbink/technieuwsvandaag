@@ -155,21 +155,26 @@ def _draw_ai_label(canvas: Image.Image) -> Image.Image:
 
 
 def compose_instagram_image(src_path: str, headline: str, kicker: str,
-                            dest_path: str) -> str | None:
+                            dest_path: str, canvas_w: int = CANVAS_W,
+                            canvas_h: int = CANVAS_H) -> str | None:
     """Componeer het Instagram-feedbeeld vanaf de artikelafbeelding.
 
     Pre:  src_path is een geldig afbeeldingsbestand; headline is niet leeg;
           kicker mag leeg zijn (regel wordt dan overgeslagen)
-    Post: 1080x1350 JPEG met witte balk + XMP AI-metadata op dest_path;
-          retourneert dest_path, of None bij elke fout (nooit raisen —
+    Post: canvas_w x canvas_h JPEG (standaard 1080x1350, 4:5) met witte balk
+          + XMP AI-metadata op dest_path — canvas_w/canvas_h laten dit ook
+          hergebruiken voor 9:16 Reel-slides (zie weekly_reel.py); de balk
+          blijft even hoog (op basis van de tekst), dus bij een hogere canvas
+          is er gewoon meer foto zichtbaar erboven.
+          Retourneert dest_path, of None bij elke fout (nooit raisen —
           zelfde contract als de rest van de social-pijplijn)
     """
     try:
         photo = Image.open(src_path)
-        canvas = _cover_crop(photo, CANVAS_W, CANVAS_H).convert("RGBA")
+        canvas = _cover_crop(photo, canvas_w, canvas_h).convert("RGBA")
         draw = ImageDraw.Draw(canvas)
 
-        text_width = CANVAS_W - MARGIN * 2
+        text_width = canvas_w - MARGIN * 2
 
         # --- Balkinhoud opmeten (hoogte is dynamisch: 1 of 2 kopregels) ---
         pad_top, pad_bottom = 52, 52
@@ -186,12 +191,12 @@ def compose_instagram_image(src_path: str, headline: str, kicker: str,
 
         band_h = (pad_top + kicker_h + kicker_gap + headline_h
                   + wordmark_gap + wordmark.height + pad_bottom)
-        band_top = CANVAS_H - band_h
+        band_top = canvas_h - band_h
 
         # --- Witte balk (full-bleed, effen — de Volkskrant-stripe) ---
-        draw.rectangle([0, band_top, CANVAS_W, CANVAS_H], fill=(*WHITE, 255))
+        draw.rectangle([0, band_top, canvas_w, canvas_h], fill=(*WHITE, 255))
         # Dun cyaan accentlijntje op de balkrand
-        draw.rectangle([0, band_top, CANVAS_W, band_top + 8], fill=(*CYAN, 255))
+        draw.rectangle([0, band_top, canvas_w, band_top + 8], fill=(*CYAN, 255))
 
         y = band_top + pad_top
         if kicker:

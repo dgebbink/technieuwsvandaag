@@ -5,6 +5,7 @@ Gebruikt Application Password authenticatie.
 import base64
 import logging
 import mimetypes
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -399,6 +400,61 @@ def fetch_recent_published(limit: int = 10) -> list[dict]:
         }
         for p in posts
     ]
+
+
+def fetch_posts_for_reel(days: int = 7) -> list[dict]:
+    """Fetch één gepubliceerd artikel per dag over de laatste `days` dagen
+    (titel + featured-image URL), voor de wekelijkse Instagram-Reel-recap.
+
+    Pre:  WP REST API bereikbaar; days >= 1
+    Post: lijst van dicts met 'title', 'link', 'date', 'image_url' — het
+          laatst-gepubliceerde artikel van elke dag dat een featured image
+          had, oudste dag eerst; [] bij elke API-fout
+    """
+    import re as _re
+    from html import unescape
+
+    def _strip(html: str) -> str:
+        return unescape(_re.sub(r"<[^>]+>", "", html or "")).strip()
+
+    client = WordPressClient()
+    since = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%dT00:00:00")
+    try:
+        resp = client.session.get(
+            f"{client.base_url}/posts",
+            params={
+                "after":     since,
+                "status":    "publish",
+                "per_page":  100,
+                "orderby":   "date",
+                "order":     "desc",
+                "_embed":    "wp:featuredmedia",
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+        posts = resp.json()
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("Posts voor weekly reel ophalen mislukt: %s", exc)
+        return []
+
+    per_day: dict[str, dict] = {}
+    for p in posts:
+        day = p.get("date", "")[:10]
+        if day in per_day:
+            continue  # al een (nieuwere) post van die dag
+        media = p.get("_embedded", {}).get("wp:featuredmedia", [{}])
+        image_url = media[0].get("source_url", "") if media else ""
+        if not image_url:
+            continue
+        per_day[day] = {
+            "title":     _strip(p.get("title", {}).get("rendered", "")),
+            "link":      p.get("link", ""),
+            "date":      day,
+            "image_url": image_url,
+        }
+
+    return [per_day[d] for d in sorted(per_day)]
 
 
 # ---------------------------------------------------------------------------

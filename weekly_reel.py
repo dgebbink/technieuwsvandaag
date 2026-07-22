@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""
+Wekelijkse Instagram Reel: silent 9:16-slideshow met één artikel per dag over
+de afgelopen 7 dagen (zie INSTAGRAM_PLAN.md fase 7). Reels zijn Instagrams
+belangrijkste ontdekkingskanaal voor niet-volgers — de dagelijkse digest-post
+(instagram_digest.py) bereikt vooral bestaande volgers.
+
+Minimale versie: geen audio, geen Ken Burns-zoom — statische slides met harde
+cuts. Losstaand van de dag-wachtrij: leest artikelen rechtstreeks uit
+WordPress, dus onafhankelijk van instagram_queue.json (dat wordt elke avond
+al geleegd door instagram_digest.py).
+
+Gebruik:
+  venv/bin/python3 weekly_reel.py            # echte run
+  venv/bin/python3 weekly_reel.py --dry-run  # bouwt de video, post niets
+"""
+import argparse
+import logging
+import sys
+from datetime import datetime
+from pathlib import Path
+
+import requests
+
+from ai_processor import build_combined_ig_caption
+from config import BASE_DIR, ENABLE_INSTAGRAM_POSTING
+from instagram_image import compose_instagram_image
+from instagram_reel import build_reel_video
+from social_poster import post_instagram_reel, publish_video_publicly
+from wordpress_client import fetch_posts_for_reel
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)-8s] %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+logger = logging.getLogger(__name__)
+
+_TMP_DIR = BASE_DIR / "tmp"
+_TMP_DIR.mkdir(exist_ok=True)
+
+REEL_DAYS = 7
+REEL_CANVAS = (1080, 1920)
+MIN_SLIDES = 2  # onder 2 slides is een "slideshow" zinloos
+
+_NL_WEEKDAGEN = ["MAANDAG", "DINSDAG", "WOENSDAG", "DONDERDAG", "VRIJDAG", "ZATERDAG", "ZONDAG"]
+
+
+def _kicker_for(date_str: str) -> str:
+    """Dutch weekday label for the slide kicker (locale-onafhankelijk)."""
+    return _NL_WEEKDAGEN[datetime.strptime(date_str, "%Y-%m-%d").weekday()]
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--dry-run", action="store_true", help="Bouw de video, post niets naar Instagram")
+    return parser.parse_args()
+
+
+def _download(url: str, dest: Path) -> bool:
+    try:
+        resp = requests.get(url, timeout=20)
+        resp.raise_for_status()
+        dest.write_bytes(resp.content)
+        return True
+    except Exception as exc:
+        logger.warning("Slide-afbeelding downloaden mislukt (%s): %s", url, exc)
+        return False
+
+
+def main() -> None:
+    args = _parse_args()
+
+    if not ENABLE_INSTAGRAM_POSTING:
+        logger.info("ENABLE_INSTAGRAM_POSTING staat uit — weekly reel overgeslagen")
+        return
+
+    posts = fetch_posts_for_reel(days=REEL_DAYS)
+    if len(posts) < MIN_SLIDES:
+        logger.info(
+            "Te weinig artikelen deze week (%d) voor een Reel — overgeslagen", len(posts)
+        )
+        return
+
+    slide_paths: list[str] = []
+    for i, post in enumerate(posts):
+        src = _TMP_DIR / f"reel_src_{i}.jpg"
+        if not _download(post["image_url"], src):
+            continue
+        dest = _TMP_DIR / f"reel_slide_{i}.jpg"
+        composed = compose_instagram_image(
+            str(src), post["title"], _kicker_for(post["date"]), str(dest),
+            canvas_w=REEL_CANVAS[0], canvas_h=REEL_CANVAS[1],
+        )
+        if composed:
+            slide_paths.append(composed)
+
+    if len(slide_paths) < MIN_SLIDES:
+        logger.error(
+            "Te weinig slides gecomponeerd (%d/%d) — Reel overgeslagen",
+            len(slide_paths), len(posts),
+        )
+        return
+
+    video_path = str(_TMP_DIR / "weekly_reel.mp4")
+    video = build_reel_video(slide_paths, video_path)
+    if not video:
+        logger.error("Video bouwen mislukt — Reel overgeslagen")
+        return
+
+    entries = [{"ig_tekst": p["title"], "trefwoorden": ""} for p in posts]
+    caption = "📅 Deze week bij TechNieuwsVandaag:\n\n" + build_combined_ig_caption(entries)
+
+    if args.dry_run:
+        logger.info(
+            "[DRY RUN] Weekly reel klaar: %s (%d slides)\nCaption:\n%s",
+            video, len(slide_paths), caption,
+        )
+        return
+
+    video_url = publish_video_publicly(video)
+    if not video_url:
+        logger.error("Video hosten mislukt — Reel overgeslagen")
+        return
+
+    permalink = post_instagram_reel(video_url, caption)
+    logger.info("Weekly reel: %s", permalink or "MISLUKT")
+
+
+if __name__ == "__main__":
+    main()

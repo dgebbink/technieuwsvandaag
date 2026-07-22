@@ -1,13 +1,14 @@
 # Instagram-integratie — implementatieplan
 
-**Status (2026-07-22):** fase 0 t/m 5 klaar en live. Sinds fase 6 (2026-07-22)
-post `main.py` niet meer direct naar Instagram per artikel — bij een klein
-aantal volgers waren 5 losse posts/dag te veel. Artikelen komen in
-`instagram_queue.json` terecht (`social_poster.queue_instagram_post()`) en
-`instagram_digest.py` bundelt die om 19:45 CET tot één post: 1 artikel → los
-beeld, 2+ → carousel (`social_poster.post_instagram_digest()`). Decline vóór
-19:45 haalt het artikel gewoon uit de wachtrij (`remove_from_instagram_queue`);
-ná de digest-post kan dat niet meer (zie bekende beperking hieronder).
+**Status (2026-07-22):** fase 0 t/m 6 klaar en live. Fase 6: `main.py` post niet
+meer direct naar Instagram per artikel — bij een klein aantal volgers waren 5
+losse posts/dag te veel. Artikelen komen in `instagram_queue.json` terecht
+(`social_poster.queue_instagram_post()`) en `instagram_digest.py` bundelt die
+om 19:45 CET tot één post: 1 artikel → los beeld, 2+ → carousel
+(`social_poster.post_instagram_digest()`). Decline vóór 19:45 haalt het
+artikel gewoon uit de wachtrij (`remove_from_instagram_queue`); ná de
+digest-post kan dat niet meer (zie bekende beperking hieronder). Fase 7
+(zelfde dag): wekelijkse silent Reel als extra bereik-kanaal, zie hieronder.
 
 Doel: elk goedgekeurd artikel wordt automatisch als Instagram-post gepubliceerd op
 **@technieuwsvandaag.nl**, in de stijl van @de_volkskrant: de (al gegenereerde)
@@ -238,7 +239,8 @@ per dag (één per `main.py`-run). Nieuwe flow: verzamelen overdag, bundelen 's 
 - `ai_processor.ProcessedArticle` kreeg een `ig_tekst`-veld (de losse hook, náást de
   al samengestelde `ig_caption`) zodat een dagcaption meerdere hooks kan combineren
   zonder de link/disclosure/hashtag-blokken te dupliceren
-  (`ai_processor.build_daily_ig_caption()`).
+  (`ai_processor.build_combined_ig_caption()` — hernoemd in fase 7 toen de
+  wekelijkse Reel 'm ook ging gebruiken).
 - `social_poster.post_to_instagram()` is vervangen door
   `social_poster.queue_instagram_post()`: componeert en host het beeld zoals
   voorheen, maar post niet — schrijft een entry naar `instagram_queue.json`
@@ -259,6 +261,48 @@ per dag (één per `main.py`-run). Nieuwe flow: verzamelen overdag, bundelen 's 
   als voorheen een hele post verwijderd kon worden. De decline-pagina herinnert dan
   alleen nog aan handmatig verwijderen (van de hele post, incl. de andere
   artikelen erin).
+
+---
+
+## Fase 7 — Wekelijkse Reel (2026-07-22)
+
+**Aanleiding:** feedposts (ook de digest) worden bij een klein aantal volgers
+nauwelijks aan niet-volgers getoond — Reels zijn Instagrams belangrijkste
+ontdekkingskanaal. Bewust **minimale** versie: silent (geen audio — Meta's
+muziekbibliotheek is alleen via de app te koppelen, niet via de Graph API; een
+zelf-gehoste track brengt licentievragen mee) en **wekelijks** (niet dagelijks,
+om niet weer in de "te veel posts"-val van fase 6 te lopen), statische slides
+met harde cuts (geen Ken Burns-zoom — kan later als polish).
+
+- `instagram_image.compose_instagram_image()` accepteert nu optionele
+  `canvas_w`/`canvas_h` (was hardcoded op 1080×1350). De witte balk-hoogte is al
+  content-based (niet een vast % van de canvas), dus 9:16 (1080×1920) hergebruikt
+  dezelfde compositielogica — bij een hogere canvas is er gewoon meer foto
+  zichtbaar boven de balk. Geverifieerd met een echte render (zie git-log).
+- `wordpress_client.fetch_posts_for_reel(days=7)`: haalt via `_embed=wp:featuredmedia`
+  het laatst-gepubliceerde artikel van elke dag op (titel + featured-image URL) —
+  onafhankelijk van `instagram_queue.json`, dat elke avond al geleegd wordt.
+- Nieuwe module `instagram_reel.py` (puur ffmpeg via subprocess, geen netwerk):
+  `build_reel_video()` plakt de 9:16-slides aaneen tot een silent MP4 (concat-filter,
+  harde cuts, standaard 3s/slide @ 30fps). ffmpeg stond al op de machine.
+  `weekly_reel.py` composeert per artikel een slide met de weekdag (NL, hardcoded
+  lijst — locale op de machine is niet nl_NL) als kicker i.p.v. nogmaals het wordmark.
+- `social_poster.py`: `publish_video_publicly()` (scp naar dezelfde ig-media-host,
+  eigen `reel-*.mp4`-prefix zodat de cleanup-glob's elkaar niet raken),
+  `post_instagram_reel()` (Reel-container via `media_type=REELS`+`video_url`,
+  hergebruikt de bestaande container/poll/publish-flow maar met een ruimere
+  polltijd — `_ig_wait_finished()` kreeg optionele `attempts`/`delay`-params,
+  video-encoding aan Meta's kant duurt langer dan een los beeld).
+- `ai_processor.build_daily_ig_caption()` hernoemd naar `build_combined_ig_caption()`
+  (nu 2 callers: dagdigest én weekly reel — de oude naam was een dagdigest-only naam
+  geworden).
+- Nieuw script `weekly_reel.py`, cron zondag 19:00 CET (`scheduler.py`, vóór de
+  gewone 19:45-digest en het 20:00-dagoverzicht). Slaat over bij < 2 artikelen
+  die week (geen zinvolle slideshow).
+- **Getest:** volledige pipeline lokaal gedraaid tegen live WP-data (8 artikelen,
+  24s video, 1080x1920 h264, geen audiospoor) — zie renders in de sessie waarin dit
+  gebouwd is. Nog niet als echte post naar Meta gestuurd (dat gebeurt voor het eerst
+  bij de cron van komende zondag).
 
 ---
 
