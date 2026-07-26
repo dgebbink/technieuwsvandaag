@@ -224,6 +224,24 @@ titel, zodat er altijd een werkbare prompt uitkomt.
 De nieuwsvariant past niet op een opiniestuk: een zonnig kantoorbeeld bij een
 kritische editorial ondermijnt het betoog.
 
+**Guard voor gevoelige onderwerpen.** `is_sensitive_topic()` draait vóór de
+promptgeneratie van nieuwsartikelen. Bij menselijk leed (beeldmisbruik, geweld,
+uitbuiting, kindveiligheid…) vervalt zowel de opgewekte toon als de
+persoonsvariant: `_build_sensitive_image_prompt()` vraagt om een ingetogen,
+conceptueel beeld zonder slachtoffers, met `_SENSITIVE_NEGATIVE_PROMPT` erbij
+(duwt "smiling, cheerful, celebratory…" actief weg). Gewoon negatief zakelijk
+nieuws — ontslagen, rechtszaken, boetes — telt bewust *niet* mee, anders vangt
+de guard de halve nieuwsstroom.
+
+De check zit bewust vóór `generate_person_variant()`: alleen zo blijft de teller
+in `image_distribution.json` eerlijk voor de artikelen die wél een persoon
+tonen. Bij een gevoelig artikel is de variant een lege dict, waardoor `mailer`
+de "Beeld-variant"-regel vanzelf weglaat. Faalt de check, dan wordt hij als
+niet-gevoelig behandeld — de guard mag de normale flow nooit blokkeren.
+
+Aanleiding: op 2026-06-23 leverde de standaardstijl bij een artikel over
+beeldmisbruik bijna een opgewekt beeld met een vrouw als middelpunt op.
+
 > **Dode code:** `fetch_brand_logo()` en `composite_logo()` worden nergens
 > aangeroepen — de logo-compositing die hier eerder beschreven stond, gebeurt
 > niet meer. `brand_domain` zit ook niet meer in het JSON-antwoord.

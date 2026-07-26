@@ -186,12 +186,91 @@ def build_person_instruction(variant: dict) -> str:
     )
 
 
-def generate_image_prompt(title: str, article_text: str) -> tuple[str, dict]:
+def is_sensitive_topic(title: str, article_text: str) -> bool:
+    """Beoordeelt of de standaard beeldstijl ongepast is voor dit artikel.
+
+    De nieuwsprompt dwingt "bright, warm lighting and an optimistic mood" af en
+    zet standaard een persoon centraal. Bij een artikel over bijvoorbeeld
+    beeldmisbruik levert dat een opgewekte foto met een vrouw als middelpunt op
+    — tone-deaf en mogelijk hervictimiserend. Deze check zet die twee dingen uit.
+
+    Bewust een aparte, korte Claude-aanroep vóór de promptgeneratie: alleen zo
+    weten we vóór generate_person_variant() of er een persoonsvariant nodig is,
+    en blijft de teller in image_distribution.json eerlijk voor de artikelen die
+    er wél een gebruiken.
+
+    Pre:  claude CLI is beschikbaar
+    Post: True alleen bij menselijk leed; gewoon negatief zakelijk nieuws
+          (ontslagen, rechtszaken, boetes, storingen) telt niet mee. Bij twijfel
+          of een fout: False — de guard mag de normale flow niet blokkeren.
+    """
+    instruction = (
+        "Return a single JSON field:\n"
+        "\"sensitive\": true or false. Answer true only if a bright, optimistic "
+        "stock-style photo with a cheerful person as the focal subject would be "
+        "tone-deaf, disrespectful or harmful for this news article — for example "
+        "sexual abuse or image-based abuse, violence, death, war, terrorism, "
+        "serious crime, exploitation, harassment, discrimination, child safety, "
+        "or addiction. "
+        "Answer false for ordinary technology, product, research, business or "
+        "policy news, including negative business news such as layoffs, "
+        "lawsuits, fines, outages or data breaches without personal harm.\n\n"
+        f"Article title: {title}\n"
+        f"Article text:\n{article_text[:1000]}\n\n"
+        "Respond with only valid JSON, no markdown fences."
+    )
+    try:
+        data = _extract_json(_call_claude(instruction, timeout=45))
+        if isinstance(data, dict):
+            return bool(data.get("sensitive", False))
+    except Exception as exc:
+        logger.warning("Gevoeligheidscheck mislukt (val terug op normale stijl): %s", exc)
+    return False
+
+
+def _build_sensitive_image_prompt(title: str, article_text: str) -> str:
+    """Beeldprompt voor een gevoelig onderwerp: ingetogen en zonder slachtoffer."""
+    instruction = (
+        "Return a single JSON field:\n"
+        "\"prompt\": A 2-sentence English prompt for a photorealistic image to "
+        "accompany a news article about a sensitive or distressing subject. "
+        "Be restrained and respectful. Do NOT make any person the cheerful focal "
+        "subject, do not depict victims, distress, or anyone who could be read as "
+        "a victim, and do not use bright or celebratory styling. "
+        "Prefer a conceptual, understated scene — architecture, empty spaces, "
+        "objects, institutional or infrastructural context — with neutral, even "
+        "lighting and a calm, serious mood. "
+        "Include no text, logos, lettering or brand marks. "
+        "Note: if the article refers to AI or language 'models', this means LLM/AI "
+        "models, not fashion or photo models.\n\n"
+        f"Article title: {title}\n"
+        f"Article text:\n{article_text[:1000]}\n\n"
+        "Respond with only valid JSON, no markdown fences."
+    )
+    raw = _call_claude(instruction, timeout=60)
+    try:
+        data = _extract_json(raw)
+        if isinstance(data, dict) and data.get("prompt"):
+            return data["prompt"]
+        raise ValueError("geen 'prompt'-veld")
+    except Exception:
+        logger.warning("Claude returned non-JSON for sensitive image prompt, using raw text")
+        return raw
+
+
+def generate_image_prompt(title: str, article_text: str) -> tuple[str, dict, bool]:
     """Ask Claude for an image prompt.
 
     Pre:  claude CLI is available; title is non-empty
-    Post: returns (prompt_text, gekozen persoonsvariant)
+    Post: returns (prompt_text, persoonsvariant, is_sensitive). Bij een gevoelig
+          onderwerp is de variant een lege dict: er wordt dan geen persoon
+          voorgeschreven, en de teller in image_distribution.json blijft
+          ongemoeid. mailer laat de 'Beeld-variant'-regel dan weg (falsy dict).
     """
+    if is_sensitive_topic(title, article_text):
+        logger.info("Gevoelig onderwerp gedetecteerd — ingetogen beeldstijl voor: %s", title)
+        return _build_sensitive_image_prompt(title, article_text), {}, True
+
     variant = generate_person_variant()
     person_instruction = build_person_instruction(variant)
 
@@ -217,11 +296,11 @@ def generate_image_prompt(title: str, article_text: str) -> tuple[str, dict]:
         # ```json-fences en stuurde dan de ruwe tekst als prompt naar FAL.ai.
         data = _extract_json(raw)
         if isinstance(data, dict) and data.get("prompt"):
-            return data["prompt"], variant
+            return data["prompt"], variant, False
         raise ValueError("geen 'prompt'-veld")
     except Exception:
         logger.warning("Claude returned non-JSON for image prompt, using raw text")
-        return raw, variant
+        return raw, variant, False
 
 
 # Vaste beeldtaal voor editorials, door de redactie vastgesteld. Alleen het
@@ -442,6 +521,14 @@ _DEFAULT_NEGATIVE_PROMPT = (
     "typography, signage, written text, label, caption"
 )
 
+# Bij gevoelige onderwerpen ook de opgewekte beeldtaal actief wegduwen: het
+# model neigt anders alsnog naar lachende mensen, ook zonder dat de prompt erom
+# vraagt.
+_SENSITIVE_NEGATIVE_PROMPT = _DEFAULT_NEGATIVE_PROMPT + (
+    ", smiling, cheerful, celebratory, upbeat, laughing, thumbs up, "
+    "vibrant colors, party, joyful expression"
+)
+
 
 def generate_fal_image(
     prompt: str,
@@ -510,14 +597,20 @@ def generate_image_for_article(
         return None
     try:
         logger.info("Afbeeldingsprompt genereren via Claude voor: %s", title)
-        image_prompt, variant = generate_image_prompt(title, article_text)
+        image_prompt, variant, sensitive = generate_image_prompt(title, article_text)
         if variant_out is not None:
             variant_out.update(variant)
         if prompt_out is not None:
             prompt_out["prompt"] = image_prompt
         logger.info("Gegenereerde prompt: %s", image_prompt)
 
-        result = generate_fal_image(image_prompt, dest_path)
+        result = generate_fal_image(
+            image_prompt,
+            dest_path,
+            negative_prompt=(
+                _SENSITIVE_NEGATIVE_PROMPT if sensitive else _DEFAULT_NEGATIVE_PROMPT
+            ),
+        )
         if result:
             add_ai_label(dest_path)
         return result
