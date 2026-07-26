@@ -161,6 +161,21 @@ knoppen — Publiceer, Herschrijf en Verwijder; niets doen laat het concept staa
 prompt draagt op om bij politiek/maatschappelijk gevoelige onderwerpen één serieus
 tegenargument te verwerken — scherp mag, eenzijdig niet.
 
+**Beeld is niet optioneel.** `index.php` pakt de drie nieuwste posts als hero-grid
+zonder categoriefilter, dus een gepubliceerde editorial staat meteen groot op de
+homepage — en zonder featured image rendert het thema daar een grijs vak met
+"Geen afbeelding" (420px hoog). `editorial.py` genereert het beeld daarom via
+`generate_image_for_editorial()` (eigen promptvariant, zie Afbeeldingsgeneratie);
+lukt dat niet, dan waarschuwt de mail expliciet vóór je op Publiceer drukt.
+
+**Uitgesloten van social.** Editorials komen niet in `instagram_queue.json` (de
+dagdigest is een nieuwsoverzicht; een standpunt zonder klikbare onderbouwing
+eronder is precies het risico waarvoor de goedkeuringsstap bestaat) en niet in de
+wekelijkse Reel — `fetch_posts_for_reel()` sluit de categorie expliciet uit via
+`categories_exclude`. Dat filter is nodig: tot dan vielen editorials er alleen
+buiten doordat ze géén featured image hadden, en dat is sinds bovenstaande niet
+meer waar. `/publish` post ook niet naar Bluesky.
+
 **Herschrijfronde:** Herschrijf opent `/revise/<token>` op de approval-server, met
 de huidige tekst en een commentaarveld. Het commentaar gaat als redactionele
 instructie mee terug naar Claude (`revise_editorial()`), waarna de **bestaande
@@ -186,13 +201,25 @@ in die meta, zodat een revisie niets uit WordPress hoeft terug te halen.
 
 ## Afbeeldingsgeneratie (`IMAGE_STRATEGY=generate`)
 
-Claude genereert een JSON met:
-- `prompt` — fotorealistische beschrijving zonder logo's/tekst (FAL.ai hallucineerde anders logo's)
-- `brand_domain` — bijv. `"nvidia.com"` of `null`
+Claude genereert een JSON met een `prompt` — fotorealistische beschrijving zonder
+logo's/tekst (FAL.ai hallucineerde anders logo's). FAL.ai krijgt ook een
+`negative_prompt` mee: `"logo, text, letters, words, brand name, watermark, ..."`.
+Daarna zet `add_ai_label()` het AI-label op het beeld.
 
-FAL.ai krijgt ook een `negative_prompt` mee: `"logo, text, letters, words, brand name, watermark, ..."`.
+Twee promptvarianten, bewust gescheiden:
 
-Daarna: echt logo ophalen via `https://www.google.com/s2/favicons?domain={brand_domain}&sz=128` (fallback: DuckDuckGo icons), dan PIL-compositing bottom-right met witte pill-achtergrond.
+| | `generate_image_prompt()` (nieuws) | `generate_editorial_image_prompt()` |
+|---|---|---|
+| Sfeer | vast "bright, warm lighting, optimistic mood" | volgt de strekking van het stuk; geen geforceerd optimisme |
+| Onderwerp | het product/de merkidentiteit | waar het betoog *over gaat* — mensen, werkplekken, instituties |
+| Register | moderne kantoor-/labscène | documentaire/redactionele fotografie, expliciet géén stockclichés |
+
+De nieuwsvariant past niet op een opiniestuk: een zonnig kantoorbeeld bij een
+kritische editorial ondermijnt het betoog.
+
+> **Dode code:** `fetch_brand_logo()` en `composite_logo()` worden nergens
+> aangeroepen — de logo-compositing die hier eerder beschreven stond, gebeurt
+> niet meer. `brand_domain` zit ook niet meer in het JSON-antwoord.
 
 ## Server (WordPress)
 

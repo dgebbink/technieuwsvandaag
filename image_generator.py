@@ -18,7 +18,7 @@ from config import (
     IMAGE_DISTRIBUTION_TARGETS,
     IMAGE_MENTION_ETHNICITY_PROBABILITY,
 )
-from ai_processor import _call_claude
+from ai_processor import _call_claude, _extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -213,11 +213,98 @@ def generate_image_prompt(title: str, article_text: str) -> tuple[str, dict]:
     )
     raw = _call_claude(instruction, timeout=60)
     try:
-        data = json.loads(raw)
-        return data.get("prompt", raw), variant
+        # Zie generate_editorial_image_prompt: json.loads() struikelt over
+        # ```json-fences en stuurde dan de ruwe tekst als prompt naar FAL.ai.
+        data = _extract_json(raw)
+        if isinstance(data, dict) and data.get("prompt"):
+            return data["prompt"], variant
+        raise ValueError("geen 'prompt'-veld")
     except Exception:
         logger.warning("Claude returned non-JSON for image prompt, using raw text")
         return raw, variant
+
+
+def generate_editorial_image_prompt(title: str, editorial_text: str) -> tuple[str, dict]:
+    """Ask Claude for an image prompt for an EDITORIAL (opinion piece).
+
+    Bewust los van generate_image_prompt(): die schrijft "bright, warm lighting
+    and an optimistic mood" voor, wat past bij een productlancering maar niet bij
+    een kritisch opiniestuk — een zonnig kantoorbeeld bij een stuk over 140.000
+    ontslagen ondermijnt het betoog. Hier bepaalt de strekking van het stuk de
+    sfeer, en verbeeldt het beeld het onderwerp van het betoog in plaats van een
+    product.
+
+    Pre:  claude CLI is available; title is non-empty
+    Post: returns (prompt_text, gekozen persoonsvariant) — zelfde vorm als
+          generate_image_prompt, zodat de persoonsverdeling in
+          image_distribution.json ook over editorials in balans blijft
+    """
+    variant = generate_person_variant()
+    person_instruction = build_person_instruction(variant)
+
+    instruction = (
+        "Return a single JSON field:\n"
+        "\"prompt\": A 2-sentence English prompt for a photorealistic image to "
+        "accompany a Dutch tech OPINION piece (an editorial). This is not a "
+        "product announcement: illustrate the subject the argument is about — "
+        "the people, workplaces, institutions or infrastructure at stake — not a "
+        "gadget or a brand. "
+        "Match the mood to the stance of the piece: if the editorial is critical "
+        "or sombre, use restrained, neutral or overcast lighting; only use bright, "
+        "warm light when the piece is genuinely positive. Do not force optimism. "
+        "Aim for the register of documentary or editorial photography: real, "
+        "grounded, unstaged scenes. Avoid stock-photo clichés such as people "
+        "pointing at charts, glowing holograms, robot hands or handshakes. "
+        "Include no text, logos, lettering or brand marks whatsoever. "
+        "Note: if the piece refers to AI or language 'models', this means LLM/AI "
+        "models, not fashion or photo models — do not let this influence how any "
+        "people in the image are styled. "
+        f"{person_instruction}\n\n"
+        f"Editorial title: {title}\n"
+        f"Editorial text:\n{editorial_text[:1500]}\n\n"
+        "Respond with only valid JSON, no markdown fences."
+    )
+    raw = _call_claude(instruction, timeout=60)
+    try:
+        # _extract_json i.p.v. json.loads: Claude verpakt het antwoord regelmatig
+        # in ```json-fences, en dan zou de ruwe tekst mét fences als beeldprompt
+        # naar FAL.ai gaan.
+        data = _extract_json(raw)
+        if isinstance(data, dict) and data.get("prompt"):
+            return data["prompt"], variant
+        raise ValueError("geen 'prompt'-veld")
+    except Exception:
+        logger.warning("Claude returned non-JSON for editorial image prompt, using raw text")
+        return raw, variant
+
+
+def generate_image_for_editorial(
+    title: str,
+    editorial_text: str,
+    dest_path: str,
+    dry_run: bool = False,
+) -> Optional[str]:
+    """Genereer het beeld bij een editorial: prompt via Claude, beeld via FAL.ai.
+
+    Pre:  title is niet-leeg; dest_path is schrijfbaar
+    Post: dest_path bij succes, None bij elke fout of in dry-run. Krijgt hetzelfde
+          AI-label als nieuwsbeelden — een editorial is niet minder AI-gegenereerd.
+    """
+    if dry_run:
+        logger.info("[DRY RUN] Zou editorial-afbeelding genereren voor: %s", title)
+        return None
+    try:
+        logger.info("Editorial-beeldprompt genereren via Claude voor: %s", title)
+        image_prompt, _variant = generate_editorial_image_prompt(title, editorial_text)
+        logger.info("Gegenereerde editorial-prompt: %s", image_prompt)
+
+        result = generate_fal_image(image_prompt, dest_path)
+        if result:
+            add_ai_label(dest_path)
+        return result
+    except Exception as exc:
+        logger.error("Editorial-afbeelding genereren mislukt voor '%s': %s", title, exc)
+        return None
 
 
 def fetch_brand_logo(brand_domain: str, dest_path: str) -> str | None:

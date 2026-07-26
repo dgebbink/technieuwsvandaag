@@ -12,7 +12,14 @@ from typing import Optional
 import requests
 
 from ai_processor import ProcessedArticle
-from config import IMAGE_STRATEGY, USER_AGENT, WP_APP_PASSWORD, WP_URL, WP_USERNAME
+from config import (
+    EDITORIAL_CATEGORY,
+    IMAGE_STRATEGY,
+    USER_AGENT,
+    WP_APP_PASSWORD,
+    WP_URL,
+    WP_USERNAME,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -427,6 +434,32 @@ def create_editorial_draft(
         return None
 
 
+def find_category_id(name: str) -> Optional[int]:
+    """Zoekt een categorie-ID op naam, zónder hem aan te maken.
+
+    Bewust naast get_or_create_category(): in een leespad (zoals de Reel-selectie)
+    mag een lookup geen categorie aanmaken als bijwerking.
+
+    Pre:  name is niet-leeg
+    Post: ID of None als de categorie niet bestaat of de API faalt
+    """
+    client = WordPressClient()
+    try:
+        resp = client.session.get(
+            f"{client.base_url}/categories",
+            params={"search": name, "per_page": 50, "_fields": "id,name"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        for cat in resp.json():
+            if cat["name"].lower() == name.lower():
+                return int(cat["id"])
+        return None
+    except Exception as exc:
+        logger.warning("Categorie-ID opzoeken mislukt voor '%s': %s", name, exc)
+        return None
+
+
 def update_editorial_draft(
     post_id: int,
     titel: str,
@@ -524,17 +557,28 @@ def fetch_posts_for_reel(days: int = 7) -> list[dict]:
 
     client = WordPressClient()
     since = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%dT00:00:00")
+    params: dict = {
+        "after":     since,
+        "status":    "publish",
+        "per_page":  100,
+        "orderby":   "date",
+        "order":     "desc",
+        "_embed":    "wp:featuredmedia",
+    }
+
+    # Editorials horen niet in de weekrecap: het zijn opiniestukken, geen
+    # nieuws, en op Instagram is de link niet klikbaar — een standpunt zonder
+    # onderbouwing eronder. Expliciet uitsluiten, want ze vielen tot nu toe
+    # alleen buiten de Reel doordat ze geen featured image hadden; zodra ze die
+    # wél kregen zouden ze er vanzelf in glippen.
+    editorial_id = find_category_id(EDITORIAL_CATEGORY)
+    if editorial_id:
+        params["categories_exclude"] = editorial_id
+
     try:
         resp = client.session.get(
             f"{client.base_url}/posts",
-            params={
-                "after":     since,
-                "status":    "publish",
-                "per_page":  100,
-                "orderby":   "date",
-                "order":     "desc",
-                "_embed":    "wp:featuredmedia",
-            },
+            params=params,
             timeout=20,
         )
         resp.raise_for_status()

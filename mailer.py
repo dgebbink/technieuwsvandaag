@@ -622,6 +622,7 @@ def send_editorial_email(
     decline_token: str,
     revise_token: str = "",
     revisie_ronde: int = 0,
+    beeld_ontbreekt: bool = False,
     dry_run: bool = False,
 ) -> None:
     """Stuurt de editorial ter goedkeuring, met Publiceer-, Herschrijf- en Verwijder-knop.
@@ -656,6 +657,12 @@ def send_editorial_email(
     <div style="padding:14px 16px;background:#f8f9fa;border-left:3px solid #dc3545;margin:0 0 24px">
       <p style="margin:0;font-size:14px;color:#444"><b>Standpunt:</b> {standpunt}</p>
     </div>
+
+    {'''<div style="padding:14px 16px;background:#fff3cd;border-left:3px solid #ffc107;margin:0 0 24px">
+      <p style="margin:0;font-size:14px;color:#664d03"><b>Let op:</b> deze editorial heeft
+      geen afbeelding. Publiceer je hem zo, dan toont de homepage een grijs vak
+      met "Geen afbeelding" — zet er eerst een beeld op via WordPress.</p>
+    </div>''' if beeld_ontbreekt else ''}
 
     {alineas}
 

@@ -19,13 +19,20 @@ import sys
 from ai_processor import _call_claude, _check_claude_cli, _extract_json
 from approval_store import create_editorial_tokens
 from config import (
+    BASE_DIR,
     EDITORIAL_CANDIDATES,
     EDITORIAL_CATEGORY,
     EDITORIAL_TOKEN_TTL_HOURS,
     ENABLE_EDITORIAL,
 )
 from mailer import send_editorial_email
-from wordpress_client import create_editorial_draft, fetch_recent_published
+from wordpress_client import (
+    create_editorial_draft,
+    fetch_recent_published,
+    update_featured_image,
+)
+
+_TMP_DIR = BASE_DIR / "tmp"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -221,6 +228,29 @@ def main() -> None:
         logger.error("Draft aanmaken mislukt — geen mail verstuurd")
         return
 
+    # Beeld: zonder featured image toont het thema een grijs vak met "Geen
+    # afbeelding" — op de homepage zelfs 420px hoog, want de nieuwste post krijgt
+    # daar de hero-positie zonder categoriefilter. Eigen promptvariant: de
+    # nieuwsprompt dwingt een optimistische sfeer af die een kritisch stuk
+    # ondermijnt.
+    beeld_ontbreekt = True
+    try:
+        from image_generator import generate_image_for_editorial  # noqa: PLC0415
+
+        _TMP_DIR.mkdir(exist_ok=True)
+        dest = str(_TMP_DIR / f"tnv_editorial_{post['id']}.jpg")
+        image_path = generate_image_for_editorial(
+            title=titel, editorial_text=inhoud, dest_path=dest,
+        )
+        if image_path:
+            image_url = update_featured_image(post["id"], image_path, alt_text=titel)
+            beeld_ontbreekt = not bool(image_url)
+            logger.info("Editorial-beeld gezet: %s", image_url or "MISLUKT")
+        else:
+            logger.warning("Editorial-beeld genereren mislukt — draft blijft zonder beeld")
+    except Exception as exc:
+        logger.error("Editorial-beeld mislukt: %s", exc)
+
     publish_token, decline_token, revise_token = create_editorial_tokens(
         post["id"], titel, post["preview_url"],
         ttl_hours=EDITORIAL_TOKEN_TTL_HOURS,
@@ -236,6 +266,7 @@ def main() -> None:
         publish_token=publish_token,
         decline_token=decline_token,
         revise_token=revise_token,
+        beeld_ontbreekt=beeld_ontbreekt,
     )
     logger.info(
         "Editorial staat als concept in WordPress (ID %d) — mail verstuurd, "
