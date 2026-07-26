@@ -59,10 +59,13 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
   ("The caption was too long"), en ~9 artikelhooks halen dat al. Vandaar
   `fit_ig_entries()`: de digest snoeit het aantal artikelen tot de caption past,
   i.p.v. achteraf een fout op te vangen. Wie een vast blok aan de caption
-  toevoegt, moet die limiet meerekenen. Een mislukte digest laat de wachtrij
-  staan voor een nieuwe poging, maar artikelen ouder dan 2 dagen gaan eruit —
-  zonder die grens groeide de wachtrij na één transient fout door tot élke
-  volgende poging te lang was en de digest dus nooit meer herstelde
+  toevoegt, moet die limiet meerekenen. `instagram_queue.json` is een
+  **dagwachtrij, geen backlog**: na een geslaagde digest gaat alles eruit, ook
+  wat niet in de caption paste — die artikelen staan op de site en een dag
+  later alsnog als "nieuws" posten is slechter dan overslaan. Alleen een
+  *mislukte* digest laat de wachtrij staan voor een nieuwe poging, en dan nog
+  maar 2 dagen: zonder die grens groeide de wachtrij na één transient fout door
+  tot élke volgende poging te lang was en de digest zich nooit meer herstelde
   (24–26 juli 2026, ~2,5 dag geen posts).
 - **Approval server**: system-supervisord service `tnv-approval-server`
   (`/etc/supervisor/conf.d/user/tnv-approval-server.conf`); `supervisorctl` vereist

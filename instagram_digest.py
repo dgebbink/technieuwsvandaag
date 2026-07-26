@@ -91,7 +91,7 @@ def main() -> None:
     selected = list(reversed(fit_ig_entries(list(reversed(fresh)), _IG_CAROUSEL_MAX)))
     if len(selected) < len(fresh):
         logger.warning(
-            "Wachtrij heeft %d verse artikelen, %d passen in één post — %d blijven staan voor morgen",
+            "Wachtrij heeft %d verse artikelen, %d passen in één post — %d vervallen",
             len(fresh), len(selected), len(fresh) - len(selected),
         )
 
@@ -110,10 +110,20 @@ def main() -> None:
             decline_token = entry.get("decline_token", "")
             if decline_token:
                 update_instagram_permalink(decline_token, permalink)
-            # Alleen de daadwerkelijk geposte artikelen; de rest wacht op de
-            # volgende digest i.p.v. ongepost te verdwijnen.
+
+        # De wachtrij is een dagwachtrij, geen backlog: na een geslaagde digest
+        # gaat álles eruit wat bij het inlezen klaarstond — ook wat niet in de
+        # caption paste. Die artikelen staan gewoon op de site; ze een dag
+        # later alsnog als "nieuws" posten is slechter dan ze overslaan, en
+        # meeslepen is precies hoe de wachtrij eerder vastliep. Per post_id
+        # i.p.v. het bestand legen, zodat een main.py-run die tijdens het
+        # posten iets toevoegt niet meteen weer weggegooid wordt.
+        for entry in fresh:
             remove_from_instagram_queue(entry["post_id"])
-        logger.info("%d geposte artikel(en) uit de wachtrij verwijderd", len(selected))
+        vervallen = len(fresh) - len(selected)
+        logger.info(
+            "Wachtrij geleegd: %d gepost, %d vervallen", len(selected), vervallen,
+        )
 
 
 if __name__ == "__main__":
