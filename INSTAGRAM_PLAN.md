@@ -176,15 +176,26 @@ extra API-call):
 
 🔗 Lees het volledige artikel via de link in bio.
 
-🤖 Beeld gegenereerd met AI.
-
 #technieuws #tech {+2–3 specifieke NL hashtags uit de trefwoorden}
 ```
 
 Regels: Nederlands, geen clickbait ("Dit wist je nog niet…"), maximaal 5 hashtags
-(meer oogt als spam en helpt het bereik niet), AI-disclosure altijd aanwezig.
+(meer oogt als spam en helpt het bereik niet).
 `ProcessedArticle` dataclass uitbreiden met beide velden; fallback = bestaande
 titel + eerste zinnen samenvatting (zelfde truc als `_build_post_text`).
+
+**Harde grens: 2200 tekens** (`IG_CAPTION_MAX` in `ai_processor.py`). Dit is geen
+richtlijn maar een muur: gaat de caption erover, dan weigert de Graph API de héle
+post met `The caption was too long` — er wordt niets afgekapt. Voor een losse post
+is dat ruim voldoende, maar de digest stapelt hooks en zit er vanaf ~9 artikelen
+overheen. Elk vast blok dat je aan de caption toevoegt gaat van die 2200 af, en
+verlaagt dus het aantal artikelen dat in een digest past. Zie fase 8.
+
+De AI-disclosureregel in de caption is in fase 8 geschrapt: `instagram_image.py`
+zet al een zichtbaar `AI-gegenereerd`-label op het fotodeel én XMP-metadata
+waarmee Meta z'n eigen AI-info-label toont (fase 2). In de caption was het een
+derde vermelding — en in een digest van 8 beelden stond die er bovendien in het
+enkelvoud.
 
 ---
 
@@ -251,7 +262,7 @@ per dag (één per `main.py`-run). Nieuwe flow: verzamelen overdag, bundelen 's 
   wachtrij, bouwt de gecombineerde caption, post 1 beeld los of 2+ als carousel
   (`social_poster.post_instagram_digest()`, Graph API-limiet 10 items/carousel), en
   leegt de wachtrij bij succes. Wachtrij blijft staan bij een mislukte post, voor een
-  volgende poging.
+  volgende poging. → *Dat laatste bleek een voetangel: zie fase 8.*
 - `approval_server.py` decline haalt het artikel eerst uit de wachtrij
   (`remove_from_instagram_queue`) zodat een gedeclineerd artikel nooit meepost. Dat
   werkt alleen vóór 19:45 — de decline-tokens verlopen sowieso al na 4 uur
@@ -303,6 +314,47 @@ met harde cuts (geen Ken Burns-zoom — kan later als polish).
   24s video, 1080x1920 h264, geen audiospoor) — zie renders in de sessie waarin dit
   gebouwd is. Nog niet als echte post naar Meta gestuurd (dat gebeurt voor het eerst
   bij de cron van komende zondag).
+
+---
+
+## Fase 8 — Captionlimiet & wachtrijbegrenzing (storing 24–26 juli 2026)
+
+**Storing:** de digest van 24 juli faalde op een transient Graph API-fout
+(`An unexpected error has occurred`). Conform fase 6 bleef de wachtrij staan voor
+een nieuwe poging — maar die wachtrij groeit elke dag met ~5 artikelen, en vanaf
+~9 hooks gaat de gecombineerde caption over de 2200 tekens. Vanaf 25 juli faalde
+elke run dus op `The caption was too long`, en omdat falen de wachtrij liet staan,
+werd de caption elke dag alleen maar langer. Een spiraal die zichzelf nooit meer
+herstelt: ~2,5 dag geen Instagram-posts, wachtrij opgelopen tot 13 artikelen.
+
+De retry-op-falen uit fase 6 was op zichzelf goed bedacht; wat ontbrak was een
+bovengrens. Een wachtrij die alleen kan groeien, groeit tot voorbij elke limiet.
+
+**Wijzigingen:**
+
+- `ai_processor.fit_ig_entries(entries, max_items)` — geeft de grootste voorloop
+  terug waarvan `build_combined_ig_caption()` binnen `IG_CAPTION_MAX` (2200) past.
+  De digest snoeit dus vóóraf i.p.v. achteraf een 400 op te vangen. Bij een backlog
+  worden de *nieuwste* artikelen gekozen (verse tech is relevanter), daarna terug op
+  chronologische volgorde voor de nummering in de caption.
+- **De wachtrij is een dagwachtrij, geen backlog.** Na een geslaagde digest gaat
+  álles eruit wat bij het inlezen klaarstond, ook wat niet in de caption paste. Die
+  artikelen staan gewoon op de site; ze een dag later alsnog als "nieuws" posten is
+  slechter dan ze overslaan — en meeslepen is precies hoe het hierboven vastliep.
+  Legen gebeurt per `post_id`, niet door het bestand te truncaten, zodat een
+  `main.py`-run die tijdens het posten (~50s) iets toevoegt blijft staan.
+- Alleen een *mislukte* digest laat de wachtrij staan, en dan nog maar 2 dagen
+  (`_IG_MAX_AGE_DAYS`) — vangnet tegen dezelfde spiraal bij een reeks storingen.
+- **Bug meegenomen:** het oude `entries[:10]` postte er 10 maar `clear_instagram_queue()`
+  leegde de héle wachtrij — alles boven de carouselgrens verdween ongepost. Die
+  helper is verwijderd.
+- Caption-tekst: link-regel nu in het meervoud bij 2+ artikelen ("Lees de volledige
+  artikelen…"), en de AI-disclosureregel is geschrapt (zie fase 4).
+
+**Nazorg:** de vastgelopen wachtrij is handmatig afgewikkeld — 3 artikelen van
+24 juli vervallen als te oud, 8 + 2 alsnog gepost in twee carousels. De cron van
+19:45 op 26 juli is die avond eenmalig overgeslagen (crontab-regel uitgecommentarieerd;
+`scheduler.py` zette 'm om 00:00 vanzelf terug).
 
 ---
 
