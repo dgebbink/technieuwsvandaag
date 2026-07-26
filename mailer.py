@@ -620,9 +620,11 @@ def send_editorial_email(
     preview_url: str,
     publish_token: str,
     decline_token: str,
+    revise_token: str = "",
+    revisie_ronde: int = 0,
     dry_run: bool = False,
 ) -> None:
-    """Stuurt de editorial ter goedkeuring, met Publiceer- en Verwijder-knop.
+    """Stuurt de editorial ter goedkeuring, met Publiceer-, Herschrijf- en Verwijder-knop.
 
     Anders dan send_notification(): die is gebouwd rond gepubliceerde
     nieuwsartikelen met beeld en bron. Een editorial staat nog als draft en moet
@@ -634,7 +636,8 @@ def send_editorial_email(
     import os
     base = os.getenv("APPROVAL_BASE_URL", "http://localhost:5055")
     date_str = datetime.now().strftime("%d-%m-%Y %H:%M")
-    subject = f"[TechNieuwsVandaag] Editorial ter goedkeuring — {titel}"
+    ronde = f" (herschreven, ronde {revisie_ronde})" if revisie_ronde else ""
+    subject = f"[TechNieuwsVandaag] Editorial ter goedkeuring{ronde} — {titel}"
 
     alineas = "\n".join(
         f'<p style="margin:0 0 14px;line-height:1.6;font-size:15px;color:#222">{p.strip()}</p>'
@@ -645,7 +648,7 @@ def send_editorial_email(
 <html><body style="margin:0;padding:24px;background:#f4f4f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
   <div style="max-width:640px;margin:0 auto;background:#fff;padding:32px;border-radius:6px">
     <p style="margin:0 0 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#dc3545;font-weight:700">
-      Editorial · concept
+      Editorial · concept{f" · ronde {revisie_ronde}" if revisie_ronde else ""}
     </p>
     <h1 style="margin:0 0 8px;font-size:24px;line-height:1.25;color:#111">{titel}</h1>
     <p style="margin:0 0 24px;font-size:13px;color:#888">{date_str}</p>
@@ -662,6 +665,11 @@ def send_editorial_email(
                 border-radius:4px;font-size:15px;font-weight:700;text-decoration:none;margin:4px">
         Publiceer
       </a>
+      {f'''<a href="{base}/revise/{revise_token}"
+         style="display:inline-block;background:#1a73e8;color:#fff;padding:12px 24px;
+                border-radius:4px;font-size:15px;font-weight:700;text-decoration:none;margin:4px">
+        Herschrijf
+      </a>''' if revise_token else ''}
       <a href="{base}/decline/{decline_token}"
          style="display:inline-block;background:#dc3545;color:#fff;padding:12px 24px;
                 border-radius:4px;font-size:15px;font-weight:700;text-decoration:none;margin:4px">
@@ -669,6 +677,8 @@ def send_editorial_email(
       </a>
     </div>
     <p style="font-size:11px;color:#999;text-align:center;margin:0 0 24px">
+      Herschrijf opent een formulier waarin je commentaar kunt geven; dat mag
+      zo vaak als nodig.<br>
       Niets doen laat de editorial als concept in WordPress staan.
     </p>
 

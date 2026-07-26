@@ -427,6 +427,45 @@ def create_editorial_draft(
         return None
 
 
+def update_editorial_draft(
+    post_id: int,
+    titel: str,
+    inhoud: str,
+    trefwoorden: str = "",
+) -> bool:
+    """Werkt een bestaande editorial-draft bij met een herschreven versie.
+
+    Bewust bijwerken i.p.v. een nieuwe post: zo blijft het bij één draft hoe
+    vaak je ook laat herschrijven, en blijven eerder verstuurde publish-tokens
+    naar hetzelfde (bijgewerkte) stuk wijzen.
+
+    Pre:  post_id verwijst naar een bestaande draft
+    Post: titel/inhoud/tags bijgewerkt, status blijft 'draft'; False bij elke
+          API-fout — nooit raisen
+    """
+    client = WordPressClient()
+    try:
+        content_html = "\n".join(
+            f"<p>{p.strip()}</p>" for p in inhoud.split("\n\n") if p.strip()
+        )
+        post_data: dict = {"title": titel, "content": content_html}
+        if trefwoorden:
+            tag_ids = client.get_or_create_tags(trefwoorden)
+            if tag_ids:
+                post_data["tags"] = tag_ids
+
+        resp = client.session.post(
+            f"{client.base_url}/posts/{post_id}", json=post_data, timeout=30,
+        )
+        resp.raise_for_status()
+        logger.info("Editorial-draft %d bijgewerkt: '%s'", post_id, titel)
+        return True
+
+    except Exception as exc:
+        logger.error("Editorial-draft %d bijwerken mislukt: %s", post_id, exc)
+        return False
+
+
 def fetch_recent_published(limit: int = 10) -> list[dict]:
     """Fetch the most recently published posts (title + excerpt) for dedup checks.
     Pre:  WP REST API reachable; limit >= 1

@@ -164,6 +164,165 @@ def publish(token: str):
         )
 
 
+@app.route("/revise/<token>", methods=["GET", "POST"])
+def revise(token: str):
+    """Herschrijf-formulier voor een editorial-draft, en de verwerking ervan.
+
+    GET  toont een tekstveld met de huidige editorial erboven.
+    POST stuurt het commentaar naar Claude, werkt de draft bij en mailt de
+         nieuwe versie met verse knoppen.
+
+    Pre:  token is een 'revise'-token uit de editorial-mail
+    Post: token wordt NIET als gebruikt gemarkeerd — herschrijven mag zo vaak
+          als nodig binnen de TTL. Het herschrijven zelf draait in een
+          achtergrondthread (Claude doet er ~40s over) zodat de browser niet
+          in een timeout loopt.
+    """
+    entry = get_token(token)
+    if not entry or entry["action"] != "revise":
+        logging.warning(f"Invalid/expired revise token: {token[:8]}…")
+        return _html_response(
+            "Link ongeldig of verlopen",
+            "Deze Herschrijf-link is niet meer geldig.",
+            error=True,
+        )
+
+    post_id = entry["post_id"]
+    meta    = entry.get("meta", {})
+    titel   = meta.get("titel", entry["post_title"])
+    inhoud  = meta.get("inhoud", "")
+    ronde   = int(meta.get("revisie_ronde", 0))
+
+    if request.method == "GET":
+        return _revise_form(token, titel, inhoud, ronde)
+
+    commentaar = (request.form.get("commentaar") or "").strip()
+    if not commentaar:
+        return _revise_form(
+            token, titel, inhoud, ronde,
+            foutmelding="Geef commentaar op — zonder input valt er niets te herschrijven.",
+        )
+
+    logging.info(f"Revise request for editorial {post_id} (ronde {ronde + 1})")
+
+    def _do_revise():
+        try:
+            # Lazy import: editorial.py configureert logging bij import en zou
+            # de logging-config van deze server overschrijven.
+            from editorial import revise_editorial
+            from approval_store import create_editorial_tokens
+            from config import EDITORIAL_TOKEN_TTL_HOURS
+            from mailer import send_editorial_email
+            from wordpress_client import update_editorial_draft
+
+            nieuw = revise_editorial(titel, inhoud, commentaar)
+            if not nieuw:
+                logging.error(f"Revise failed for editorial {post_id}: geen bruikbaar antwoord")
+                return
+
+            nieuwe_titel  = nieuw["titel"].strip()
+            nieuwe_inhoud = nieuw["inhoud"].strip()
+            tags = ", ".join(nieuw.get("onderwerp_tags", []) or [])
+
+            if not update_editorial_draft(post_id, nieuwe_titel, nieuwe_inhoud, tags):
+                logging.error(f"Revise: WordPress update failed for {post_id}")
+                return
+
+            nieuwe_ronde = ronde + 1
+            publish_token, decline_token, revise_token = create_editorial_tokens(
+                post_id, nieuwe_titel, entry.get("wp_url", ""),
+                ttl_hours=EDITORIAL_TOKEN_TTL_HOURS,
+                meta={
+                    "titel": nieuwe_titel,
+                    "inhoud": nieuwe_inhoud,
+                    "revisie_ronde": nieuwe_ronde,
+                },
+            )
+            send_editorial_email(
+                titel=nieuwe_titel,
+                inhoud=nieuwe_inhoud,
+                standpunt=str(nieuw.get("standpunt_samenvatting", "")).strip(),
+                preview_url=entry.get("wp_url", ""),
+                publish_token=publish_token,
+                decline_token=decline_token,
+                revise_token=revise_token,
+                revisie_ronde=nieuwe_ronde,
+            )
+            logging.info(f"Editorial {post_id} herschreven (ronde {nieuwe_ronde}), mail verstuurd")
+
+        except Exception as e:
+            logging.error(f"Revise failed for {post_id}: {e}")
+
+    threading.Thread(target=_do_revise, daemon=True).start()
+
+    return _html_response(
+        "Editorial wordt herschreven",
+        "Je commentaar is verwerkt en de editorial wordt opnieuw geschreven.<br><br>"
+        "Je krijgt binnen een paar minuten een mail met de nieuwe versie en "
+        "verse knoppen. De draft in WordPress wordt bijgewerkt — er komt geen "
+        "tweede concept bij.",
+    )
+
+
+def _revise_form(
+    token: str, titel: str, inhoud: str, ronde: int, foutmelding: str = "",
+) -> str:
+    """Bouwt het herschrijf-formulier (huidige tekst + commentaarveld)."""
+    esc = _html_mod.escape
+    alineas = "\n".join(
+        f'<p style="margin:0 0 12px;line-height:1.6">{esc(p.strip())}</p>'
+        for p in inhoud.split("\n\n") if p.strip()
+    )
+    fout = (
+        f'<p style="margin:0 0 16px;padding:10px 14px;background:#f8d7da;'
+        f'color:#842029;border-radius:4px;font-size:14px">{esc(foutmelding)}</p>'
+        if foutmelding else ""
+    )
+    ronde_label = f" · ronde {ronde}" if ronde else ""
+
+    return f"""<!doctype html>
+<html lang="nl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Editorial herschrijven</title></head>
+<body style="margin:0;padding:24px;background:#f4f4f4;
+             font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
+  <div style="max-width:680px;margin:0 auto;background:#fff;padding:32px;border-radius:6px">
+    <p style="margin:0 0 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+              color:#dc3545;font-weight:700">Editorial · concept{ronde_label}</p>
+    <h1 style="margin:0 0 20px;font-size:23px;line-height:1.25;color:#111">{esc(titel)}</h1>
+
+    <div style="padding:18px 20px;background:#fafafa;border:1px solid #eee;border-radius:4px;
+                margin:0 0 28px;font-size:15px;color:#333">{alineas}</div>
+
+    {fout}
+
+    <form method="post" style="margin:0">
+      <label for="commentaar" style="display:block;margin:0 0 8px;font-size:15px;
+             font-weight:700;color:#111">Wat moet er anders?</label>
+      <p style="margin:0 0 10px;font-size:13px;color:#666">
+        Bijvoorbeeld: "te voorzichtig, scherper op de rol van de toezichthouder",
+        "tweede alinea klopt feitelijk niet" of "maak de opening korter".
+      </p>
+      <textarea id="commentaar" name="commentaar" rows="6" autofocus
+        style="width:100%;box-sizing:border-box;padding:12px;font-size:15px;
+               font-family:inherit;border:1px solid #ccc;border-radius:4px;
+               resize:vertical"></textarea>
+      <div style="margin:20px 0 0;text-align:center">
+        <button type="submit"
+          style="background:#1a73e8;color:#fff;padding:12px 28px;border:0;
+                 border-radius:4px;font-size:15px;font-weight:700;cursor:pointer">
+          Herschrijf
+        </button>
+      </div>
+    </form>
+
+    <p style="margin:24px 0 0;font-size:12px;color:#999;text-align:center">
+      Je krijgt de nieuwe versie per mail. Herschrijven mag zo vaak als nodig.
+    </p>
+  </div>
+</body></html>"""
+
+
 @app.route("/new-image/<token>")
 def new_image(token: str):
     """Handles New Image button click.

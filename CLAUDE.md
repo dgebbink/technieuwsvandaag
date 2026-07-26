@@ -139,6 +139,7 @@ scraper.py → ai_processor.py → image_generator.py → wordpress_client.py �
   - `GET /decline/<token>` — verwijdert Bluesky-post (indien aanwezig), haalt het artikel uit de Instagram-wachtrij en verwijdert de WP-post (`force=True`)
   - `GET /new-image/<token>` — bevestigingspagina direct → genereert FAL.ai-afbeelding, uploadt naar WP en verstuurt nieuwe mail in achtergrondthread
   - `GET /publish/<token>` — publiceert een editorial-draft (geen social posting)
+  - `GET|POST /revise/<token>` — herschrijf-formulier voor een editorial: toont de huidige tekst met een commentaarveld, laat Claude het stuk herschrijven, werkt de draft bij en mailt de nieuwe versie. Token wordt **niet** verbruikt — herschrijven mag zo vaak als nodig binnen de TTL
   - `GET /submit` (POST) + `GET /status/<job_id>` — dashboard-flow via `adhoc_processor.py`
   - `GET /health` — health check + cleanup verlopen tokens
   - `GET /analytics` — analytics-pagina
@@ -155,10 +156,18 @@ onderwerp met de meeste duidingswaarde en levert JSON
 
 **Gaat bewust als draft naar WordPress** (`create_editorial_draft()`), anders dan
 nieuwsartikelen: een stuk dat per instructie altijd een expliciet standpunt inneemt
-hoort niet ongelezen live te gaan. De mail toont de volledige tekst plus een
-Publiceer- en een Verwijder-knop; niets doen laat het concept staan. De
+hoort niet ongelezen live te gaan. De mail toont de volledige tekst plus drie
+knoppen — Publiceer, Herschrijf en Verwijder; niets doen laat het concept staan. De
 prompt draagt op om bij politiek/maatschappelijk gevoelige onderwerpen één serieus
 tegenargument te verwerken — scherp mag, eenzijdig niet.
+
+**Herschrijfronde:** Herschrijf opent `/revise/<token>` op de approval-server, met
+de huidige tekst en een commentaarveld. Het commentaar gaat als redactionele
+instructie mee terug naar Claude (`revise_editorial()`), waarna de **bestaande
+draft wordt bijgewerkt** (`update_editorial_draft()`) — één draft, hoe vaak je ook
+laat herschrijven. Elke ronde levert verse tokens en een nieuwe mail; de
+ronde-teller staat in de token-meta en in het mailonderwerp. De huidige tekst zit
+in die meta, zodat een revisie niets uit WordPress hoeft terug te halen.
 - Draait als **supervisord** service (`/etc/supervisor/conf.d/user/tnv-approval-server.conf`)
 
 ## Sleutelbestanden

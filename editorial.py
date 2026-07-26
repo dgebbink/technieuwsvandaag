@@ -74,6 +74,39 @@ Antwoord ALLEEN met valide JSON, geen markdown-fences, geen preambule:
 }"""
 
 
+_REVISIE_PROMPT = """\
+Hieronder staat een eerder door jou geschreven editorial, plus commentaar van de
+hoofdredacteur. Herschrijf de editorial en verwerk dat commentaar.
+
+BELANGRIJK:
+- Het commentaar is leidend. Volg het op, ook als je het eerdere stuk beter vond.
+- Behoud stem, toon, structuur en lengte-eis (150-250 woorden) uit je instructie.
+- Het slot blijft een expliciet standpunt — nooit afzwakken tot "de tijd zal het leren".
+- Herschrijf het hele stuk; lever geen dagboek van wijzigingen.
+
+HUIDIGE EDITORIAL
+Titel: {titel}
+
+{inhoud}
+
+COMMENTAAR VAN DE HOOFDREDACTEUR
+{commentaar}"""
+
+
+def revise_editorial(titel: str, inhoud: str, commentaar: str) -> dict | None:
+    """Herschrijft een bestaande editorial op basis van redactiecommentaar.
+
+    Pre:  titel/inhoud zijn de huidige versie, commentaar is niet-leeg
+    Post: zelfde dict-vorm als _generate() (titel/inhoud/standpunt_samenvatting/
+          onderwerp_tags), of None bij een fout — nooit raisen
+    """
+    prompt = (
+        f"{_SYSTEM_PROMPT}\n\n"
+        + _REVISIE_PROMPT.format(titel=titel, inhoud=inhoud, commentaar=commentaar.strip())
+    )
+    return _call_and_parse(prompt)
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -104,14 +137,17 @@ def _build_prompt(kandidaten: list[dict]) -> str:
     )
 
 
-def _generate(kandidaten: list[dict]) -> dict | None:
-    """Vraagt Claude om de editorial; retourneert het geparste JSON-antwoord.
+def _call_and_parse(prompt: str) -> dict | None:
+    """Roept Claude aan en valideert het JSON-antwoord.
+
+    Gedeeld door de eerste generatie en de revisieronde, zodat beide dezelfde
+    velden afdwingen.
 
     Post: None als de CLI faalt of onbruikbare JSON teruggeeft — nooit raisen,
           zodat een mislukte run de cron niet met een traceback vult.
     """
     try:
-        antwoord = _call_claude(_build_prompt(kandidaten), timeout=180)
+        antwoord = _call_claude(prompt, timeout=180)
     except Exception as exc:
         logger.error("Claude-aanroep mislukt: %s", exc)
         return None
@@ -133,6 +169,11 @@ def _generate(kandidaten: list[dict]) -> dict | None:
         return None
 
     return data
+
+
+def _generate(kandidaten: list[dict]) -> dict | None:
+    """Schrijft een nieuwe editorial op basis van de kandidatenlijst."""
+    return _call_and_parse(_build_prompt(kandidaten))
 
 
 def main() -> None:
@@ -180,8 +221,12 @@ def main() -> None:
         logger.error("Draft aanmaken mislukt — geen mail verstuurd")
         return
 
-    publish_token, decline_token = create_editorial_tokens(
-        post["id"], titel, post["preview_url"], ttl_hours=EDITORIAL_TOKEN_TTL_HOURS,
+    publish_token, decline_token, revise_token = create_editorial_tokens(
+        post["id"], titel, post["preview_url"],
+        ttl_hours=EDITORIAL_TOKEN_TTL_HOURS,
+        # Tekst mee in de token-meta zodat /revise weet wat er herschreven moet
+        # worden zonder het uit WordPress terug te hoeven halen.
+        meta={"titel": titel, "inhoud": inhoud, "revisie_ronde": 0},
     )
     send_editorial_email(
         titel=titel,
@@ -190,6 +235,7 @@ def main() -> None:
         preview_url=post["preview_url"],
         publish_token=publish_token,
         decline_token=decline_token,
+        revise_token=revise_token,
     )
     logger.info(
         "Editorial staat als concept in WordPress (ID %d) — mail verstuurd, "
