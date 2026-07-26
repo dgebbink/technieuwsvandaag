@@ -54,6 +54,16 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
   daarnaast wekelijks een silent 9:16-slideshow (één artikel per dag, rechtstreeks uit
   WordPress — los van de dagwachtrij) — Reels zijn het enige kanaal dat niet-volgers
   bereikt, feedposts amper. Zie `INSTAGRAM_PLAN.md` fase 7.
+- **IG-caption: harde limiet van 2200 tekens** (`IG_CAPTION_MAX` in
+  `ai_processor.py`) — erboven weigert de Graph API de *hele* post
+  ("The caption was too long"), en ~9 artikelhooks halen dat al. Vandaar
+  `fit_ig_entries()`: de digest snoeit het aantal artikelen tot de caption past,
+  i.p.v. achteraf een fout op te vangen. Wie een vast blok aan de caption
+  toevoegt, moet die limiet meerekenen. Een mislukte digest laat de wachtrij
+  staan voor een nieuwe poging, maar artikelen ouder dan 2 dagen gaan eruit —
+  zonder die grens groeide de wachtrij na één transient fout door tot élke
+  volgende poging te lang was en de digest dus nooit meer herstelde
+  (24–26 juli 2026, ~2,5 dag geen posts).
 - **Approval server**: system-supervisord service `tnv-approval-server`
   (`/etc/supervisor/conf.d/user/tnv-approval-server.conf`); `supervisorctl` vereist
   sudo. `APPROVAL_BASE_URL` staat op een LAN-adres — de knoppen in de mail werken
