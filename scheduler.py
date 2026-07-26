@@ -153,6 +153,20 @@ def build_crontab(
         f">> {project_path}/logs/cron_digest.log 2>&1",
     ]
 
+    # Editorial op ma/wo/vr om 09:00 CET — opiniërend redactiestuk over een
+    # onderwerp uit de artikelen van de afgelopen dagen. 's Ochtends zodat er
+    # een werkdag overblijft om het concept te lezen; het gaat als draft naar
+    # WordPress en wacht op de Publiceer-knop in de mail.
+    editorial_cet = (9, 0)
+    editorial_utc = cet_to_utc([editorial_cet])[0]
+    lines += [
+        "",
+        "# Editorial op ma/wo/vr om 09:00 CET (draft + goedkeuringsmail)",
+        f"{editorial_utc[1]} {editorial_utc[0]} * * 1,3,5 cd {project_path} && "
+        f"{PYTHON} editorial.py "
+        f">> {project_path}/logs/cron_editorial.log 2>&1",
+    ]
+
     # Service watchdog elke 5 minuten (herstart gestopte supervisor-services)
     lines += [
         "",

@@ -116,3 +116,15 @@ INSTAGRAM_MEDIA_BASE_URL: str = os.environ.get(
 # Bestanden ouder dan dit worden opgeruimd bij elke nieuwe upload (Meta haalt
 # het beeld maar één keer op, bij het aanmaken van de media container)
 INSTAGRAM_MEDIA_RETENTION_DAYS: int = int(os.environ.get("INSTAGRAM_MEDIA_RETENTION_DAYS", "2"))
+
+# Editorial — opiniërend redactiestuk, ma/wo/vr (zie CLAUDE.md). Anders dan
+# nieuwsartikelen gaat dit als DRAFT naar WordPress: een stuk met een expliciet
+# standpunt hoort niet ongelezen live te gaan. Publiceren gebeurt via de
+# Publiceer-knop in de mail (approval_server /publish/<token>).
+ENABLE_EDITORIAL: bool = os.environ.get("ENABLE_EDITORIAL", "false").lower() == "true"
+EDITORIAL_CATEGORY: str = os.environ.get("EDITORIAL_CATEGORY", "Editorial")
+# Aantal recent gepubliceerde artikelen dat als kandidatenlijst wordt meegegeven
+EDITORIAL_CANDIDATES: int = int(os.environ.get("EDITORIAL_CANDIDATES", "5"))
+# Ruimere TTL dan de 4u van approval_store: een editorial die 's ochtends
+# gegenereerd wordt moet 's avonds nog te publiceren zijn.
+EDITORIAL_TOKEN_TTL_HOURS: int = int(os.environ.get("EDITORIAL_TOKEN_TTL_HOURS", "48"))

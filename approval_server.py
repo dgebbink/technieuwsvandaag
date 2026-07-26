@@ -24,7 +24,7 @@ from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 
 from approval_store import get_token, mark_used, cleanup_expired, update_bluesky_uri
-from wordpress_client import delete_post, update_featured_image
+from wordpress_client import delete_post, publish_post, update_featured_image
 from social_poster import delete_bluesky_post, remove_from_instagram_queue
 from mailer import send_reimage_email
 
@@ -114,6 +114,52 @@ def decline(token: str):
             "Verwijderen mislukt",
             f"{bsky_msg}"
             f"WordPress-fout: {str(e)}<br>Verwijder handmatig via WordPress admin.",
+            error=True,
+        )
+
+
+@app.route("/publish/<token>")
+def publish(token: str):
+    """Handles Publiceer button click for an editorial draft.
+
+    Pre:  token is a URL-safe string from the editorial email
+    Post: WordPress draft set to 'publish', token marked used — or error page
+          if invalid/expired. Geen social posting: een editorial is een
+          redactiestuk, geen nieuwsartikel, en gaat niet automatisch de
+          tijdlijnen op.
+    """
+    entry = get_token(token)
+    if not entry or entry["action"] != "publish":
+        logging.warning(f"Invalid/expired publish token: {token[:8]}…")
+        return _html_response(
+            "Link ongeldig of verlopen",
+            "Deze Publiceer-link is niet meer geldig, of de editorial is al "
+            "gepubliceerd.",
+            error=True,
+        )
+
+    post_id    = entry["post_id"]
+    post_title = entry["post_title"]
+
+    logging.info(f"Publishing editorial {post_id}: {post_title}")
+    mark_used(token)
+
+    try:
+        post = publish_post(post_id)
+        link = post.get("link", entry.get("wp_url", ""))
+        logging.info(f"Published editorial {post_id} → {link}")
+        return _html_response(
+            "Editorial gepubliceerd",
+            f"<b>{post_title}</b> staat nu live.<br><br>"
+            f'<a href="{link}" target="_blank">{link}</a>',
+        )
+
+    except Exception as e:
+        logging.error(f"WordPress publish failed for {post_id}: {e}")
+        return _html_response(
+            "Publiceren mislukt",
+            f"WordPress-fout: {str(e)}<br>"
+            f"Publiceer handmatig via WordPress admin (post {post_id}).",
             error=True,
         )
 

@@ -613,6 +613,79 @@ def send_notification(
 # Generieke e-mailhelper (voor dagrapport en andere modules)
 # ---------------------------------------------------------------------------
 
+def send_editorial_email(
+    titel: str,
+    inhoud: str,
+    standpunt: str,
+    preview_url: str,
+    publish_token: str,
+    decline_token: str,
+    dry_run: bool = False,
+) -> None:
+    """Stuurt de editorial ter goedkeuring, met Publiceer- en Verwijder-knop.
+
+    Anders dan send_notification(): die is gebouwd rond gepubliceerde
+    nieuwsartikelen met beeld en bron. Een editorial staat nog als draft en moet
+    vóór publicatie leesbaar in de mail staan — vandaar de volledige tekst.
+
+    Pre:  publish/decline tokens komen uit approval_store.create_editorial_tokens()
+    Post: mail verstuurd, of weggeschreven naar logs/ bij SMTP-fout
+    """
+    import os
+    base = os.getenv("APPROVAL_BASE_URL", "http://localhost:5055")
+    date_str = datetime.now().strftime("%d-%m-%Y %H:%M")
+    subject = f"[TechNieuwsVandaag] Editorial ter goedkeuring — {titel}"
+
+    alineas = "\n".join(
+        f'<p style="margin:0 0 14px;line-height:1.6;font-size:15px;color:#222">{p.strip()}</p>'
+        for p in inhoud.split("\n\n") if p.strip()
+    )
+
+    html_body = f"""\
+<html><body style="margin:0;padding:24px;background:#f4f4f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
+  <div style="max-width:640px;margin:0 auto;background:#fff;padding:32px;border-radius:6px">
+    <p style="margin:0 0 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#dc3545;font-weight:700">
+      Editorial · concept
+    </p>
+    <h1 style="margin:0 0 8px;font-size:24px;line-height:1.25;color:#111">{titel}</h1>
+    <p style="margin:0 0 24px;font-size:13px;color:#888">{date_str}</p>
+
+    <div style="padding:14px 16px;background:#f8f9fa;border-left:3px solid #dc3545;margin:0 0 24px">
+      <p style="margin:0;font-size:14px;color:#444"><b>Standpunt:</b> {standpunt}</p>
+    </div>
+
+    {alineas}
+
+    <div style="margin:32px 0 8px;text-align:center">
+      <a href="{base}/publish/{publish_token}"
+         style="display:inline-block;background:#198754;color:#fff;padding:12px 24px;
+                border-radius:4px;font-size:15px;font-weight:700;text-decoration:none;margin:4px">
+        Publiceer
+      </a>
+      <a href="{base}/decline/{decline_token}"
+         style="display:inline-block;background:#dc3545;color:#fff;padding:12px 24px;
+                border-radius:4px;font-size:15px;font-weight:700;text-decoration:none;margin:4px">
+        Verwijder
+      </a>
+    </div>
+    <p style="font-size:11px;color:#999;text-align:center;margin:0 0 24px">
+      Niets doen laat de editorial als concept in WordPress staan.
+    </p>
+
+    <p style="margin:0;font-size:13px;color:#666;text-align:center">
+      <a href="{preview_url}" style="color:#1a73e8">Preview in WordPress</a>
+    </p>
+  </div>
+</body></html>"""
+
+    if dry_run:
+        logger.info("[DRY RUN] Editorial-mail niet verstuurd. Onderwerp: %s", subject)
+        print(f"\n{'=' * 60}\n[DRY RUN] Mail: {subject}\n{'=' * 60}")
+        return
+
+    send_email(NOTIFICATION_EMAIL, subject, html_body)
+
+
 def send_email(to: str, subject: str, html_body: str) -> None:
     """Send an HTML email to an arbitrary recipient.
     Pre:  SMTP settings configured in .env

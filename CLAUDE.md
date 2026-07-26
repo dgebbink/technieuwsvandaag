@@ -40,6 +40,8 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
 
 - **Cron (user)**: 00:00 `scheduler.py` regenereert het schema → 5× `main.py` op
   random tijden (07:00–19:00 CET, min. 90 min tussenruimte), 00:00 `log_cleaner.py`,
+  ma/wo/vr 09:00 CET `editorial.py` (opiniërend redactiestuk → WP-draft +
+  goedkeuringsmail; zie Architecture),
   zondag 19:00 CET `weekly_reel.py` (silent Instagram-Reel-recap van de week — zie
   hieronder), 19:45 CET `instagram_digest.py` (bundelt de dagelijkse Instagram-
   artikelen tot 1 post), 18:00 UTC `daily_digest.py` (gecombineerd dagoverzicht:
@@ -105,34 +107,58 @@ services.
 
 ### Dagelijkse pijplijn (`main.py`)
 
-Artikelen worden als **draft** aangemaakt en pas gepubliceerd na handmatige goedkeuring via e-mail.
+Nieuwsartikelen worden **direct gepubliceerd** (status `publish`) en daarna sociaal
+gedeeld; de mail biedt achteraf een Decline-knop (verwijdert artikel + Bluesky-post)
+en een Nieuwe afbeelding-knop, 4 uur geldig. Alleen de **editorial** gaat als draft
+en wacht op goedkeuring — zie hieronder.
 
 ```
 scraper.py → ai_processor.py → image_generator.py → wordpress_client.py → mailer.py
                                                                                ↓
-                                                              (Accept/Decline/Nieuwe afbeelding knoppen)
+                                                              (Decline / Nieuwe afbeelding)
                                                                                ↓
                                                               approval_server.py (Flask, port 5055)
-                                                                    ↓              ↓
-                                                             publish_post()    delete_post()
-                                                             social_poster.py
+                                                                    ↓                ↓
+                                                             delete_post()    update_featured_image()
 ```
 
 **Dataflow:**
 - `scraper.py` produceert `list[Article]` (dataclass met title, url, pub_date, excerpt, image_url)
 - `ai_processor.py` consumeert `list[Article]`, vraagt Claude om selectie en per artikel JSON met titel/samenvatting/trefwoorden/categorie; produceert `list[ProcessedArticle]`
 - `image_generator.py` vraagt Claude om een FAL.ai prompt + brand_domain (JSON), genereert afbeelding via FAL.ai, haalt echt logo op via Google favicon service en composit het over de afbeelding (PIL, bottom-right)
-- `wordpress_client.py` maakt categorieën/tags aan, uploadt afbeelding, maakt **draft** post (status: draft); produceert `list[dict]` met `{'article': ProcessedArticle, 'post': {'id', 'preview_url', 'image_url', 'title'}}`
-- `mailer.py` verstuurt HTML-notificatiemail met de afbeelding en drie knoppen per artikel
+- `wordpress_client.py` maakt categorieën/tags aan, uploadt afbeelding, publiceert de post; produceert `list[dict]` met `{'article': ProcessedArticle, 'post': {'id', 'preview_url', 'link', 'image_url', 'title'}}`
+- `mailer.py` verstuurt HTML-notificatiemail met de afbeelding en twee knoppen per artikel
 
 ### Approval flow
 
-- `approval_store.py` — JSON token store (`approval_tokens.json`), 24u expiry, replay-beveiliging; `create_tokens()` geeft `(accept_token, decline_token, reimage_token)` terug
+- `approval_store.py` — JSON token store (`approval_tokens.json`), `TTL_HOURS = 4`, replay-beveiliging.
+  `create_tokens()` geeft `(decline_token, new_image_token)` terug;
+  `create_editorial_tokens()` geeft `(publish_token, decline_token)` met een eigen,
+  ruimere TTL.
 - `approval_server.py` — Flask server op `APPROVAL_HOST:APPROVAL_PORT` (standaard `0.0.0.0:5055`):
-  - `GET /approve/<token>` — publiceert WP draft direct → retourneert succespagina → post naar Bluesky na `BLUESKY_POST_DELAY_SECONDS` in achtergrondthread
-  - `GET /decline/<token>` — verwijdert WP draft permanent (`force=True`)
-  - `GET /reimage/<token>` — retourneert bevestigingspagina direct → genereert FAL.ai afbeelding, uploadt naar WP en verstuurt nieuwe mail in achtergrondthread
+  - `GET /decline/<token>` — verwijdert Bluesky-post (indien aanwezig), haalt het artikel uit de Instagram-wachtrij en verwijdert de WP-post (`force=True`)
+  - `GET /new-image/<token>` — bevestigingspagina direct → genereert FAL.ai-afbeelding, uploadt naar WP en verstuurt nieuwe mail in achtergrondthread
+  - `GET /publish/<token>` — publiceert een editorial-draft (geen social posting)
+  - `GET /submit` (POST) + `GET /status/<job_id>` — dashboard-flow via `adhoc_processor.py`
   - `GET /health` — health check + cleanup verlopen tokens
+  - `GET /analytics` — analytics-pagina
+
+### Editorial (`editorial.py`)
+
+Opiniërend redactiestuk als "wij, de redactie", los van de nieuwspijplijn en
+achter `ENABLE_EDITORIAL`. Cron ma/wo/vr 09:00 CET (in de scheduler-template).
+
+Kandidaat-onderwerpen komen uit `fetch_recent_published()` — de artikelen die de
+site zelf al plaatste, dus geen aparte scrape. Claude kiest daaruit zelf het
+onderwerp met de meeste duidingswaarde en levert JSON
+(`titel`/`inhoud`/`standpunt_samenvatting`/`onderwerp_tags`).
+
+**Gaat bewust als draft naar WordPress** (`create_editorial_draft()`), anders dan
+nieuwsartikelen: een stuk dat per instructie altijd een expliciet standpunt inneemt
+hoort niet ongelezen live te gaan. De mail toont de volledige tekst plus een
+Publiceer- en een Verwijder-knop; niets doen laat het concept staan. De
+prompt draagt op om bij politiek/maatschappelijk gevoelige onderwerpen één serieus
+tegenargument te verwerken — scherp mag, eenzijdig niet.
 - Draait als **supervisord** service (`/etc/supervisor/conf.d/user/tnv-approval-server.conf`)
 
 ## Sleutelbestanden
@@ -140,7 +166,8 @@ scraper.py → ai_processor.py → image_generator.py → wordpress_client.py �
 | Bestand | Doel |
 |---|---|
 | `config.py` | Alle settings uit `.env`, gedeelde paden |
-| `approval_store.py` | Token store voor Accept/Decline/Reimage |
+| `approval_store.py` | Token store voor Decline/Nieuwe afbeelding + editorial Publiceer |
+| `editorial.py` | Opiniërend redactiestuk → WP-draft + goedkeuringsmail (ma/wo/vr) |
 | `approval_server.py` | Flask approval server (incl. `/submit` dashboard endpoint) |
 | `adhoc_processor.py` | Verwerkt één URL direct naar WordPress post (dashboard flow) |
 | `approval_tokens.json` | Pending tokens — niet verwijderen |

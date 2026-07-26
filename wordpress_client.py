@@ -362,10 +362,75 @@ def publish_articles(
 # Recent gepubliceerde artikelen (voor duplicate-topic check)
 # ---------------------------------------------------------------------------
 
+def create_editorial_draft(
+    titel: str,
+    inhoud: str,
+    trefwoorden: str = "",
+    categorie: str = "Editorial",
+    dry_run: bool = False,
+) -> Optional[dict]:
+    """Zet een editorial als DRAFT in WordPress; return {id, preview_url, title} of None.
+
+    Bewust los van create_draft(): die verwacht een ProcessedArticle met een
+    bronartikel, afbeelding en antidatering, en publiceert direct. Een editorial
+    heeft geen bron-URL en geen beeld, en moet juist blijven staan tot een mens
+    op Publiceer klikt — een expliciet standpunt hoort niet ongelezen live.
+
+    Pre:  titel en inhoud zijn niet-leeg; inhoud heeft '\\n\\n' tussen alinea's
+    Post: draft aangemaakt (status='draft'), None bij elke API-fout — nooit raisen
+    """
+    if dry_run:
+        logger.info("[DRY RUN] Zou editorial-draft aanmaken: %s", titel)
+        return {
+            "id": 0,
+            "preview_url": f"{WP_URL.rstrip('/')}/?p=0&preview=true",
+            "title": titel,
+        }
+
+    client = WordPressClient()
+    try:
+        categories = []
+        cat_id = client.get_or_create_category(categorie)
+        if cat_id:
+            categories.append(cat_id)
+
+        tag_ids = client.get_or_create_tags(trefwoorden) if trefwoorden else []
+
+        content_html = "\n".join(
+            f"<p>{p.strip()}</p>" for p in inhoud.split("\n\n") if p.strip()
+        )
+
+        post_data: dict = {
+            "title": titel,
+            "content": content_html,
+            "status": "draft",
+            "categories": categories,
+            "tags": tag_ids,
+        }
+
+        resp = client.session.post(
+            f"{client.base_url}/posts", json=post_data, timeout=30,
+        )
+        resp.raise_for_status()
+
+        post = resp.json()
+        post_id: int = post["id"]
+        logger.info("Editorial-draft aangemaakt: '%s' (ID %d)", titel, post_id)
+        return {
+            "id": post_id,
+            "preview_url": f"{WP_URL.rstrip('/')}/?p={post_id}&preview=true",
+            "title": titel,
+        }
+
+    except Exception as exc:
+        logger.error("Editorial-draft aanmaken mislukt voor '%s': %s", titel, exc)
+        return None
+
+
 def fetch_recent_published(limit: int = 10) -> list[dict]:
     """Fetch the most recently published posts (title + excerpt) for dedup checks.
     Pre:  WP REST API reachable; limit >= 1
-    Post: returns list[dict] with plain-text keys 'title' and 'excerpt',
+    Post: returns list[dict] with plain-text keys 'title', 'excerpt' and 'link',
           newest first; returns [] on any API error
     """
     import re as _re
@@ -383,7 +448,7 @@ def fetch_recent_published(limit: int = 10) -> list[dict]:
                 "status":   "publish",
                 "orderby":  "date",
                 "order":    "desc",
-                "_fields":  "title,excerpt",
+                "_fields":  "title,excerpt,link",
             },
             timeout=15,
         )
@@ -397,6 +462,7 @@ def fetch_recent_published(limit: int = 10) -> list[dict]:
         {
             "title":   _strip(p.get("title", {}).get("rendered", "")),
             "excerpt": _strip(p.get("excerpt", {}).get("rendered", "")),
+            "link":    p.get("link", ""),
         }
         for p in posts
     ]

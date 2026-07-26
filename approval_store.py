@@ -71,6 +71,50 @@ def create_tokens(
     return decline_token, new_image_token
 
 
+def create_editorial_tokens(
+    post_id:    int,
+    post_title: str,
+    wp_url:     str,
+    ttl_hours:  int = TTL_HOURS,
+) -> tuple[str, str]:
+    """Creates publish and decline tokens for an editorial DRAFT.
+
+    Anders dan create_tokens(): een editorial staat nog niet live, dus de
+    hoofdactie is publiceren i.p.v. terugtrekken. Eigen TTL omdat de 4 uur van
+    een nieuwsartikel te kort is voor een stuk dat 's ochtends gegenereerd wordt
+    en 's avonds pas gelezen.
+
+    Pre:  post_id is een WordPress draft-post-ID; ttl_hours >= 1
+    Post: returns (publish_token, decline_token); de decline-token krijgt actie
+          'decline' zodat de bestaande /decline-route hem afhandelt
+    """
+    store          = _load()
+    publish_token  = secrets.token_urlsafe(32)
+    decline_token  = secrets.token_urlsafe(32)
+    expires_at     = (
+        datetime.utcnow() + timedelta(hours=ttl_hours)
+    ).isoformat()
+
+    for token, action in [
+        (publish_token, "publish"),
+        (decline_token, "decline"),
+    ]:
+        store[token] = {
+            "action":      action,
+            "post_id":     post_id,
+            "post_title":  post_title,
+            "wp_url":      wp_url,
+            "expires_at":  expires_at,
+            "used":        False,
+            "meta":        {"editorial": True},
+            "bluesky_uri": "",
+            "instagram_permalink": "",
+        }
+
+    _save(store)
+    return publish_token, decline_token
+
+
 def get_token(token: str) -> dict | None:
     """Retrieves token metadata if valid and unexpired.
     Pre:  token is a string
