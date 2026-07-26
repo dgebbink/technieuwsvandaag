@@ -206,13 +206,20 @@ logo's/tekst (FAL.ai hallucineerde anders logo's). FAL.ai krijgt ook een
 `negative_prompt` mee: `"logo, text, letters, words, brand name, watermark, ..."`.
 Daarna zet `add_ai_label()` het AI-label op het beeld.
 
-Twee promptvarianten, bewust gescheiden:
+Twee promptvarianten, bewust gescheiden — en op een fundamenteel andere manier
+opgebouwd:
 
 | | `generate_image_prompt()` (nieuws) | `generate_editorial_image_prompt()` |
 |---|---|---|
-| Sfeer | vast "bright, warm lighting, optimistic mood" | volgt de strekking van het stuk; geen geforceerd optimisme |
-| Onderwerp | het product/de merkidentiteit | waar het betoog *over gaat* — mensen, werkplekken, instituties |
-| Register | moderne kantoor-/labscène | documentaire/redactionele fotografie, expliciet géén stockclichés |
+| Wie schrijft de prompt | Claude schrijft de hele prompt | **vaste template**; Claude vult alleen `{thema}` in |
+| Sfeer | vast "bright, warm lighting, optimistic mood" | dramatisch zijlicht, hoog contrast, moody, 35mm, gedempt palet met één accentkleur |
+| Negative prompt | `_DEFAULT_NEGATIVE_PROMPT` (logo/tekst) | `_EDITORIAL_NEGATIVE_PROMPT` (+ cartoon, 3d render, distorted hands, oversaturated) |
+
+De beeldtaal voor editorials ligt vast in `_EDITORIAL_IMAGE_TEMPLATE` zodat ze als
+**serie** herkenbaar zijn; alleen het thema wisselt. Claude levert daarvoor een
+korte Engelse nominale frase (max 12 woorden) die zegt wát er op het spel staat —
+geen fotobeschrijving, geen merknaam. Mislukt dat, dan valt het thema terug op de
+titel, zodat er altijd een werkbare prompt uitkomt.
 
 De nieuwsvariant past niet op een opiniestuk: een zonnig kantoorbeeld bij een
 kritische editorial ondermijnt het betoog.

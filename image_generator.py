@@ -224,58 +224,69 @@ def generate_image_prompt(title: str, article_text: str) -> tuple[str, dict]:
         return raw, variant
 
 
-def generate_editorial_image_prompt(title: str, editorial_text: str) -> tuple[str, dict]:
-    """Ask Claude for an image prompt for an EDITORIAL (opinion piece).
+# Vaste beeldtaal voor editorials, door de redactie vastgesteld. Alleen het
+# thema wisselt per stuk; de rest van de vorm staat bewust vast zodat editorials
+# als serie herkenbaar zijn en niet per stuk een andere stijl krijgen.
+_EDITORIAL_IMAGE_TEMPLATE = (
+    "Editorial photograph, conceptual composition representing {thema}, "
+    "dramatic side lighting, high contrast, moody atmosphere, shallow depth of field, "
+    "shot on 35mm film, photojournalistic style, muted color palette with one bold accent color, "
+    "subtle tension in composition, no text, no logos, no watermarks, "
+    "professional editorial photography, 4k detail, realistic textures"
+)
 
-    Bewust los van generate_image_prompt(): die schrijft "bright, warm lighting
-    and an optimistic mood" voor, wat past bij een productlancering maar niet bij
-    een kritisch opiniestuk — een zonnig kantoorbeeld bij een stuk over 140.000
-    ontslagen ondermijnt het betoog. Hier bepaalt de strekking van het stuk de
-    sfeer, en verbeeldt het beeld het onderwerp van het betoog in plaats van een
-    product.
+_EDITORIAL_NEGATIVE_PROMPT = (
+    "cartoon, illustration, 3d render, low quality, blurry, text overlay, "
+    "watermark, logo, distorted hands, extra limbs, oversaturated"
+)
 
-    Pre:  claude CLI is available; title is non-empty
-    Post: returns (prompt_text, gekozen persoonsvariant) — zelfde vorm als
-          generate_image_prompt, zodat de persoonsverdeling in
-          image_distribution.json ook over editorials in balans blijft
+
+def generate_editorial_image_prompt(title: str, editorial_text: str) -> str:
+    """Vult het vaste editorial-beeldsjabloon met het thema van dít stuk.
+
+    Bewust anders dan generate_image_prompt(): daar schrijft Claude de hele
+    prompt, hier alleen het onderwerp. De beeldtaal (zijlicht, hoog contrast,
+    35mm, gedempt palet met één accentkleur) ligt vast, zodat editorials als
+    serie herkenbaar blijven — en zodat de "bright, warm, optimistic" toon van
+    de nieuwsprompt, die een kritisch stuk ondermijnt, hier niet kan terugkomen.
+
+    Pre:  claude CLI is beschikbaar; title is niet-leeg
+    Post: ingevulde prompt; bij een onbruikbaar antwoord valt het thema terug op
+          de titel, zodat er altijd een werkbare prompt uitkomt
     """
-    variant = generate_person_variant()
-    person_instruction = build_person_instruction(variant)
-
     instruction = (
         "Return a single JSON field:\n"
-        "\"prompt\": A 2-sentence English prompt for a photorealistic image to "
-        "accompany a Dutch tech OPINION piece (an editorial). This is not a "
-        "product announcement: illustrate the subject the argument is about — "
-        "the people, workplaces, institutions or infrastructure at stake — not a "
-        "gadget or a brand. "
-        "Match the mood to the stance of the piece: if the editorial is critical "
-        "or sombre, use restrained, neutral or overcast lighting; only use bright, "
-        "warm light when the piece is genuinely positive. Do not force optimism. "
-        "Aim for the register of documentary or editorial photography: real, "
-        "grounded, unstaged scenes. Avoid stock-photo clichés such as people "
-        "pointing at charts, glowing holograms, robot hands or handshakes. "
-        "Include no text, logos, lettering or brand marks whatsoever. "
+        "\"thema\": a short English noun phrase (maximum 12 words) naming the "
+        "CONCEPT this Dutch opinion piece argues about — not a description of a "
+        "photograph, not a sentence, and not the news event itself. It will be "
+        "inserted into a fixed image prompt after the words 'conceptual "
+        "composition representing'. "
+        "Name what is at stake: the people, workplaces, institutions or "
+        "infrastructure the argument is about. Avoid brand names, product names "
+        "and stock-photo clichés (handshakes, glowing holograms, robot hands, "
+        "people pointing at charts). "
         "Note: if the piece refers to AI or language 'models', this means LLM/AI "
-        "models, not fashion or photo models — do not let this influence how any "
-        "people in the image are styled. "
-        f"{person_instruction}\n\n"
+        "models, not fashion or photo models.\n\n"
         f"Editorial title: {title}\n"
         f"Editorial text:\n{editorial_text[:1500]}\n\n"
         "Respond with only valid JSON, no markdown fences."
     )
-    raw = _call_claude(instruction, timeout=60)
+    thema = ""
     try:
         # _extract_json i.p.v. json.loads: Claude verpakt het antwoord regelmatig
-        # in ```json-fences, en dan zou de ruwe tekst mét fences als beeldprompt
-        # naar FAL.ai gaan.
-        data = _extract_json(raw)
-        if isinstance(data, dict) and data.get("prompt"):
-            return data["prompt"], variant
-        raise ValueError("geen 'prompt'-veld")
-    except Exception:
-        logger.warning("Claude returned non-JSON for editorial image prompt, using raw text")
-        return raw, variant
+        # in ```json-fences, en dan zou de ruwe tekst mét fences in de prompt
+        # belanden.
+        data = _extract_json(_call_claude(instruction, timeout=60))
+        if isinstance(data, dict):
+            thema = str(data.get("thema", "")).strip()
+    except Exception as exc:
+        logger.warning("Thema voor editorial-beeld bepalen mislukt: %s", exc)
+
+    if not thema:
+        logger.warning("Geen bruikbaar thema — terugval op de titel")
+        thema = title
+
+    return _EDITORIAL_IMAGE_TEMPLATE.format(thema=thema)
 
 
 def generate_image_for_editorial(
@@ -295,10 +306,12 @@ def generate_image_for_editorial(
         return None
     try:
         logger.info("Editorial-beeldprompt genereren via Claude voor: %s", title)
-        image_prompt, _variant = generate_editorial_image_prompt(title, editorial_text)
+        image_prompt = generate_editorial_image_prompt(title, editorial_text)
         logger.info("Gegenereerde editorial-prompt: %s", image_prompt)
 
-        result = generate_fal_image(image_prompt, dest_path)
+        result = generate_fal_image(
+            image_prompt, dest_path, negative_prompt=_EDITORIAL_NEGATIVE_PROMPT,
+        )
         if result:
             add_ai_label(dest_path)
         return result
@@ -424,7 +437,17 @@ def add_ai_label(image_path: str) -> None:
         logger.warning("AI-label toevoegen mislukt: %s", exc)
 
 
-def generate_fal_image(prompt: str, dest_path: str) -> Optional[str]:
+_DEFAULT_NEGATIVE_PROMPT = (
+    "logo, text, letters, words, brand name, watermark, "
+    "typography, signage, written text, label, caption"
+)
+
+
+def generate_fal_image(
+    prompt: str,
+    dest_path: str,
+    negative_prompt: str = _DEFAULT_NEGATIVE_PROMPT,
+) -> Optional[str]:
     """Generate an image via FAL.ai flux/dev and save it to dest_path.
 
     Pre:  FAL_API_KEY is set; prompt is non-empty; dest_path is writable
@@ -442,10 +465,7 @@ def generate_fal_image(prompt: str, dest_path: str) -> Optional[str]:
             },
             json={
                 "prompt": prompt,
-                "negative_prompt": (
-                    "logo, text, letters, words, brand name, watermark, "
-                    "typography, signage, written text, label, caption"
-                ),
+                "negative_prompt": negative_prompt,
                 "image_size": "landscape_16_9",
                 "num_images": 1,
                 "enable_safety_checker": True,
