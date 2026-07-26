@@ -5,6 +5,7 @@ www.Dutchcowboys.nl|https://www.dutchcowboys.nl/sitemap/news.xml
 www.Androidworld.nl
 emerce.nl|https://emerce.nl/feed
 security.nl
+computable.nl|https://www.computable.nl/feed/
 // EN
 www.techcrunch.com
 www.wired.com
@@ -26,3 +27,5 @@ www.techrepublic.com
 howtogeek.com|https://howtogeek.com/feed
 theregister.com|https://theregister.com/feed
 macrumors.com|https://macrumors.com/rss.xml
+theguardian.com|https://www.theguardian.com/uk/rss
+bleepingcomputer.com|https://www.bleepingcomputer.com/feed/
