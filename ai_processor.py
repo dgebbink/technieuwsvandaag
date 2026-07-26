@@ -383,11 +383,12 @@ def select_articles(articles: list[Article]) -> list[int]:
 # ---------------------------------------------------------------------------
 
 # Vaste onderdelen van elke Instagram-caption. Bewust in code i.p.v. door
-# Claude gegenereerd: de AI-disclosure mag nooit ontbreken en links in
-# captions zijn niet klikbaar (vandaar link-in-bio).
+# Claude gegenereerd: links in captions zijn niet klikbaar (vandaar
+# link-in-bio). Geen AI-disclosure-regel: compose_instagram_image() zet al een
+# zichtbaar 'AI-gegenereerd'-label op het beeld zelf én XMP-metadata waarmee
+# Meta het officiele AI-info-label toont — in de caption is het dubbelop.
 _IG_LINK_LINE = "🔗 Lees het volledige artikel via de link in bio."
 _IG_LINK_LINE_MEERVOUD = "🔗 Lees de volledige artikelen via de link in bio."
-_IG_AI_DISCLOSURE = "🤖 Beeld gegenereerd met AI."
 _IG_BASE_HASHTAGS = ["#technieuws", "#tech"]
 _IG_MAX_EXTRA_HASHTAGS = 3  # totaal max 5 — meer oogt als spam
 _IG_KOP_MAX_WORDS = 12
@@ -423,7 +424,6 @@ def build_ig_caption(ig_tekst: str, trefwoorden: str) -> str:
     return "\n\n".join([
         ig_tekst.strip(),
         _IG_LINK_LINE,
-        _IG_AI_DISCLOSURE,
         _build_ig_hashtags(trefwoorden),
     ])
 
@@ -472,7 +472,6 @@ def build_combined_ig_caption(entries: list[dict]) -> str:
     return "\n\n".join([
         body,
         link_line,
-        _IG_AI_DISCLOSURE,
         _build_ig_hashtags(alle_trefwoorden),
     ])
 
