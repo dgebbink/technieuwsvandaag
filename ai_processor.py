@@ -386,6 +386,7 @@ def select_articles(articles: list[Article]) -> list[int]:
 # Claude gegenereerd: de AI-disclosure mag nooit ontbreken en links in
 # captions zijn niet klikbaar (vandaar link-in-bio).
 _IG_LINK_LINE = "🔗 Lees het volledige artikel via de link in bio."
+_IG_LINK_LINE_MEERVOUD = "🔗 Lees de volledige artikelen via de link in bio."
 _IG_AI_DISCLOSURE = "🤖 Beeld gegenereerd met AI."
 _IG_BASE_HASHTAGS = ["#technieuws", "#tech"]
 _IG_MAX_EXTRA_HASHTAGS = 3  # totaal max 5 — meer oogt als spam
@@ -454,20 +455,23 @@ def build_combined_ig_caption(entries: list[dict]) -> str:
     of wekelijkse Reel-recap — beide bundelen meerdere artikelen in 1 post).
 
     Pre:  entries is niet-leeg, elk dict heeft 'ig_tekst' en 'trefwoorden'
-    Post: bij 1 entry gewoon de hook; bij meerdere een genummerde lijst.
-          Vaste link/disclosure/hashtag-blokken komen er, net als bij een
-          losse post, precies één keer bij — niet per artikel.
+    Post: bij 1 entry gewoon de hook; bij meerdere een genummerde lijst en een
+          link-regel in het meervoud. Vaste link/disclosure/hashtag-blokken
+          komen er, net als bij een losse post, precies één keer bij — niet
+          per artikel.
     """
     if len(entries) == 1:
         body = entries[0]["ig_tekst"].strip()
+        link_line = _IG_LINK_LINE
     else:
         body = "\n\n".join(
             f"{i}. {entry['ig_tekst'].strip()}" for i, entry in enumerate(entries, 1)
         )
+        link_line = _IG_LINK_LINE_MEERVOUD
     alle_trefwoorden = ", ".join(entry.get("trefwoorden", "") for entry in entries)
     return "\n\n".join([
         body,
-        _IG_LINK_LINE,
+        link_line,
         _IG_AI_DISCLOSURE,
         _build_ig_hashtags(alle_trefwoorden),
     ])
