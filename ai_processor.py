@@ -390,6 +390,7 @@ _IG_AI_DISCLOSURE = "🤖 Beeld gegenereerd met AI."
 _IG_BASE_HASHTAGS = ["#technieuws", "#tech"]
 _IG_MAX_EXTRA_HASHTAGS = 3  # totaal max 5 — meer oogt als spam
 _IG_KOP_MAX_WORDS = 12
+IG_CAPTION_MAX = 2200  # harde Graph API-limiet; erboven faalt de post volledig
 
 
 def _build_ig_hashtags(trefwoorden: str) -> str:
@@ -470,6 +471,25 @@ def build_combined_ig_caption(entries: list[dict]) -> str:
         _IG_AI_DISCLOSURE,
         _build_ig_hashtags(alle_trefwoorden),
     ])
+
+
+def fit_ig_entries(entries: list[dict], max_items: int) -> list[dict]:
+    """Grootste voorloop van entries waarvan de gecombineerde caption past.
+
+    Instagram weigert een post volledig ("The caption was too long") zodra de
+    caption over IG_CAPTION_MAX gaat; ~9 artikelhooks halen dat al. Callers
+    moeten dus vooraf snoeien i.p.v. achteraf een 400 opvangen.
+
+    Pre:  entries is niet-leeg, max_items >= 1
+    Post: niet-lege sublist (max max_items lang) waarvan
+          build_combined_ig_caption() <= IG_CAPTION_MAX is; bij één entry die
+          op zichzelf al te lang is wordt die toch teruggegeven — snoeien
+          helpt daar niet meer.
+    """
+    for count in range(min(len(entries), max_items), 1, -1):
+        if len(build_combined_ig_caption(entries[:count])) <= IG_CAPTION_MAX:
+            return entries[:count]
+    return entries[:1]
 
 
 # ---------------------------------------------------------------------------

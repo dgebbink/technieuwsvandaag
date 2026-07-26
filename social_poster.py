@@ -723,12 +723,6 @@ def load_instagram_queue() -> list[dict]:
     return _load_instagram_queue()
 
 
-def clear_instagram_queue() -> None:
-    """Leegt de wachtrij nadat de dagdigest gepost is (of geen entries had)."""
-    with open(INSTAGRAM_QUEUE_FILE, "w", encoding="utf-8") as fh:
-        json.dump([], fh)
-
-
 def remove_from_instagram_queue(post_id: int) -> bool:
     """Haalt een artikel uit de dagwachtrij (bij Decline, vóórdat de digest post).
 
