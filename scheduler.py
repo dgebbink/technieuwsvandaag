@@ -12,6 +12,8 @@ import subprocess
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
 
+from config import REEL_CYCLE_DAYS, is_reel_day, next_reel_day
+
 PYTHON = "/home/dgebbink/projects/technieuwsvandaag/venv/bin/python3"
 
 
@@ -153,18 +155,26 @@ def build_crontab(
         f">> {project_path}/logs/cron_instagram_digest.log 2>&1",
     ]
 
-    # Wekelijkse Instagram-Reel om 19:00 CET op zondag — silent 9:16-slideshow
-    # van de week (zie INSTAGRAM_PLAN.md fase 7). Vóór de gewone digest-slot
-    # (19:45) en het dagoverzicht (20:00), los van de dagwachtrij.
-    weekly_reel_cet = (19, 0)
-    weekly_reel_cron = cet_to_cron_clock([weekly_reel_cet])[0]
-    lines += [
-        "",
-        "# Wekelijkse Instagram-Reel, zondag 19:00 CET",
-        f"{weekly_reel_cron[1]} {weekly_reel_cron[0]} * * 0 cd {project_path} && "
-        f"{PYTHON} weekly_reel.py "
-        f">> {project_path}/logs/cron_weekly_reel.log 2>&1",
-    ]
+    # Instagram-Reel elke REEL_CYCLE_DAYS dagen (zie config.is_reel_day) om
+    # 11:00 CET — silent 9:16-slideshow, zie INSTAGRAM_PLAN.md fase 7 en 10.
+    # De regel staat alleen in de crontab op een cyclusdag; op andere dagen
+    # ontbreekt hij gewoon. Daardoor kan de weekdag rouleren, wat met een
+    # cron-veld niet uit te drukken is (day-of-month/6 springt per maand).
+    if is_reel_day():
+        reel_cet = (11, 0)
+        reel_cron = cet_to_cron_clock([reel_cet])[0]
+        lines += [
+            "",
+            f"# Instagram-Reel vandaag om 11:00 CET (cyclus van {REEL_CYCLE_DAYS} dagen)",
+            f"{reel_cron[1]} {reel_cron[0]} * * * cd {project_path} && "
+            f"{PYTHON} weekly_reel.py "
+            f">> {project_path}/logs/cron_weekly_reel.log 2>&1",
+        ]
+    else:
+        lines += [
+            "",
+            f"# Geen Instagram-Reel vandaag — eerstvolgende: {next_reel_day().isoformat()}",
+        ]
 
     # Gecombineerd dagoverzicht om 20:00 CET (artikelen + Bluesky + tegoed)
     digest_cet = (20, 0)

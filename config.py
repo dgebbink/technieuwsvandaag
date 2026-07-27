@@ -2,6 +2,7 @@
 Configuratie: laadt environment variables en definieert gedeelde paden en instellingen.
 """
 import os
+from datetime import date, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -116,6 +117,43 @@ INSTAGRAM_MEDIA_BASE_URL: str = os.environ.get(
 # Bestanden ouder dan dit worden opgeruimd bij elke nieuwe upload (Meta haalt
 # het beeld maar één keer op, bij het aanmaken van de media container)
 INSTAGRAM_MEDIA_RETENTION_DAYS: int = int(os.environ.get("INSTAGRAM_MEDIA_RETENTION_DAYS", "2"))
+
+# Reel-cadans: elke 6 dagen i.p.v. wekelijks, zodat het moment door de week
+# rouleert. Bij 7 dagen sta je altijd op dezelfde weekdag vast — en dat was
+# uitgerekend zondag, volgens meerdere analyses de zwakste dag voor Reels. Een
+# 6-daagse cyclus schuift de weekdag elke keer één terug (zo → za → vr → …) en
+# doorloopt de hele week in 42 dagen. Dat is meteen een meting: na een paar
+# cycli laat Instagram-inzichten zien welk moment voor dít publiek werkt.
+#
+# Bewust berekend vanaf een vast ijkpunt i.p.v. een "laatst gepost"-bestand:
+# geen state die kan bederven, en een gemiste run zet de cyclus niet uit de pas.
+REEL_CYCLE_DAYS: int = int(os.environ.get("REEL_CYCLE_DAYS", "6"))
+REEL_CYCLE_EPOCH: date = date.fromisoformat(
+    os.environ.get("REEL_CYCLE_EPOCH", "2026-08-02")
+)
+
+
+def is_reel_day(day: date | None = None) -> bool:
+    """True als er op `day` (standaard vandaag) een Reel hoort te verschijnen.
+
+    Pre:  REEL_CYCLE_DAYS >= 1
+    Post: True op het ijkpunt en elke REEL_CYCLE_DAYS dagen daarna; vóór het
+          ijkpunt altijd False
+    """
+    day = day or date.today()
+    if day < REEL_CYCLE_EPOCH:
+        return False
+    return (day - REEL_CYCLE_EPOCH).days % REEL_CYCLE_DAYS == 0
+
+
+def next_reel_day(after: date | None = None) -> date:
+    """Eerstvolgende Reel-dag op of ná `after` (standaard vandaag)."""
+    day = after or date.today()
+    if day < REEL_CYCLE_EPOCH:
+        return REEL_CYCLE_EPOCH
+    rest = (day - REEL_CYCLE_EPOCH).days % REEL_CYCLE_DAYS
+    return day if rest == 0 else day + timedelta(days=REEL_CYCLE_DAYS - rest)
+
 
 # Wekelijkse Reel: muziekspoor. Leeg = stil spoor (Instagram eist een
 # audiostream, zie instagram_reel.py). Vul dit alleen met muziek waarvan je de

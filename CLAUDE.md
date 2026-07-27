@@ -49,8 +49,8 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
   random tijden (07:00–19:00 CET, min. 90 min tussenruimte), 00:00 `log_cleaner.py`,
   ma/wo/vr 09:00 CET `editorial.py` (opiniërend redactiestuk → WP-draft +
   goedkeuringsmail; zie Architecture),
-  zondag 19:00 CET `weekly_reel.py` (silent Instagram-Reel-recap van de week — zie
-  hieronder), 19:45 CET `instagram_digest.py` (bundelt de dagelijkse Instagram-
+  elke 6 dagen 11:00 CET `weekly_reel.py` (silent Instagram-Reel-recap — de
+  cyclus rouleert de weekdag, zie hieronder), 19:45 CET `instagram_digest.py` (bundelt de dagelijkse Instagram-
   artikelen tot 1 post), 20:00 CET `daily_digest.py` (gecombineerd dagoverzicht:
   artikelen + Bluesky + FAL.ai-tegoed via `bluesky_monitor.py` + `budget_monitor.py`).
 - **Instagram-posting is een dagdigest + wekelijkse Reel, geen post per artikel**:
@@ -63,6 +63,12 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
   daarnaast wekelijks een silent 9:16-slideshow (één artikel per dag, rechtstreeks uit
   WordPress — los van de dagwachtrij) — Reels zijn het enige kanaal dat niet-volgers
   bereikt, feedposts amper. Zie `INSTAGRAM_PLAN.md` fase 7.
+  **De Reel draait op een cyclus van 6 dagen, niet wekelijks** — daardoor
+  rouleert de weekdag (zo → za → vr → …, hele week in 42 dagen) i.p.v. vast te
+  staan op zondag, volgens meerdere analyses de zwakste dag. Een cron-veld kan
+  dat niet uitdrukken, dus `scheduler.py` zet de regel alléén op een cyclusdag
+  in de crontab (`config.is_reel_day()`); `weekly_reel.py` toetst het nog eens
+  zelf tegen dubbel posten. Zie `INSTAGRAM_PLAN.md` fase 10.
   **Twee valkuilen bij de Reel** (beide raakten de eerste echte post, zie
   `INSTAGRAM_PLAN.md` fase 9): de nginx-config van `ig-media` op meterkast moet
   `.mp4` serveren — hij deed lang alleen `.jpg`, waardoor Meta de video niet kon

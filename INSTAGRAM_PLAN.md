@@ -403,6 +403,35 @@ API-aanroep nodig om de eigenlijke foutcode te achterhalen.
 
 ---
 
+## Fase 10 — Reel-cadans van 6 dagen (2026-07-27)
+
+**Van wekelijks naar elke 6 dagen**, zodat het postmoment door de week rouleert
+in plaats van vast te staan op zondag. Meerdere analyses noemen zondag juist de
+zwakste dag voor Reels en midweek (di–do) de sterkste; het tijdstip ging
+tegelijk van 19:00 naar **11:00 CET**, binnen het venster van 8–12 uur dat als
+sterkste naar voren komt.
+
+Een 6-daagse cyclus schuift de weekdag elke keer één terug (zo → za → vr → …) en
+doorloopt de hele week in 42 dagen. Dat is niet alleen spreiding maar ook een
+meting: na een paar cycli laten Instagram-inzichten zien welk moment voor dít
+publiek werkt, in plaats van te varen op algemene benchmarks.
+
+- `config.is_reel_day()` / `next_reel_day()` — cyclus berekend vanaf een vast
+  ijkpunt (`REEL_CYCLE_EPOCH`, standaard 2026-08-02), niet vanuit een
+  "laatst gepost"-bestand. Geen state die kan bederven, en een gemiste run zet
+  de cyclus niet uit de pas.
+- `scheduler.py` zet de Reel-regel **alleen op een cyclusdag** in de crontab; op
+  andere dagen staat er een comment met de eerstvolgende datum. Een roulerende
+  weekdag is in een cron-veld niet uit te drukken — `dag-van-maand/6` springt
+  bij elke maandgrens.
+- `weekly_reel.py` controleert de cyclus nog een keer zelf. Blijft de crontab
+  een dag staan omdat `scheduler.py` niet draaide, dan voorkomt dat een dubbele
+  post. `--force` omzeilt het voor een handmatige run.
+- `REEL_DAYS` volgt nu `REEL_CYCLE_DAYS`: bij een venster van 7 dagen op een
+  6-daagse cyclus zou telkens één dag in twee opeenvolgende Reels terugkomen.
+
+---
+
 ## Volgorde & omvang
 
 | Stap | Bestand(en) | Inschatting |

@@ -23,7 +23,14 @@ from pathlib import Path
 import requests
 
 from ai_processor import build_combined_ig_caption
-from config import BASE_DIR, ENABLE_INSTAGRAM_POSTING, REEL_AUDIO_FILE
+from config import (
+    BASE_DIR,
+    ENABLE_INSTAGRAM_POSTING,
+    REEL_AUDIO_FILE,
+    REEL_CYCLE_DAYS,
+    is_reel_day,
+    next_reel_day,
+)
 from instagram_image import compose_instagram_image, compose_reel_card
 from instagram_reel import SLIDE_SECONDS, build_reel_video
 from social_poster import post_instagram_reel, publish_video_publicly
@@ -39,7 +46,9 @@ logger = logging.getLogger(__name__)
 _TMP_DIR = BASE_DIR / "tmp"
 _TMP_DIR.mkdir(exist_ok=True)
 
-REEL_DAYS = 7
+# Gelijk aan de cadans: bij een venster van 7 dagen op een 6-daagse cyclus zou
+# telkens één dag in twee opeenvolgende Reels terugkomen.
+REEL_DAYS = REEL_CYCLE_DAYS
 REEL_CANVAS = (1080, 1920)
 MIN_SLIDES = 2  # onder 2 slides is een "slideshow" zinloos
 CARD_SECONDS = 1.5   # intro: kort houden, anders scrollt de kijker weg
@@ -61,6 +70,7 @@ def _kicker_for(date_str: str) -> str:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dry-run", action="store_true", help="Bouw de video, post niets naar Instagram")
+    parser.add_argument("--force", action="store_true", help="Post ook als vandaag geen cyclusdag is")
     return parser.parse_args()
 
 
@@ -79,7 +89,17 @@ def main() -> None:
     args = _parse_args()
 
     if not ENABLE_INSTAGRAM_POSTING:
-        logger.info("ENABLE_INSTAGRAM_POSTING staat uit — weekly reel overgeslagen")
+        logger.info("ENABLE_INSTAGRAM_POSTING staat uit — reel overgeslagen")
+        return
+
+    # Tweede slot op de cyclus, náást scheduler.py. Blijft de crontab een dag
+    # staan (scheduler niet gedraaid), dan voorkomt dit een dubbele post.
+    # --force omzeilt het voor een handmatige run.
+    if not args.force and not is_reel_day():
+        logger.info(
+            "Vandaag is geen Reel-dag — eerstvolgende: %s (gebruik --force om toch te posten)",
+            next_reel_day().isoformat(),
+        )
         return
 
     posts = fetch_posts_for_reel(days=REEL_DAYS)
