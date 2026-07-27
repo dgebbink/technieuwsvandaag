@@ -314,6 +314,11 @@ met harde cuts (geen Ken Burns-zoom — kan later als polish).
   24s video, 1080x1920 h264, geen audiospoor) — zie renders in de sessie waarin dit
   gebouwd is. Nog niet als echte post naar Meta gestuurd (dat gebeurt voor het eerst
   bij de cron van komende zondag).
+- **Die eerste echte post mislukte** (2026-07-26): container-status `ERROR`,
+  Meta-foutcode 2207076. Oorzaak: de video had **géén audiostream**. Instagram
+  weigert zo'n Reel — "silent" moet een leeg audiospoor zijn, niet de afwezigheid
+  van een spoor. Precies het soort aanname dat een lokale test niet betrapt, want
+  het bestand speelde prima af. Opgelost in fase 9.
 
 ---
 
@@ -355,6 +360,33 @@ bovengrens. Een wachtrij die alleen kan groeien, groeit tot voorbij elke limiet.
 24 juli vervallen als te oud, 8 + 2 alsnog gepost in twee carousels. De cron van
 19:45 op 26 juli is die avond eenmalig overgeslagen (crontab-regel uitgecommentarieerd;
 `scheduler.py` zette 'm om 00:00 vanzelf terug).
+
+---
+
+## Fase 9 — Reel-audio (2026-07-27)
+
+Instagram vereist een audiostream in een Reel; zonder spoor volgt
+`ERROR / 2207076` (zie fase 7). `build_reel_video()` voegt er daarom altijd één
+toe:
+
+- **Standaard stil** — `anullsrc`, stereo 44.1kHz, AAC, even lang als de video.
+  Het concept "silent Reel" blijft dus intact; alleen het lege spoor is nieuw.
+- **Optioneel muziek** — `REEL_AUDIO_FILE` in `.env` (pad relatief aan `BASE_DIR`
+  of absoluut). Het bestand wordt geloopt tot de videolengte en fadet de laatste
+  2 seconden uit, zodat het niet midden in een maat afbreekt. Bestaat het pad
+  niet, dan volgt een waarschuwing en valt hij terug op stilte — een ontbrekend
+  muziekbestand mag de wekelijkse Reel niet tegenhouden.
+
+> **Alleen muziek waarvan de rechten aantoonbaar zijn.** Er wordt bewust geen
+> audiobestand meegeleverd in deze (publieke) repo. Een commercieel nummer onder
+> een zakelijk account valt buiten Instagram's gelicentieerde catalogus: dat
+> wordt gedempt of verwijderd, los van de voorwaarden van de bron. Wie muziek
+> wil, zet zelf een CC0/rechtenvrij bestand neer en wijst `REEL_AUDIO_FILE`
+> daarheen.
+
+Verder logt `_ig_wait_finished()` nu ook Meta's `status`-veld naast
+`status_code`. Voorheen stond er kaal `ERROR` in het log en was een losse
+API-aanroep nodig om de eigenlijke foutcode te achterhalen.
 
 ---
 

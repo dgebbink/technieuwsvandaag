@@ -609,15 +609,26 @@ def _ig_wait_finished(
     for attempt in range(attempts):
         resp = requests.get(
             f"{_ig_graph_base()}/{container_id}",
-            params={"fields": "status_code", "access_token": INSTAGRAM_ACCESS_TOKEN},
+            # Ook 'status' opvragen, niet alleen 'status_code': dat laatste geeft
+            # kaal "ERROR", terwijl 'status' Meta's eigen foutcode bevat. Zonder
+            # die code kostte het naderhand een losse API-aanroep om te
+            # achterhalen waarom een Reel geweigerd was.
+            params={
+                "fields": "status_code,status",
+                "access_token": INSTAGRAM_ACCESS_TOKEN,
+            },
             timeout=15,
         )
         resp.raise_for_status()
-        status = resp.json().get("status_code", "")
+        data = resp.json()
+        status = data.get("status_code", "")
         if status == "FINISHED":
             return
         if status in ("ERROR", "EXPIRED"):
-            raise RuntimeError(f"Instagram container {container_id} status: {status}")
+            detail = data.get("status", "") or "geen toelichting van Meta"
+            raise RuntimeError(
+                f"Instagram container {container_id} status: {status} — {detail}"
+            )
         time.sleep(delay)
     raise RuntimeError(f"Timeout op Instagram container {container_id}")
 

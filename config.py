@@ -117,6 +117,12 @@ INSTAGRAM_MEDIA_BASE_URL: str = os.environ.get(
 # het beeld maar één keer op, bij het aanmaken van de media container)
 INSTAGRAM_MEDIA_RETENTION_DAYS: int = int(os.environ.get("INSTAGRAM_MEDIA_RETENTION_DAYS", "2"))
 
+# Wekelijkse Reel: optioneel muziekspoor. Leeg = stil spoor (Instagram eist een
+# audiostream, zie instagram_reel.py). Vul dit alleen met muziek waarvan je de
+# rechten aantoonbaar hebt — een commercieel nummer onder een zakelijk account
+# wordt door Meta gedempt of verwijderd. Pad relatief aan BASE_DIR of absoluut.
+REEL_AUDIO_FILE: str = os.environ.get("REEL_AUDIO_FILE", "")
+
 # Editorial — opiniërend redactiestuk, ma/wo/vr (zie CLAUDE.md). Anders dan
 # nieuwsartikelen gaat dit als DRAFT naar WordPress: een stuk met een expliciet
 # standpunt hoort niet ongelezen live te gaan. Publiceren gebeurt via de

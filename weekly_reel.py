@@ -23,7 +23,7 @@ from pathlib import Path
 import requests
 
 from ai_processor import build_combined_ig_caption
-from config import BASE_DIR, ENABLE_INSTAGRAM_POSTING
+from config import BASE_DIR, ENABLE_INSTAGRAM_POSTING, REEL_AUDIO_FILE
 from instagram_image import compose_instagram_image
 from instagram_reel import build_reel_video
 from social_poster import post_instagram_reel, publish_video_publicly
@@ -103,7 +103,12 @@ def main() -> None:
         return
 
     video_path = str(_TMP_DIR / "weekly_reel.mp4")
-    video = build_reel_video(slide_paths, video_path)
+    audio_path = ""
+    if REEL_AUDIO_FILE:
+        candidate = Path(REEL_AUDIO_FILE)
+        audio_path = str(candidate if candidate.is_absolute() else BASE_DIR / candidate)
+
+    video = build_reel_video(slide_paths, video_path, audio_path=audio_path)
     if not video:
         logger.error("Video bouwen mislukt — Reel overgeslagen")
         return
