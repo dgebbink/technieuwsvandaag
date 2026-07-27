@@ -117,11 +117,16 @@ INSTAGRAM_MEDIA_BASE_URL: str = os.environ.get(
 # het beeld maar één keer op, bij het aanmaken van de media container)
 INSTAGRAM_MEDIA_RETENTION_DAYS: int = int(os.environ.get("INSTAGRAM_MEDIA_RETENTION_DAYS", "2"))
 
-# Wekelijkse Reel: optioneel muziekspoor. Leeg = stil spoor (Instagram eist een
+# Wekelijkse Reel: muziekspoor. Leeg = stil spoor (Instagram eist een
 # audiostream, zie instagram_reel.py). Vul dit alleen met muziek waarvan je de
 # rechten aantoonbaar hebt — een commercieel nummer onder een zakelijk account
 # wordt door Meta gedempt of verwijderd. Pad relatief aan BASE_DIR of absoluut.
-REEL_AUDIO_FILE: str = os.environ.get("REEL_AUDIO_FILE", "")
+REEL_AUDIO_FILE: str = os.environ.get("REEL_AUDIO_FILE", "Beauty Flow.mp3")
+
+# De standaardtrack staat onder CC BY 4.0: commercieel gebruik mag, maar
+# naamsvermelding is een licentievoorwaarde. Die staat bewust op één centrale
+# plek — de colofonpagina (assets/pagina-colofon.html, sectie "Muziek") — en
+# niet in elke Reel-caption. Vervang je de track, pas dan die sectie mee aan.
 
 # Editorial — opiniërend redactiestuk, ma/wo/vr (zie CLAUDE.md). Anders dan
 # nieuwsartikelen gaat dit als DRAFT naar WordPress: een stuk met een expliciet

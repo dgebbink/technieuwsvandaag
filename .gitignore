@@ -12,3 +12,6 @@ image_distribution.json
 approval_tokens.json
 source_discovery_log.txt
 instagram_queue.json
+
+# Reel-muziek: 17MB en de licentie is aan de gebruiker, niet aan de repo
+*.mp3

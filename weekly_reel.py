@@ -115,6 +115,8 @@ def main() -> None:
 
     entries = [{"ig_tekst": p["title"], "trefwoorden": ""} for p in posts]
     caption = "📅 Deze week bij TechNieuwsVandaag:\n\n" + build_combined_ig_caption(entries)
+    # Muzieknaamsvermelding staat bewust niet hier maar op de colofonpagina
+    # (assets/pagina-colofon.html) — één centrale plek i.p.v. in elke caption.
 
     if args.dry_run:
         logger.info(
