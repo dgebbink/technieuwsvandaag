@@ -315,10 +315,11 @@ met harde cuts (geen Ken Burns-zoom — kan later als polish).
   gebouwd is. Nog niet als echte post naar Meta gestuurd (dat gebeurt voor het eerst
   bij de cron van komende zondag).
 - **Die eerste echte post mislukte** (2026-07-26): container-status `ERROR`,
-  Meta-foutcode 2207076. Oorzaak: de video had **géén audiostream**. Instagram
-  weigert zo'n Reel — "silent" moet een leeg audiospoor zijn, niet de afwezigheid
-  van een spoor. Precies het soort aanname dat een lokale test niet betrapt, want
-  het bestand speelde prima af. Opgelost in fase 9.
+  Meta-foutcode 2207076. Oorzaak: de nginx-config van `ig-media.gebbink.nl`
+  serveerde **alleen `.jpg`** — de video stond er wel, maar gaf een 404, dus Meta
+  kon hem niet ophalen. Die config stamde uit de tijd dat de host puur voor
+  postbeelden was; fase 7 voegde video toe zonder hem mee te nemen. Opgelost in
+  fase 9.
 
 ---
 
@@ -363,11 +364,23 @@ bovengrens. Een wachtrij die alleen kan groeien, groeit tot voorbij elke limiet.
 
 ---
 
-## Fase 9 — Reel-audio (2026-07-27)
+## Fase 9 — Reel: mediahost en audio (2026-07-27)
 
-Instagram vereist een audiostream in een Reel; zonder spoor volgt
-`ERROR / 2207076` (zie fase 7). `build_reel_video()` voegt er daarom altijd één
-toe:
+**De eigenlijke oorzaak van de mislukte Reel: de mediahost serveerde geen video.**
+`nginx.conf` op `ig-media` (meterkast, `/mnt/data/containers/ig-media/`) matchte
+alleen `^/[A-Za-z0-9_-]+\.jpg$`; al het andere viel in `location / { return 404; }`.
+De regex accepteert nu `(jpg|mp4)`. De rest van de beperking blijft staan —
+geen directory listing, geen andere extensies — want dit is een publieke host.
+Getest: `.mp4` → 200, `.jpg` → 200, `nginx.conf` → 404, `/` → 404.
+
+> **Let op:** deze config leeft op meterkast, niet in deze repo. Wie de Reel
+> debugt en alleen hier kijkt, ziet dit niet. De backup staat ernaast als
+> `nginx.conf.bak-<datum>`.
+
+**Daarnaast: audio.** Instagram vereist een audiostream in een Reel. De video
+had er geen; dat was niet de fout die deze keer toesloeg (Meta kwam niet eens
+zover), maar het zou de volgende blokkade zijn geweest. `build_reel_video()`
+voegt er daarom altijd één toe:
 
 - **Standaard stil** — `anullsrc`, stereo 44.1kHz, AAC, even lang als de video.
   Het concept "silent Reel" blijft dus intact; alleen het lege spoor is nieuw.

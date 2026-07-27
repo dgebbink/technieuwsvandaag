@@ -56,10 +56,12 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
   daarnaast wekelijks een silent 9:16-slideshow (één artikel per dag, rechtstreeks uit
   WordPress — los van de dagwachtrij) — Reels zijn het enige kanaal dat niet-volgers
   bereikt, feedposts amper. Zie `INSTAGRAM_PLAN.md` fase 7.
-  **Een Reel moet een audiostream hebben**, anders weigert Instagram hem
-  (`ERROR / 2207076`); `build_reel_video()` zet er standaard een stil spoor in.
-  Muziek kan via `REEL_AUDIO_FILE` — alleen rechtenvrij, zie `INSTAGRAM_PLAN.md`
-  fase 9.
+  **Twee valkuilen bij de Reel** (beide raakten de eerste echte post, zie
+  `INSTAGRAM_PLAN.md` fase 9): de nginx-config van `ig-media` op meterkast moet
+  `.mp4` serveren — hij deed lang alleen `.jpg`, waardoor Meta de video niet kon
+  ophalen; en een Reel moet een audiostream hebben, dus `build_reel_video()` zet
+  er altijd minstens een stil spoor in. Muziek via `REEL_AUDIO_FILE` (standaard
+  `Beauty Flow.mp3`, CC BY — naamsvermelding staat op de colofonpagina).
 - **IG-caption: harde limiet van 2200 tekens** (`IG_CAPTION_MAX` in
   `ai_processor.py`) — erboven weigert de Graph API de *hele* post
   ("The caption was too long"), en ~9 artikelhooks halen dat al. Vandaar
