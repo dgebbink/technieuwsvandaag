@@ -24,8 +24,8 @@ import requests
 
 from ai_processor import build_combined_ig_caption
 from config import BASE_DIR, ENABLE_INSTAGRAM_POSTING, REEL_AUDIO_FILE
-from instagram_image import compose_instagram_image
-from instagram_reel import build_reel_video
+from instagram_image import compose_instagram_image, compose_reel_card
+from instagram_reel import SLIDE_SECONDS, build_reel_video
 from social_poster import post_instagram_reel, publish_video_publicly
 from wordpress_client import fetch_posts_for_reel
 
@@ -42,6 +42,8 @@ _TMP_DIR.mkdir(exist_ok=True)
 REEL_DAYS = 7
 REEL_CANVAS = (1080, 1920)
 MIN_SLIDES = 2  # onder 2 slides is een "slideshow" zinloos
+CARD_SECONDS = 1.5   # intro: kort houden, anders scrollt de kijker weg
+OUTRO_SECONDS = 2.5  # afsluiter mag iets langer, die moet gelezen worden
 
 _NL_WEEKDAGEN = ["MAANDAG", "DINSDAG", "WOENSDAG", "DONDERDAG", "VRIJDAG", "ZATERDAG", "ZONDAG"]
 
@@ -102,13 +104,36 @@ def main() -> None:
         )
         return
 
+    # Merkkaarten om de artikelen heen: een korte intro met het wordmark en een
+    # afsluiter die naar de site verwijst. Bewust korter dan een artikelslide —
+    # een statisch logo van 3 seconden kost kijkers in de eerste scroll.
+    intro = compose_reel_card(
+        str(_TMP_DIR / "reel_intro.jpg"),
+        canvas_w=REEL_CANVAS[0], canvas_h=REEL_CANVAS[1],
+    )
+    outro = compose_reel_card(
+        str(_TMP_DIR / "reel_outro.jpg"),
+        subtitle="Elke dag het belangrijkste tech-nieuws in het Nederlands",
+        canvas_w=REEL_CANVAS[0], canvas_h=REEL_CANVAS[1],
+    )
+
+    durations = [SLIDE_SECONDS] * len(slide_paths)
+    if intro:
+        slide_paths.insert(0, intro)
+        durations.insert(0, CARD_SECONDS)
+    if outro:
+        slide_paths.append(outro)
+        durations.append(OUTRO_SECONDS)
+
     video_path = str(_TMP_DIR / "weekly_reel.mp4")
     audio_path = ""
     if REEL_AUDIO_FILE:
         candidate = Path(REEL_AUDIO_FILE)
         audio_path = str(candidate if candidate.is_absolute() else BASE_DIR / candidate)
 
-    video = build_reel_video(slide_paths, video_path, audio_path=audio_path)
+    video = build_reel_video(
+        slide_paths, video_path, audio_path=audio_path, durations=durations,
+    )
     if not video:
         logger.error("Video bouwen mislukt — Reel overgeslagen")
         return

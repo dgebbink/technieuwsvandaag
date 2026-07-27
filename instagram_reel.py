@@ -23,6 +23,7 @@ def build_reel_video(
     seconds_per_slide: float = SLIDE_SECONDS,
     fps: int = FPS,
     audio_path: str = "",
+    durations: list[float] | None = None,
 ) -> str | None:
     """Plakt stilstaande 9:16-slides aaneen tot één MP4 met een stil audiospoor.
 
@@ -35,7 +36,8 @@ def build_reel_video(
           (zie compose_instagram_image met canvas_w/canvas_h=1080x1920).
           audio_path is leeg (→ stil spoor) of verwijst naar een audiobestand
           waarvan jij de rechten hebt; het wordt geloopt tot de videolengte en
-          eindigt met een fade-out.
+          eindigt met een fade-out. durations geeft per slide een eigen lengte
+          (even lang als slide_paths); None = overal seconds_per_slide.
     Post: MP4 op dest_path, elke slide seconds_per_slide lang, harde cuts, met
           een AAC-spoor even lang als de video; retourneert dest_path, of None
           bij elke fout (nooit raisen — zelfde contract als de rest van de
@@ -44,13 +46,22 @@ def build_reel_video(
     if not slide_paths:
         return None
 
+    if durations and len(durations) != len(slide_paths):
+        logger.warning(
+            "durations (%d) past niet op slides (%d) — vaste lengte gebruikt",
+            len(durations), len(slide_paths),
+        )
+        durations = None
+
     try:
+        per_slide = durations or [seconds_per_slide] * len(slide_paths)
+
         cmd = ["ffmpeg", "-y"]
-        for path in slide_paths:
-            cmd += ["-loop", "1", "-t", str(seconds_per_slide), "-i", path]
+        for path, secs in zip(slide_paths, per_slide):
+            cmd += ["-loop", "1", "-t", str(secs), "-i", path]
 
         n = len(slide_paths)
-        total_seconds = n * seconds_per_slide
+        total_seconds = sum(per_slide)
 
         # Audiobron als extra input (index n): een echt bestand als dat is
         # opgegeven en bestaat, anders een stille bron. Terugvallen op stilte

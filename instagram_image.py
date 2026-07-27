@@ -154,6 +154,71 @@ def _draw_ai_label(canvas: Image.Image) -> Image.Image:
     return canvas
 
 
+def compose_reel_card(dest_path: str, subtitle: str = "",
+                      canvas_w: int = CANVAS_W,
+                      canvas_h: int = CANVAS_H) -> str | None:
+    """Merkkaart voor de intro/outro van de wekelijkse Reel.
+
+    Geen artikelbeeld maar een vlakke navy kaart met het wordmark; daarom los
+    van compose_instagram_image(), dat een bronfoto nodig heeft. Krijgt bewust
+    géén AI-label: er zit geen gegenereerd beeldmateriaal in.
+
+    Pre:  dest_path is schrijfbaar; subtitle mag leeg zijn (regel vervalt dan)
+    Post: canvas_w x canvas_h JPEG op dest_path; None bij elke fout (nooit
+          raisen — zelfde contract als de rest van de pijplijn)
+    """
+    try:
+        canvas = Image.new("RGB", (canvas_w, canvas_h), NAVY)
+        draw = ImageDraw.Draw(canvas)
+
+        # Wordmark op ~78% van de breedte; render_wordmark schaalt op hoogte,
+        # dus eerst native renderen en daarna op breedte terugschalen.
+        target_w = int(canvas_w * 0.78)
+        mark = render_wordmark(height=120, color=WHITE)
+        scale = target_w / mark.width
+        mark = mark.resize(
+            (target_w, max(1, round(mark.height * scale))), Image.LANCZOS
+        )
+
+        mark_y = (canvas_h - mark.height) // 2
+        canvas.paste(mark, ((canvas_w - mark.width) // 2, mark_y), mark)
+
+        # Cyaan accentstreep onder het wordmark
+        rule_w, rule_h = int(canvas_w * 0.16), 6
+        rule_y = mark_y + mark.height + 48
+        draw.rounded_rectangle(
+            [(canvas_w - rule_w) // 2, rule_y,
+             (canvas_w + rule_w) // 2, rule_y + rule_h],
+            radius=rule_h // 2, fill=CYAN,
+        )
+
+        if subtitle:
+            font = _bold_font(44)
+            lines, y = [], rule_y + 64
+            words, current = subtitle.split(), ""
+            for word in words:
+                probe = f"{current} {word}".strip()
+                if draw.textlength(probe, font=font) <= canvas_w - MARGIN * 2:
+                    current = probe
+                else:
+                    lines.append(current)
+                    current = word
+            if current:
+                lines.append(current)
+            for line in lines:
+                w = draw.textlength(line, font=font)
+                draw.text(((canvas_w - w) / 2, y), line, font=font, fill=WHITE)
+                y += round(font.size * 1.3)
+
+        canvas.save(dest_path, "JPEG", quality=92)
+        logger.info("Reel-kaart gemaakt: %s", dest_path)
+        return dest_path
+
+    except Exception as exc:
+        logger.error("Reel-kaart maken mislukt: %s", exc)
+        return None
+
+
 def compose_instagram_image(src_path: str, headline: str, kicker: str,
                             dest_path: str, canvas_w: int = CANVAS_W,
                             canvas_h: int = CANVAS_H) -> str | None:
