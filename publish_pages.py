@@ -30,8 +30,8 @@ PAGES = [
         "slug": "colofon",
         "meta_description": (
             "Lees hoe TechNieuwsVandaag.nl werkt: AI-gegenereerde Nederlandstalige "
-            "tech-samenvattingen, gereviewd door een menselijke redacteur. Geen advertenties, "
-            "geen tracking."
+            "tech-samenvattingen, gereviewd door een menselijke redacteur. Geen "
+            "gesponsorde content of advertorials."
         ),
     },
     {
