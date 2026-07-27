@@ -44,6 +44,11 @@ REEL_CANVAS = (1080, 1920)
 MIN_SLIDES = 2  # onder 2 slides is een "slideshow" zinloos
 CARD_SECONDS = 1.5   # intro: kort houden, anders scrollt de kijker weg
 OUTRO_SECONDS = 2.5  # afsluiter mag iets langer, die moet gelezen worden
+# Onderrand van de tekstbalk op 3/4 van de hoogte. Instagram legt onderin z'n
+# eigen interface over de video — caption, accountnaam, muziekregel, knoppen —
+# waardoor tekst tegen de onderkant wegvalt. De onderste kwart (480px) blijft
+# daarom leeg.
+REEL_BAND_BOTTOM = 0.75
 
 _NL_WEEKDAGEN = ["MAANDAG", "DINSDAG", "WOENSDAG", "DONDERDAG", "VRIJDAG", "ZATERDAG", "ZONDAG"]
 
@@ -93,6 +98,7 @@ def main() -> None:
         composed = compose_instagram_image(
             str(src), post["title"], _kicker_for(post["date"]), str(dest),
             canvas_w=REEL_CANVAS[0], canvas_h=REEL_CANVAS[1],
+            band_bottom_frac=REEL_BAND_BOTTOM,
         )
         if composed:
             slide_paths.append(composed)

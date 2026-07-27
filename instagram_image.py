@@ -221,11 +221,14 @@ def compose_reel_card(dest_path: str, subtitle: str = "",
 
 def compose_instagram_image(src_path: str, headline: str, kicker: str,
                             dest_path: str, canvas_w: int = CANVAS_W,
-                            canvas_h: int = CANVAS_H) -> str | None:
+                            canvas_h: int = CANVAS_H,
+                            band_bottom_frac: float = 1.0) -> str | None:
     """Componeer het Instagram-feedbeeld vanaf de artikelafbeelding.
 
     Pre:  src_path is een geldig afbeeldingsbestand; headline is niet leeg;
-          kicker mag leeg zijn (regel wordt dan overgeslagen)
+          kicker mag leeg zijn (regel wordt dan overgeslagen).
+          band_bottom_frac bepaalt waar de ónderrand van de witte balk ligt, als
+          fractie van de canvashoogte: 1.0 = tegen de onderkant (feedpost).
     Post: canvas_w x canvas_h JPEG (standaard 1080x1350, 4:5) met witte balk
           + XMP AI-metadata op dest_path — canvas_w/canvas_h laten dit ook
           hergebruiken voor 9:16 Reel-slides (zie weekly_reel.py); de balk
@@ -233,6 +236,11 @@ def compose_instagram_image(src_path: str, headline: str, kicker: str,
           is er gewoon meer foto zichtbaar erboven.
           Retourneert dest_path, of None bij elke fout (nooit raisen —
           zelfde contract als de rest van de social-pijplijn)
+
+    Bij een Reel moet band_bottom_frac omhoog: Instagram legt onderin z'n eigen
+    interface over de video (caption, accountnaam, muziekregel, knoppen), waardoor
+    tekst tegen de onderkant onleesbaar wordt. Zie REEL_BAND_BOTTOM in
+    weekly_reel.py.
     """
     try:
         photo = Image.open(src_path)
@@ -256,10 +264,12 @@ def compose_instagram_image(src_path: str, headline: str, kicker: str,
 
         band_h = (pad_top + kicker_h + kicker_gap + headline_h
                   + wordmark_gap + wordmark.height + pad_bottom)
-        band_top = canvas_h - band_h
+        # Nooit boven de bovenrand uitschuiven als de balk hoog uitvalt (2 kopregels)
+        band_bottom = max(band_h, round(canvas_h * band_bottom_frac))
+        band_top = band_bottom - band_h
 
         # --- Witte balk (full-bleed, effen — de Volkskrant-stripe) ---
-        draw.rectangle([0, band_top, canvas_w, canvas_h], fill=(*WHITE, 255))
+        draw.rectangle([0, band_top, canvas_w, band_bottom], fill=(*WHITE, 255))
         # Dun cyaan accentlijntje op de balkrand
         draw.rectangle([0, band_top, canvas_w, band_top + 8], fill=(*CYAN, 255))
 
