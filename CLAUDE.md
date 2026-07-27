@@ -13,6 +13,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    verwijderen zonder snake elders te regelen.
 3. **Gebruik altijd `venv/bin/python3`** (let op: `venv/`, niet `.venv/` zoals de
    andere projecten) — system Python is pyenv-managed.
+4. **Cron plant in de klok van de daemon, niet in UTC.** Die staat hier op
+   Europe/Amsterdam (geërfd uit zijn omgeving — `/etc/timezone` zegt misleidend
+   `Etc/UTC`), en `CRON_TZ` werkt niet: cron 3.0pl1 negeert het. `scheduler.py`
+   detecteert de offset daarom op runtime (`cet_to_cron_clock()`) en logt hem.
+   Reken tijden dus **niet** zelf om naar UTC — dat was jarenlang de bug waardoor
+   élke job twee uur te vroeg vuurde (artikelen vanaf 05:00 i.p.v. 07:00, de Reel
+   zondag om 17:00 i.p.v. 19:00). Gevonden en gefixt 2026-07-27.
 
 ## Commands
 
@@ -44,7 +51,7 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
   goedkeuringsmail; zie Architecture),
   zondag 19:00 CET `weekly_reel.py` (silent Instagram-Reel-recap van de week — zie
   hieronder), 19:45 CET `instagram_digest.py` (bundelt de dagelijkse Instagram-
-  artikelen tot 1 post), 18:00 UTC `daily_digest.py` (gecombineerd dagoverzicht:
+  artikelen tot 1 post), 20:00 CET `daily_digest.py` (gecombineerd dagoverzicht:
   artikelen + Bluesky + FAL.ai-tegoed via `bluesky_monitor.py` + `budget_monitor.py`).
 - **Instagram-posting is een dagdigest + wekelijkse Reel, geen post per artikel**:
   elke `main.py`-run zet gequeuede artikelen in `instagram_queue.json`
@@ -82,7 +89,7 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
 - **Service watchdog**: `service_watchdog.sh` elke 5 min via cron (in de
   scheduler-template) — herstart gestopte supervisor-services, herstelt
   log-permissies, meldt via Telegram (credentials uit `.env`).
-- **Bronnenlijst-uitbreiding**: zondag 04:00 UTC `source_discovery.py` (in de
+- **Bronnenlijst-uitbreiding**: zondag 04:00 `source_discovery.py` (in de
   scheduler-template) — breidt `sources.txt` automatisch uit met domeinen die
   deze week door ≥2 bestaande bronnen werden gelinkt, plus een korte
   Claude-suggestie van ontbrekende gerenommeerde tech-sites. Kandidaten moeten
