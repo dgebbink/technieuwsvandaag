@@ -18,8 +18,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from brand import CYAN, NAVY, WHITE
 from brand import background as brand_background
-from brand import fit_cap, render_lockup
-from generate_instagram_assets import _bold_font
+from brand import fit_cap, font_at, render_lockup
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,10 @@ MARGIN = 64
 KICKER_CYAN = (0, 132, 168)  # #0084A8
 
 HEADLINE_MAX_LINES = 2
-HEADLINE_FONT_SIZES = (68, 64, 60, 56, 52, 48)
+# Montserrat loopt smaller en heeft een kleinere kaphoogte per punt dan het
+# DejaVu dat hier eerder stond; vandaar dat de reeks hoger begint. _fit_headline
+# pakt de grootste maat die past, dus korte koppen worden vanzelf groter gezet.
+HEADLINE_FONT_SIZES = (80, 76, 72, 68, 64, 60, 56, 52, 48, 44)
 
 # Weer AAN (2026-07-15): de "bekende bug" uit INSTAGRAM_PLAN.md fase 5 was dat
 # WordPress' media-upload crashte op dit XMP-blok (vermoedelijk PHP-Imagick dat
@@ -99,7 +101,9 @@ def _fit_headline(draw: ImageDraw.ImageDraw, text: str,
     font = None
     lines: list[str] = []
     for size in HEADLINE_FONT_SIZES:
-        font = _bold_font(size)
+        # Bold, niet de ExtraBold van het woordmerk: over twee regels van 70+px
+        # wordt ExtraBold een blok en verliest de kop zijn leesritme
+        font = font_at(size, "Bold")
         lines = _wrap_lines(draw, text, font, max_width)
         if len(lines) <= HEADLINE_MAX_LINES and all(
             draw.textlength(line, font=font) <= max_width for line in lines
@@ -133,7 +137,7 @@ def _draw_ai_label(canvas: Image.Image) -> Image.Image:
     het origineel-label linksonder verdwijnt hier onder de witte balk.
     """
     label = "AI-gegenereerd"
-    font = _bold_font(22)
+    font = font_at(22, "SemiBold")
 
     draw_tmp = ImageDraw.Draw(canvas)
     bbox = draw_tmp.textbbox((0, 0), label, font=font)
@@ -263,7 +267,7 @@ def compose_instagram_image(src_path: str, headline: str, kicker: str,
 
         # --- Balkinhoud opmeten (hoogte is dynamisch: 1 of 2 kopregels) ---
         pad_top, pad_bottom = 52, 52
-        kicker_font = _bold_font(30)
+        kicker_font = font_at(30, "Bold")
         kicker_h = 36 if kicker else 0
         kicker_gap = 26 if kicker else 0
 

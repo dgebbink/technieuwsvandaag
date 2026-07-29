@@ -7,14 +7,19 @@ zijn.
 Het woordmerk staat sinds 2026-07-29 in `brand.py` (Montserrat, gemengde
 kapitalen) — daar komt ook het logo van de site en van de Reel-kaarten vandaan.
 De oude getrackte kapitalen die hier stonden zijn vervallen; twee woordmerken
-naast elkaar liepen onvermijdelijk uit elkaar.
+naast elkaar liepen onvermijdelijk uit elkaar. Ook het DejaVu-font is weg: de
+koppen en kickers op de postbeelden zetten sindsdien in Montserrat.
+
+Alleen de avatar bleef hier staan, en die is bewust ongewijzigd — hij is de
+maatstaf waar brand.py het teken uit afleidt, en staat als profielfoto op
+Instagram en Bluesky.
 
 Gebruik:
     venv/bin/python3 generate_instagram_assets.py
 """
 import logging
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from brand import CYAN, NAVY, WHITE
 from config import BASE_DIR
@@ -24,16 +29,8 @@ logger = logging.getLogger(__name__)
 ASSETS_DIR = BASE_DIR / "assets"
 
 # Merkkleuren komen uit brand.py — één palet voor site, video en socials
-_FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-
 AVATAR_SIZE = 1000
 AVATAR_PATH = ASSETS_DIR / "instagram_avatar.png"
-
-
-def _bold_font(size: int) -> ImageFont.FreeTypeFont:
-    """Laad DejaVuSans-Bold; raist als het font ontbreekt (geen stille fallback
-    — de assets moeten er altijd identiek uitzien)."""
-    return ImageFont.truetype(_FONT_BOLD, size)
 
 
 def generate_avatar(dest_path: str) -> str:
