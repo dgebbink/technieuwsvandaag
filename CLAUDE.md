@@ -114,6 +114,10 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
 - `publish_pages.py` — publiceert/updatet WP-pagina's vanuit `assets/`
 - `adhoc_processor.py` — één URL → WP-draft (gebruikt door approval-server dashboard)
 - `update_bluesky_profile.py` — eenmalig Bluesky-profiel bijwerken
+- `assets/logo_src/make_logo.py` — rendert het woordmerk opnieuw naar `assets/`.
+  Het T-teken wordt vectorieel opgebouwd uit de verhoudingen van
+  `instagram_avatar.png`, dus logo en favicon blijven hetzelfde merk. Pas het
+  logo hier aan, niet in een beeldbewerker
 
 ## Opgeruimd (2026-07-10)
 
