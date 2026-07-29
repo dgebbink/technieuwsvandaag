@@ -16,7 +16,10 @@ import logging
 
 from PIL import Image, ImageDraw, ImageFont
 
-from generate_instagram_assets import CYAN, NAVY, WHITE, _bold_font, render_wordmark
+from brand import CYAN, NAVY, WHITE
+from brand import background as brand_background
+from brand import fit_cap, render_lockup
+from generate_instagram_assets import _bold_font
 
 logger = logging.getLogger(__name__)
 
@@ -159,22 +162,29 @@ def compose_reel_card(dest_path: str, subtitle: str = "",
                       canvas_h: int = CANVAS_H) -> str | None:
     """Merkkaart voor de intro/outro van de wekelijkse Reel.
 
-    Geen artikelbeeld maar een vlakke navy kaart met het wordmark; daarom los
-    van compose_instagram_image(), dat een bronfoto nodig heeft. Krijgt bewust
+    Geen artikelbeeld maar een merkvlak met het woordmerk; daarom los van
+    compose_instagram_image(), dat een bronfoto nodig heeft. Krijgt bewust
     géén AI-label: er zit geen gegenereerd beeldmateriaal in.
+
+    De achtergrond komt uit brand.background(): hetzelfde verloop met het grote
+    T-watermerk als de story-achtergronden, zodat de video en de socials één
+    beeldtaal delen. Vlak navy was hier eerder erg leeg.
 
     Pre:  dest_path is schrijfbaar; subtitle mag leeg zijn (regel vervalt dan)
     Post: canvas_w x canvas_h JPEG op dest_path; None bij elke fout (nooit
           raisen — zelfde contract als de rest van de pijplijn)
     """
     try:
-        canvas = Image.new("RGB", (canvas_w, canvas_h), NAVY)
+        canvas = brand_background(canvas_w, canvas_h, "gradient").convert("RGB")
         draw = ImageDraw.Draw(canvas)
 
-        # Wordmark op ~78% van de breedte; render_wordmark schaalt op hoogte,
-        # dus eerst native renderen en daarna op breedte terugschalen.
-        target_w = int(canvas_w * 0.78)
-        mark = render_wordmark(height=120, color=WHITE)
+        # Woordmerk op ~72% van de breedte; render_lockup schaalt op hoogte,
+        # dus eerst native renderen en daarna op breedte terugschalen. De
+        # inline-vorm heeft geen navy tegel, die op deze navy kaart een gat zou
+        # slaan; 72% i.p.v. 78% omdat dit merk veel hoger opbouwt dan de oude
+        # getrackte kapitalen en anders de accentstreep zou verdringen.
+        target_w = int(canvas_w * 0.72)
+        mark = render_lockup(height=120, form="inline", on_dark=True)
         scale = target_w / mark.width
         mark = mark.resize(
             (target_w, max(1, round(mark.height * scale))), Image.LANCZOS
@@ -193,7 +203,9 @@ def compose_reel_card(dest_path: str, subtitle: str = "",
         )
 
         if subtitle:
-            font = _bold_font(44)
+            # Montserrat, net als het woordmerk erboven — DejaVu ernaast las als
+            # een tweede huisstijl op dezelfde kaart
+            font = fit_cap(34, weight="SemiBold")
             lines, y = [], rule_y + 64
             words, current = subtitle.split(), ""
             for word in words:
@@ -259,7 +271,9 @@ def compose_instagram_image(src_path: str, headline: str, kicker: str,
         line_h = round(headline_font.size * 1.16)
         headline_h = line_h * len(lines)
 
-        wordmark = render_wordmark(height=28)
+        # Op de witte balk: navy tekst, cyaan stam — dezelfde inline-vorm als op
+        # de intro/outro-kaart, zodat één Reel niet twee woordmerken toont
+        wordmark = render_lockup(height=34, form="inline", on_dark=False)
         wordmark_gap = 40
 
         band_h = (pad_top + kicker_h + kicker_gap + headline_h

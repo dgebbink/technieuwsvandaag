@@ -114,10 +114,12 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
 - `publish_pages.py` — publiceert/updatet WP-pagina's vanuit `assets/`
 - `adhoc_processor.py` — één URL → WP-draft (gebruikt door approval-server dashboard)
 - `update_bluesky_profile.py` — eenmalig Bluesky-profiel bijwerken
-- `assets/logo_src/make_logo.py` — rendert het woordmerk opnieuw naar `assets/`.
-  Het T-teken wordt vectorieel opgebouwd uit de verhoudingen van
-  `instagram_avatar.png`, dus logo en favicon blijven hetzelfde merk. Pas het
-  logo hier aan, niet in een beeldbewerker
+- `brand.py` — **één bron voor het merk**: het T-teken, het woordmerk en de hele
+  set statische beelden in `assets/brand/` (logo's, profielbanners,
+  postachtergronden). `instagram_image.py` haalt het woordmerk hier op, dus de
+  Reel-kaarten en de site tonen hetzelfde logo. Pas het logo hier aan en draai
+  `venv/bin/python3 brand.py` — niet in een beeldbewerker. Zie
+  `assets/brand/README.md` voor welk bestand waarvoor is
 
 ## Opgeruimd (2026-07-10)
 

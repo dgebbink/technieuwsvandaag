@@ -1,9 +1,13 @@
 """
-Eenmalige Instagram-profielassets genereren: avatar + wordmark.
+Eenmalige Instagram-profielassets genereren: de avatar.
 
 Bewust puur PIL (geen FAL.ai): een logo moet pixel-precies en reproduceerbaar
-zijn. `render_wordmark()` wordt ook door instagram_image.py gebruikt zodat het
-wordmark op elke post uit dezelfde bron komt als het profiel.
+zijn.
+
+Het woordmerk staat sinds 2026-07-29 in `brand.py` (Montserrat, gemengde
+kapitalen) — daar komt ook het logo van de site en van de Reel-kaarten vandaan.
+De oude getrackte kapitalen die hier stonden zijn vervallen; twee woordmerken
+naast elkaar liepen onvermijdelijk uit elkaar.
 
 Gebruik:
     venv/bin/python3 generate_instagram_assets.py
@@ -12,23 +16,18 @@ import logging
 
 from PIL import Image, ImageDraw, ImageFont
 
+from brand import CYAN, NAVY, WHITE
 from config import BASE_DIR
 
 logger = logging.getLogger(__name__)
 
 ASSETS_DIR = BASE_DIR / "assets"
 
-# Merkkleuren (zelfde palet als site/Bluesky: zie generate_header_image.py)
-NAVY = (10, 22, 40)      # #0A1628
-CYAN = (0, 212, 255)     # #00D4FF
-WHITE = (255, 255, 255)
-
+# Merkkleuren komen uit brand.py — één palet voor site, video en socials
 _FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 AVATAR_SIZE = 1000
 AVATAR_PATH = ASSETS_DIR / "instagram_avatar.png"
-WORDMARK_PATH = ASSETS_DIR / "ig_wordmark.png"
-WORDMARK_TEXT = "TECHNIEUWSVANDAAG.NL"
 
 
 def _bold_font(size: int) -> ImageFont.FreeTypeFont:
@@ -60,64 +59,10 @@ def generate_avatar(dest_path: str) -> str:
     return str(dest_path)
 
 
-def render_wordmark(height: int, color: tuple = NAVY) -> Image.Image:
-    """Render het wordmark 'TECHNIEUWSVANDAAG.NL' als transparante RGBA-image.
-
-    Opbouw: cyaan afgerond vierkant (accent) + getrackte kapitalen. Wordt op
-    3x geanti-aliased gerenderd en teruggeschaald voor scherpe randen op
-    kleine hoogtes.
-
-    Pre:  height > 0
-    Post: RGBA Image met exact de gevraagde hoogte, breedte naar rato
-    """
-    scale = 3
-    font_size = height * scale
-    font = _bold_font(font_size)
-    tracking = round(font_size * 0.14)
-
-    # Meet totale tekstbreedte inclusief tracking
-    tmp = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
-    char_widths = [tmp.textlength(ch, font=font) for ch in WORDMARK_TEXT]
-    text_w = int(sum(char_widths)) + tracking * (len(WORDMARK_TEXT) - 1)
-
-    ascent, descent = font.getmetrics()
-    line_h = ascent + descent
-
-    square = int(font_size * 0.72)          # cyaan accentblok, ~kapitaalhoogte
-    gap = int(font_size * 0.45)
-
-    canvas = Image.new("RGBA", (square + gap + text_w, line_h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(canvas)
-
-    # Accentblok verticaal uitlijnen met de kapitalen
-    cap_top = ascent - square
-    draw.rounded_rectangle(
-        [0, cap_top, square, cap_top + square],
-        radius=int(square * 0.22),
-        fill=CYAN,
-    )
-
-    x = square + gap
-    for ch, w in zip(WORDMARK_TEXT, char_widths):
-        draw.text((x, 0), ch, font=font, fill=color)
-        x += int(w) + tracking
-
-    # Strak croppen op inhoud en terugschalen naar de gevraagde hoogte
-    bbox = canvas.getbbox()
-    canvas = canvas.crop(bbox)
-    target_w = max(1, round(canvas.width * height / canvas.height))
-    return canvas.resize((target_w, height), Image.LANCZOS)
-
-
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     generate_avatar(str(AVATAR_PATH))
-
-    # Referentie-export van het wordmark (instagram_image.py rendert 'm zelf
-    # via render_wordmark, dit bestand is voor hergebruik buiten de pipeline)
-    wordmark = render_wordmark(height=120)
-    wordmark.save(WORDMARK_PATH, "PNG")
-    logger.info("Wordmark opgeslagen: %s (%dx%d)", WORDMARK_PATH, wordmark.width, wordmark.height)
+    logger.info("Woordmerk-exports: venv/bin/python3 brand.py")
 
 
 if __name__ == "__main__":
