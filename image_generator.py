@@ -226,22 +226,30 @@ def build_person_instruction(variant: dict) -> str:
 
 
 # Styling voor de vrouwelijke variant, achter IMAGE_ATTRACTIVE_WOMEN.
-# Bewust een aparte clausule per scene_population: in een groep werkt "eye
-# contact with the camera" niet.
+# Bewust bóvenop de zakelijke basis en niet in plaats daarvan: de twee sluiten
+# elkaar niet uit, en zonder die basis stond er "sexy" tegenover het "confident,
+# professional" van de mannelijke variant — een verschil dat op een nieuwssite
+# opvalt zodra je een paar artikelen achter elkaar ziet.
+# Aparte clausule per scene_population: in een groep werkt "eye contact with the
+# camera" niet.
 _APPEARANCE_ATTRACTIVE_SOLO = (
-    "She is strikingly beautiful and sexy: a photogenic, model-like face with "
-    "symmetrical features, expressive eyes and full lips, glossy well-styled "
-    "hair, subtle glamour makeup, a slim and shapely figure, and a fashionable, "
-    "form-fitting outfit that flatters her figure while still suiting the "
-    "setting. Alluring, self-assured presence, confident posture, natural skin "
-    "texture and realistic proportions."
+    "Style her as a confident, professional woman with a natural, genuine "
+    "expression, natural skin texture and realistic proportions, who is at the "
+    "same time strikingly beautiful and sexy: a photogenic, model-like face "
+    "with symmetrical features, expressive eyes and full lips, "
+    "glossy well-styled hair, subtle glamour makeup, a slim and shapely figure, "
+    "and a fashionable, form-fitting outfit that flatters her figure while "
+    "still suiting the professional setting. Alluring but self-assured and "
+    "competent, never passive or decorative."
 )
 _APPEARANCE_ATTRACTIVE_GROUP = (
-    "The women are strikingly beautiful and sexy: photogenic, model-like faces, "
-    "glossy well-styled hair, subtle glamour makeup, slim and shapely figures, "
-    "and fashionable, form-fitting outfits that flatter their figures while "
-    "still suiting the setting. Natural skin texture and realistic proportions "
-    "throughout."
+    "Style them as confident professionals with natural, genuine expressions, "
+    "who are at the same time strikingly beautiful and sexy: photogenic, "
+    "model-like faces, glossy well-styled hair, subtle glamour makeup, slim and "
+    "shapely figures, and fashionable, form-fitting outfits that flatter their "
+    "figures while still suiting the professional setting. They are engaged in "
+    "the work, never passive or decorative. Natural skin texture and realistic "
+    "proportions throughout."
 )
 # De jongste leeftijdsbucket begint op 18. Beeldmodellen renderen een "18-jarige"
 # regelmatig duidelijk jonger, en juist in combinatie met bovenstaande styling

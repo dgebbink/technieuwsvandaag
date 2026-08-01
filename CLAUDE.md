@@ -259,8 +259,11 @@ niet zien, want het gevraagde woord stáát er.
 
 **Styling van de vrouwelijke variant** staat achter `IMAGE_ATTRACTIVE_WOMEN`
 (default aan): bij `gender == "a woman"` komt er een nadrukkelijk aantrekkelijke
-beschrijving in plaats van de neutrale zakelijke; man en non-binair houden de
-standaard. Onder de 21 jaar (`_ADULT_REINFORCEMENT_MIN_AGE`) gaat er een harde
+beschrijving **bovenop** de zakelijke ("confident, professional", plus expliciet
+"never passive or decorative"), niet in plaats daarvan — de twee sluiten elkaar
+niet uit, en zonder die basis stond "sexy" tegenover het "confident,
+professional" van de mannelijke variant. Man en non-binair houden de standaard.
+Onder de 21 jaar (`_ADULT_REINFORCEMENT_MIN_AGE`) gaat er een harde
 "unmistakably a grown adult"-zin achteraan — de bucket 18-22 bestaat, en
 beeldmodellen renderen een "18-jarige" regelmatig duidelijk jonger. Zet de env
 `IMAGE_ATTRACTIVE_WOMEN=false` om alle varianten weer gelijk te trekken.
