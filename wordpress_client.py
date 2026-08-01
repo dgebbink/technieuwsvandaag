@@ -692,11 +692,36 @@ def update_featured_image(post_id: int, image_path: str, alt_text: str = "") -> 
 
 
 def delete_post(post_id: int) -> None:
-    """Permanently deletes a WordPress post (bypasses trash).
+    """Permanently deletes a WordPress post and its featured image.
+
+    De featured image gaat mee: zonder dat blijft bij elke Decline het beeld in
+    de mediabibliotheek achter, en daar kwam het gros van de 107 wezen vandaan
+    die op 2026-08-01 handmatig zijn opgeruimd. Het ID wordt vóór de verwijdering
+    opgehaald — daarna is de post weg en is de koppeling niet meer te vinden.
+
+    Gaat ervan uit dat de featured image exclusief van deze post is; dat klopt in
+    deze pijplijn, want elk artikel krijgt een eigen gegenereerd beeld.
+
     Pre:  post_id is a valid post ID
-    Post: post deleted from WordPress
+    Post: post permanent verwijderd (bypasses trash); de featured media is
+          best-effort mee verwijderd. Faalt het ophalen of het verwijderen van de
+          media, dan gaat de post er alsnog uit — een wees is minder erg dan een
+          artikel dat blijft staan nadat je Decline hebt geklikt.
     """
     client = WordPressClient()
+
+    media_id = 0
+    try:
+        current = client.session.get(
+            f"{client.base_url}/posts/{post_id}",
+            params={"_fields": "featured_media"},
+            timeout=30,
+        )
+        current.raise_for_status()
+        media_id = int(current.json().get("featured_media") or 0)
+    except (requests.RequestException, ValueError, TypeError) as exc:
+        logger.warning("Featured media van post %d onbekend: %s", post_id, exc)
+
     resp = client.session.delete(
         f"{client.base_url}/posts/{post_id}",
         params={"force": True},
@@ -704,3 +729,6 @@ def delete_post(post_id: int) -> None:
     )
     resp.raise_for_status()
     logger.info("Post %d verwijderd", post_id)
+
+    if media_id:
+        delete_media(media_id)
