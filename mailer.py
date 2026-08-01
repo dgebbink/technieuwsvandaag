@@ -9,6 +9,7 @@ from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
+from html import escape
 from pathlib import Path
 
 from ai_processor import ProcessedArticle
@@ -836,6 +837,123 @@ def render_bluesky_section(data: dict) -> str:
         f"{recent_html}"
         "<h3 style='color:#0085ff;margin:16px 0 4px'>Posts vandaag</h3>"
         f"{posts_html}</div>"
+    )
+
+
+def _ig_followers_line(data: dict) -> str:
+    """Volgersregel met de groei sinds de vorige meting.
+    Pre:  data is output of collect_daily_instagram_report()
+    Post: HTML-string; de groei ontbreekt op de allereerste dag (geen historie)
+    """
+    delta = data.get("followers_delta")
+    since = data.get("delta_since")
+
+    growth = ""
+    if delta is not None:
+        color = "#2e7d32" if delta > 0 else "#c62828" if delta < 0 else "#888"
+        sinds = ""
+        if since:
+            try:
+                sinds = f" sinds {datetime.fromisoformat(since).strftime('%-d %b')}"
+            except ValueError:
+                sinds = f" sinds {since}"
+        growth = (
+            f" <span style='color:{color};font-weight:700'>{delta:+d}</span>"
+            f"<span style='color:#888;font-size:12px'>{sinds}</span>"
+        )
+    else:
+        growth = (
+            " <span style='color:#888;font-size:12px'>"
+            "(nog geen eerdere meting)</span>"
+        )
+
+    return (
+        f"<p style='margin:4px 0'><b>Totaal volgers:</b> "
+        f"{data.get('followers_count')}{growth}<br>"
+        f"<span style='color:#666;font-size:13px'>"
+        f"Volgt zelf: {data.get('follows_count')} &nbsp;·&nbsp; "
+        f"Posts totaal: {data.get('media_count')}</span></p>"
+    )
+
+
+def render_instagram_section(data: dict) -> str:
+    """Renders Instagram daily activity as HTML email block.
+    Pre:  data is output of collect_daily_instagram_report()
+    Post: self-contained HTML div string
+    """
+    if not data.get("success"):
+        return (
+            "<div style='background:#fff3cd;padding:12px;"
+            "border-radius:4px;margin:16px 0'>"
+            "<b>⚠️ Instagram ophalen mislukt:</b> "
+            f"{escape(str(data.get('error') or 'onbekend'))}</div>"
+        )
+
+    posts_html = ""
+    for p in data["posts"]:
+        comments_html = ""
+        if p["comments"]:
+            items = "".join(
+                f"<li><b>@{escape(c['username'])}</b>: {escape(c['text'])}</li>"
+                for c in p["comments"]
+            )
+            comments_html = (
+                f"<ul style='margin:6px 0 0 16px;color:#333;font-size:13px'>"
+                f"{items}</ul>"
+            )
+
+        link = ""
+        if p["permalink"]:
+            link = (
+                f" &nbsp;·&nbsp; <a href='{p['permalink']}' "
+                "style='color:#E1306C;font-size:11px'>bekijk post →</a>"
+            )
+
+        posts_html += (
+            "<div style='border-left:3px solid #E1306C;padding:8px 12px;"
+            "margin:8px 0;background:#fff'>"
+            "<span style='background:#E1306C;color:#fff;font-size:10px;"
+            "font-weight:700;padding:2px 7px;border-radius:9px;"
+            f"text-transform:uppercase;letter-spacing:0.5px'>{p['type']}</span>"
+            f"<span style='color:#999;font-size:11px'> &nbsp;{p['time']} CET</span>"
+            f"<p style='margin:6px 0 4px;font-size:13px'>{escape(p['caption'])}…</p>"
+            "<span style='font-size:11px;color:#888'>"
+            f"❤️ {p['like_count']} &nbsp;💬 {p['comments_count']}{link}</span>"
+            f"{comments_html}</div>"
+        )
+
+    if not posts_html:
+        posts_html = "<p style='color:#888'>Geen posts vandaag.</p>"
+
+    # De wachtrij hoort na de digest van 19:45 leeg te zijn; staat er nog iets
+    # in, dan is die digest niet gelukt en blijft het dus liggen tot morgen.
+    queue = data.get("queue", [])
+    queue_html = ""
+    if queue:
+        items = "".join(
+            f"<li>{escape(entry.get('ig_kop', '(geen kop)'))}</li>" for entry in queue
+        )
+        queue_html = (
+            "<div style='background:#fff3cd;border-radius:4px;padding:10px 12px;"
+            "margin:12px 0 0'>"
+            f"<b>⚠️ {len(queue)} artikel{'en' if len(queue) != 1 else ''} nog in de "
+            "dagwachtrij</b> — de digest is niet gepost."
+            f"<ul style='margin:6px 0 0 16px;font-size:13px'>{items}</ul></div>"
+        )
+
+    username = data.get("username") or "technieuwsvandaag.nl"
+    return (
+        "<div style='background:#fff5f9;padding:16px;border-radius:6px;"
+        "margin:20px 0;border:1px solid #f5cfe0'>"
+        f"<h2 style='margin-top:0;color:#E1306C'>📸 Instagram — @{escape(username)}</h2>"
+        f"{_ig_followers_line(data)}"
+        "<h3 style='color:#E1306C;margin:16px 0 4px'>Posts vandaag</h3>"
+        f"{posts_html}"
+        f"{queue_html}"
+        "<p style='margin:10px 0 0;font-size:11px;color:#999'>"
+        "Bereik en profielweergaven ontbreken: die insights vereisen de "
+        "permissie <code>instagram_manage_insights</code> op het token.</p>"
+        "</div>"
     )
 
 

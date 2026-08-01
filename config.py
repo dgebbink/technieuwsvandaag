@@ -111,6 +111,11 @@ FACEBOOK_APP_SECRET: str = os.environ.get("FACEBOOK_APP_SECRET", "")
 # één (carousel-)post — lage volgers rechtvaardigen geen 5 posts/dag.
 INSTAGRAM_QUEUE_FILE: Path = BASE_DIR / "instagram_queue.json"
 
+# Dagelijkse volger-/posttelling voor het dagrapport. De Graph API geeft geen
+# volgerslijst en geen follower-insights zonder instagram_manage_insights, dus
+# de groei "sinds gisteren" bestaat alleen doordat we hem zelf wegschrijven.
+INSTAGRAM_STATS_FILE: Path = BASE_DIR / "instagram_stats.json"
+
 # Publieke image-host voor Instagram-postbeelden (los van WordPress — zie
 # INSTAGRAM_PLAN.md fase 5 "bekende bug": WP/Imagick crasht op het XMP-blok
 # dat het AI-label triggert). Static nginx-container op meterkast

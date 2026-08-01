@@ -25,6 +25,7 @@ import requests
 
 from bluesky_monitor import collect_daily_bluesky_report
 from budget_monitor import collect_funds_report
+from instagram_monitor import collect_daily_instagram_report
 from config import (
     LOGS_DIR,
     NOTIFICATION_EMAIL,
@@ -38,7 +39,11 @@ from config import (
     WP_URL,
     WP_USERNAME,
 )
-from mailer import render_bluesky_section, render_funds_section
+from mailer import (
+    render_bluesky_section,
+    render_funds_section,
+    render_instagram_section,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -251,6 +256,7 @@ def build_digest_html(
     date_str: str,
     bluesky_data: dict | None = None,
     funds_data: dict | None = None,
+    instagram_data: dict | None = None,
 ) -> str:
     """Bouwt de volledige HTML-digest op basis van de post-lijst."""
     today_nl = datetime.now(CET).strftime("%-d %B %Y")
@@ -281,15 +287,17 @@ def build_digest_html(
     {old_cards}"""
 
     report_section = ""
-    if bluesky_data is not None or funds_data is not None:
-        bluesky_html = render_bluesky_section(bluesky_data) if bluesky_data is not None else ""
-        funds_html   = render_funds_section(funds_data)     if funds_data   is not None else ""
+    if bluesky_data is not None or instagram_data is not None or funds_data is not None:
+        bluesky_html   = render_bluesky_section(bluesky_data)     if bluesky_data   is not None else ""
+        instagram_html = render_instagram_section(instagram_data) if instagram_data is not None else ""
+        funds_html     = render_funds_section(funds_data)         if funds_data     is not None else ""
         report_section = f"""
     <hr style="border:none; border-top:1px solid #e8e8e8; margin:28px 0 20px;">
     <h2 style="font-size:16px; color:#333; margin:0 0 16px;">
       📊 Dagrapport
     </h2>
     {bluesky_html}
+    {instagram_html}
     {funds_html}"""
 
     return f"""<!DOCTYPE html>
@@ -362,10 +370,15 @@ def send_digest(dry_run: bool = False) -> None:
     logger.info("Bluesky activiteit ophalen...")
     bluesky_data = collect_daily_bluesky_report()
 
+    logger.info("Instagram activiteit ophalen...")
+    instagram_data = collect_daily_instagram_report()
+
     logger.info("Tegoed ophalen...")
     funds_data = collect_funds_report()
 
-    html_body = build_digest_html(today_posts, old_drafts, date_str, bluesky_data, funds_data)
+    html_body = build_digest_html(
+        today_posts, old_drafts, date_str, bluesky_data, funds_data, instagram_data
+    )
 
     if dry_run:
         LOGS_DIR.mkdir(parents=True, exist_ok=True)

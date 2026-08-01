@@ -52,7 +52,17 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
   elke 6 dagen 11:00 CET `weekly_reel.py` (silent Instagram-Reel-recap — de
   cyclus rouleert de weekdag, zie hieronder), 19:45 CET `instagram_digest.py` (bundelt de dagelijkse Instagram-
   artikelen tot 1 post), 20:00 CET `daily_digest.py` (gecombineerd dagoverzicht:
-  artikelen + Bluesky + FAL.ai-tegoed via `bluesky_monitor.py` + `budget_monitor.py`).
+  artikelen + Bluesky + Instagram + FAL.ai-tegoed via `bluesky_monitor.py` +
+  `instagram_monitor.py` + `budget_monitor.py`).
+  De Instagram-sectie toont volgers, posts van vandaag met likes/reacties en de
+  stand van de dagwachtrij (staat daar om 20:00 nog iets in, dan is de digest van
+  19:45 mislukt). **Volgersgroei komt uit `instagram_stats.json`, niet uit de
+  API**: de Graph API geeft geen volgerslijst zoals Bluesky, en de insights
+  (bereik, profielweergaven, dagelijkse follower-delta) vereisen de permissie
+  `instagram_manage_insights` die dit token niet heeft — vandaar een eigen
+  dagelijkse telling. De delta is dus pas zichtbaar vanaf de tweede dag, en één
+  gemiste run betekent dat de volgende delta twee dagen omvat (het rapport noemt
+  daarom de datum van de vorige meting).
 - **Instagram-posting is een dagdigest + wekelijkse Reel, geen post per artikel**:
   elke `main.py`-run zet gequeuede artikelen in `instagram_queue.json`
   (`social_poster.queue_instagram_post()`) i.p.v. direct te posten — bij lage
