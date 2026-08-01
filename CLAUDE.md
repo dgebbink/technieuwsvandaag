@@ -230,14 +230,13 @@ Claude genereert een JSON met een `prompt` — fotorealistische beschrijving zon
 logo's/tekst (FAL.ai hallucineerde anders logo's). Daarna zet `add_ai_label()`
 het AI-label op het beeld.
 
-> **`negative_prompt` doet niets.** `fal-ai/flux/dev` kent dat veld niet (de
-> OpenAPI-schema heeft alleen prompt, image_size, num_images,
-> num_inference_steps, guidance_scale, seed, sync_mode, output_format,
-> acceleration, enable_safety_checker) — flux dev is guidance-distilled en heeft
-> geen CFG-negative. Alles wat écht moet landen, hoort in de positieve prompt.
-> Dat geldt ook voor `_SENSITIVE_NEGATIVE_PROMPT`: het wegduwen van
-> "smiling, cheerful, celebratory" gebeurt in de praktijk alleen doordat de
-> gevoelige promptvariant er zelf al om vraagt.
+> **Geen `negative_prompt` — dat veld bestaat niet.** `fal-ai/flux/dev` heeft
+> alleen prompt, image_size, num_images, num_inference_steps, guidance_scale,
+> seed, sync_mode, output_format, acceleration en enable_safety_checker; flux dev
+> is guidance-distilled en heeft geen CFG-negative. Wat we meestuurden werd dus
+> weggegooid. Uitsluitingen horen in de **positieve** prompt — flux volgt die
+> wél, zoals "no text, no logos" al liet zien. `generate_fal_image()` heeft de
+> parameter daarom niet meer; voeg hem niet opnieuw toe.
 
 **De persoonsvariant moet letterlijk in de prompt staan.** Claude schrijft de
 nieuwsprompt zelf en liet de gekozen sekse in 25 van de 53 *group*-beelden weg
@@ -275,7 +274,7 @@ opgebouwd:
 |---|---|---|
 | Wie schrijft de prompt | Claude schrijft de hele prompt | **vaste template**; Claude vult alleen `{thema}` in |
 | Sfeer | vast "bright, warm lighting, optimistic mood" | dramatisch zijlicht, hoog contrast, moody, 35mm, gedempt palet met één accentkleur |
-| Negative prompt | `_DEFAULT_NEGATIVE_PROMPT` (logo/tekst) | `_EDITORIAL_NEGATIVE_PROMPT` (+ cartoon, 3d render, distorted hands, oversaturated) |
+| Uitsluitingen | "no text, logos, lettering" in de prompt zelf | idem, plus "not a cartoon, not a 3d render, no oversaturated colours, no distorted hands" in de template |
 
 De beeldtaal voor editorials ligt vast in `_EDITORIAL_IMAGE_TEMPLATE` zodat ze als
 **serie** herkenbaar zijn; alleen het thema wisselt. Claude levert daarvoor een
@@ -290,8 +289,9 @@ kritische editorial ondermijnt het betoog.
 promptgeneratie van nieuwsartikelen. Bij menselijk leed (beeldmisbruik, geweld,
 uitbuiting, kindveiligheid…) vervalt zowel de opgewekte toon als de
 persoonsvariant: `_build_sensitive_image_prompt()` vraagt om een ingetogen,
-conceptueel beeld zonder slachtoffers, met `_SENSITIVE_NEGATIVE_PROMPT` erbij
-(duwt "smiling, cheerful, celebratory…" actief weg). Gewoon negatief zakelijk
+conceptueel beeld zonder slachtoffers, met `_SENSITIVE_PROMPT_SUFFIX` er
+deterministisch achter (sluit lachen, juichen, thumbs-up en verzadigde kleuren
+expliciet uit — in de prompt zelf, niet als negative). Gewoon negatief zakelijk
 nieuws — ontslagen, rechtszaken, boetes — telt bewust *niet* mee, anders vangt
 de guard de halve nieuwsstroom.
 

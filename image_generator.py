@@ -405,8 +405,25 @@ def is_sensitive_topic(title: str, article_text: str) -> bool:
     return False
 
 
+# Wat vroeger in _SENSITIVE_NEGATIVE_PROMPT stond. fal-ai/flux/dev kent geen
+# negative_prompt (staat niet in hun schema), dus daar deed het niets; flux volgt
+# wél expliciete uitsluitingen in de prompt zelf — zo werkt "no text, no logos"
+# in de andere varianten ook. Deterministisch aangehangen in plaats van via de
+# Claude-instructie: die laat instructies vallen (zie _enforce_person_in_prompt).
+_SENSITIVE_PROMPT_SUFFIX = (
+    " Sober and restrained throughout: nobody in the frame is smiling, laughing, "
+    "cheering or celebrating, there are no thumbs-up or triumphant gestures, no "
+    "festive or party atmosphere, and no vibrant, saturated or upbeat colour "
+    "palette."
+)
+
+
 def _build_sensitive_image_prompt(title: str, article_text: str) -> str:
-    """Beeldprompt voor een gevoelig onderwerp: ingetogen en zonder slachtoffer."""
+    """Beeldprompt voor een gevoelig onderwerp: ingetogen en zonder slachtoffer.
+
+    Post: de prompt eindigt altijd op _SENSITIVE_PROMPT_SUFFIX, ook wanneer
+          Claude ongeldige JSON teruggaf en de ruwe tekst wordt gebruikt
+    """
     instruction = (
         "Return a single JSON field:\n"
         "\"prompt\": A 2-sentence English prompt for a photorealistic image to "
@@ -428,11 +445,11 @@ def _build_sensitive_image_prompt(title: str, article_text: str) -> str:
     try:
         data = _extract_json(raw)
         if isinstance(data, dict) and data.get("prompt"):
-            return data["prompt"]
+            return data["prompt"].rstrip() + _SENSITIVE_PROMPT_SUFFIX
         raise ValueError("geen 'prompt'-veld")
     except Exception:
         logger.warning("Claude returned non-JSON for sensitive image prompt, using raw text")
-        return raw
+        return raw.rstrip() + _SENSITIVE_PROMPT_SUFFIX
 
 
 def generate_image_prompt(title: str, article_text: str) -> tuple[str, dict, bool]:
@@ -483,17 +500,16 @@ def generate_image_prompt(title: str, article_text: str) -> tuple[str, dict, boo
 # Vaste beeldtaal voor editorials, door de redactie vastgesteld. Alleen het
 # thema wisselt per stuk; de rest van de vorm staat bewust vast zodat editorials
 # als serie herkenbaar zijn en niet per stuk een andere stijl krijgen.
+# De uitsluitingen achteraan stonden vroeger in _EDITORIAL_NEGATIVE_PROMPT en
+# deden dus niets — flux/dev kent het veld niet. Nu onderdeel van de template.
 _EDITORIAL_IMAGE_TEMPLATE = (
     "Editorial photograph, conceptual composition representing {thema}, "
     "dramatic side lighting, high contrast, moody atmosphere, shallow depth of field, "
     "shot on 35mm film, photojournalistic style, muted color palette with one bold accent color, "
     "subtle tension in composition, no text, no logos, no watermarks, "
-    "professional editorial photography, 4k detail, realistic textures"
-)
-
-_EDITORIAL_NEGATIVE_PROMPT = (
-    "cartoon, illustration, 3d render, low quality, blurry, text overlay, "
-    "watermark, logo, distorted hands, extra limbs, oversaturated"
+    "professional editorial photography, 4k detail, realistic textures. "
+    "Not a cartoon, not an illustration, not a 3d render; no oversaturated "
+    "colours, no distorted hands or extra limbs, nothing low-quality or blurry."
 )
 
 
@@ -565,9 +581,7 @@ def generate_image_for_editorial(
         image_prompt = generate_editorial_image_prompt(title, editorial_text)
         logger.info("Gegenereerde editorial-prompt: %s", image_prompt)
 
-        result = generate_fal_image(
-            image_prompt, dest_path, negative_prompt=_EDITORIAL_NEGATIVE_PROMPT,
-        )
+        result = generate_fal_image(image_prompt, dest_path)
         if result:
             add_ai_label(dest_path)
         return result
@@ -693,26 +707,14 @@ def add_ai_label(image_path: str) -> None:
         logger.warning("AI-label toevoegen mislukt: %s", exc)
 
 
-_DEFAULT_NEGATIVE_PROMPT = (
-    "logo, text, letters, words, brand name, watermark, "
-    "typography, signage, written text, label, caption"
-)
-
-# Bij gevoelige onderwerpen ook de opgewekte beeldtaal actief wegduwen: het
-# model neigt anders alsnog naar lachende mensen, ook zonder dat de prompt erom
-# vraagt.
-_SENSITIVE_NEGATIVE_PROMPT = _DEFAULT_NEGATIVE_PROMPT + (
-    ", smiling, cheerful, celebratory, upbeat, laughing, thumbs up, "
-    "vibrant colors, party, joyful expression"
-)
-
-
-def generate_fal_image(
-    prompt: str,
-    dest_path: str,
-    negative_prompt: str = _DEFAULT_NEGATIVE_PROMPT,
-) -> Optional[str]:
+def generate_fal_image(prompt: str, dest_path: str) -> Optional[str]:
     """Generate an image via FAL.ai flux/dev and save it to dest_path.
+
+    Er is bewust géén negative_prompt-parameter: fal-ai/flux/dev kent dat veld
+    niet (het staat niet in hun OpenAPI-schema — flux dev is guidance-distilled
+    en heeft geen CFG-negative), dus alles wat we meestuurden werd weggegooid.
+    Uitsluitingen horen in de positieve prompt; zie _SENSITIVE_PROMPT_SUFFIX en
+    de "no text, no logos"-formuleringen in de promptvarianten.
 
     Pre:  FAL_API_KEY is set; prompt is non-empty; dest_path is writable
     Post: JPEG written to dest_path and path returned; None on any failure
@@ -729,7 +731,6 @@ def generate_fal_image(
             },
             json={
                 "prompt": prompt,
-                "negative_prompt": negative_prompt,
                 "image_size": "landscape_16_9",
                 "num_images": 1,
                 "enable_safety_checker": True,
@@ -774,20 +775,17 @@ def generate_image_for_article(
         return None
     try:
         logger.info("Afbeeldingsprompt genereren via Claude voor: %s", title)
-        image_prompt, variant, sensitive = generate_image_prompt(title, article_text)
+        # De sensitive-vlag stuurt hier niets meer aan: de ingetogen beeldtaal
+        # zit sinds _SENSITIVE_PROMPT_SUFFIX in de prompt zelf, waar flux hem
+        # ook echt leest.
+        image_prompt, variant, _sensitive = generate_image_prompt(title, article_text)
         if variant_out is not None:
             variant_out.update(variant)
         if prompt_out is not None:
             prompt_out["prompt"] = image_prompt
         logger.info("Gegenereerde prompt: %s", image_prompt)
 
-        result = generate_fal_image(
-            image_prompt,
-            dest_path,
-            negative_prompt=(
-                _SENSITIVE_NEGATIVE_PROMPT if sensitive else _DEFAULT_NEGATIVE_PROMPT
-            ),
-        )
+        result = generate_fal_image(image_prompt, dest_path)
         if result:
             add_ai_label(dest_path)
         return result
