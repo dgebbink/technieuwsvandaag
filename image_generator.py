@@ -5,6 +5,7 @@ Wordt gebruikt wanneer IMAGE_STRATEGY=generate is ingesteld.
 import json
 import logging
 import random
+import re
 from typing import Optional
 
 import requests
@@ -14,6 +15,7 @@ from config import (
     FAL_API_KEY,
     FAL_CREDIT_THRESHOLD,
     REQUEST_TIMEOUT,
+    IMAGE_ATTRACTIVE_WOMEN,
     IMAGE_DISTRIBUTION_FILE,
     IMAGE_DISTRIBUTION_TARGETS,
     IMAGE_MENTION_ETHNICITY_PROBABILITY,
@@ -135,24 +137,36 @@ def describe_variant(variant: dict) -> str:
 
 # Vier person-instructie templates, gekozen op basis van scene_population en
 # (bij solo) de losse mention_ethnicity toggle.
+#
+# De sekse moet er letterlijk in blijven staan. Eerder vroeg de group-template
+# om "predominantly {gender_plural}" en verbood in dezelfde adem het beschrijven
+# van "individual demographic traits" — Claude loste die tegenspraak op door de
+# sekse wég te laten ("three young colleagues"), en flux/dev vult zo'n
+# genderloze groep standaard met mannen. In de logs raakte dat 25 van de 53
+# group-beelden. Vandaar de expliciete MUST + de verbodenwoordenlijst; de
+# harde garantie zit in _enforce_person_in_prompt().
 _PERSON_TEMPLATE_SOLO_WITH_ETHNICITY = (
-    "If a person appears in the scene, show {gender}, {ethnicity}, around {age} "
-    "years old. Style them as a confident, professional individual with a "
-    "natural, genuine expression, natural skin texture, and realistic "
-    "proportions."
+    "The scene MUST show one person: {gender}, {ethnicity}, around {age} years "
+    "old. The prompt MUST name that person literally as \"{gender}\" — never a "
+    "genderless substitute such as \"a person\", \"a professional\", "
+    "\"an engineer\" or \"someone\". {appearance}"
 )
 _PERSON_TEMPLATE_SOLO_NO_ETHNICITY = (
-    "If a person appears in the scene, show {gender}, around {age} years old. "
-    "Style them as a confident, professional individual with a natural, genuine "
-    "expression, natural skin texture, and realistic proportions."
+    "The scene MUST show one person: {gender}, around {age} years old. The "
+    "prompt MUST name that person literally as \"{gender}\" — never a "
+    "genderless substitute such as \"a person\", \"a professional\", "
+    "\"an engineer\" or \"someone\". {appearance}"
 )
 _PERSON_TEMPLATE_GROUP = (
-    "Show a small group of colleagues naturally collaborating in the scene "
-    "(2-4 people). The group consists predominantly of {gender_plural} around "
-    "{age} years old, with some natural variety in ethnicity and background. "
-    "Do not focus the image on any single person's appearance or describe "
-    "individual demographic traits; keep the emphasis on the activity and "
-    "setting, with natural skin texture and realistic proportions throughout."
+    "The scene MUST show a small group of 2-4 people naturally collaborating, "
+    "and the prompt MUST name them literally as {gender_plural} around {age} "
+    "years old (for example: \"three {gender_plural} in their {age_words}\") — "
+    "never a genderless substitute such as \"colleagues\", \"people\", "
+    "\"professionals\", \"a team\" or \"individuals\". EVERY person in the "
+    "scene is {gender_plural}: do not add a colleague, a bystander or anyone "
+    "else of a different gender, not even in the background. Give them natural "
+    "variety in ethnicity and background, but do not single out one person's "
+    "ethnicity; keep the emphasis on the activity and setting. {appearance}"
 )
 
 # Meervoudsvorm van de gekozen sekse voor de group-template, zodat de groep
@@ -162,6 +176,25 @@ _GENDER_PLURAL = {
     "a man": "men",
     "a non-binary person": "non-binary people",
 }
+
+# Standaard styling: neutraal en zakelijk.
+_APPEARANCE_DEFAULT_SOLO = (
+    "Style them as a confident, professional individual with a natural, genuine "
+    "expression, natural skin texture, and realistic proportions."
+)
+_APPEARANCE_DEFAULT_GROUP = (
+    "Natural skin texture and realistic proportions throughout."
+)
+
+
+def _age_words(age: int) -> str:
+    """Leesbare leeftijdsaanduiding voor de group-voorbeeldzin ('mid-twenties')."""
+    decade = {1: "teens", 2: "twenties", 3: "thirties"}.get(age // 10, "twenties")
+    if age % 10 <= 3:
+        return f"early {decade}"
+    if age % 10 <= 6:
+        return f"mid-{decade}"
+    return f"late {decade}"
 
 
 def build_person_instruction(variant: dict) -> str:
@@ -173,17 +206,153 @@ def build_person_instruction(variant: dict) -> str:
     if variant.get("scene_population") == "group":
         gender_plural = _GENDER_PLURAL.get(variant["gender"], "people")
         return _PERSON_TEMPLATE_GROUP.format(
-            gender_plural=gender_plural, age=variant["age"]
+            gender_plural=gender_plural,
+            age=variant["age"],
+            age_words=_age_words(variant["age"]),
+            appearance=build_appearance_clause(variant),
         )
     if variant.get("mention_ethnicity"):
         return _PERSON_TEMPLATE_SOLO_WITH_ETHNICITY.format(
             gender=variant["gender"],
             ethnicity=variant["ethnicity"],
             age=variant["age"],
+            appearance=build_appearance_clause(variant),
         )
     return _PERSON_TEMPLATE_SOLO_NO_ETHNICITY.format(
-        gender=variant["gender"], age=variant["age"]
+        gender=variant["gender"],
+        age=variant["age"],
+        appearance=build_appearance_clause(variant),
     )
+
+
+# Styling voor de vrouwelijke variant, achter IMAGE_ATTRACTIVE_WOMEN.
+# Bewust een aparte clausule per scene_population: in een groep werkt "eye
+# contact with the camera" niet.
+_APPEARANCE_ATTRACTIVE_SOLO = (
+    "She is strikingly beautiful and sexy: a photogenic, model-like face with "
+    "symmetrical features, expressive eyes and full lips, glossy well-styled "
+    "hair, subtle glamour makeup, a slim and shapely figure, and a fashionable, "
+    "form-fitting outfit that flatters her figure while still suiting the "
+    "setting. Alluring, self-assured presence, confident posture, natural skin "
+    "texture and realistic proportions."
+)
+_APPEARANCE_ATTRACTIVE_GROUP = (
+    "The women are strikingly beautiful and sexy: photogenic, model-like faces, "
+    "glossy well-styled hair, subtle glamour makeup, slim and shapely figures, "
+    "and fashionable, form-fitting outfits that flatter their figures while "
+    "still suiting the setting. Natural skin texture and realistic proportions "
+    "throughout."
+)
+# De jongste leeftijdsbucket begint op 18. Beeldmodellen renderen een "18-jarige"
+# regelmatig duidelijk jonger, en juist in combinatie met bovenstaande styling
+# mag daar geen twijfel over bestaan — vandaar deze harde toevoeging onder de
+# grens. Ophogen van de bucket zelf zou de leeftijdsverdeling wijzigen.
+_ADULT_REINFORCEMENT_MIN_AGE = 21
+_ADULT_REINFORCEMENT = (
+    " She is unmistakably a grown adult woman with mature adult facial features "
+    "and an adult body; absolutely no teenage or youthful-minor appearance."
+)
+_ADULT_REINFORCEMENT_GROUP = (
+    " They are unmistakably grown adult women with mature adult facial features "
+    "and adult bodies; absolutely no teenage or youthful-minor appearance."
+)
+
+
+def build_appearance_clause(variant: dict) -> str:
+    """Kies de uiterlijk-styling voor deze variant.
+
+    Pre:  variant bevat gender, age en scene_population
+    Post: de attractieve styling alleen bij gender 'a woman' én
+          IMAGE_ATTRACTIVE_WOMEN; alle andere varianten houden de neutrale,
+          zakelijke styling. Onder _ADULT_REINFORCEMENT_MIN_AGE komt er een
+          expliciete volwassen-bevestiging achter.
+    """
+    group = variant.get("scene_population") == "group"
+    if not (IMAGE_ATTRACTIVE_WOMEN and variant.get("gender") == "a woman"):
+        return _APPEARANCE_DEFAULT_GROUP if group else _APPEARANCE_DEFAULT_SOLO
+
+    clause = _APPEARANCE_ATTRACTIVE_GROUP if group else _APPEARANCE_ATTRACTIVE_SOLO
+    if int(variant.get("age", 0)) < _ADULT_REINFORCEMENT_MIN_AGE:
+        clause += _ADULT_REINFORCEMENT_GROUP if group else _ADULT_REINFORCEMENT
+    return clause
+
+
+# Markers waaraan te zien is dat de attractieve styling al in de prompt zit,
+# ook als Claude hem in eigen woorden herschreef.
+_ATTRACTIVE_MARKERS = (
+    "sexy",
+    "strikingly beautiful",
+    "model-like",
+    "glamour makeup",
+    "form-fitting",
+    "alluring",
+)
+
+# Woordpatronen om te toetsen of de gekozen sekse écht in de prompt staat.
+# \b voorkomt dat "man" matcht binnen "woman"/"human" en "men" binnen "women".
+_GENDER_PATTERNS = {
+    "a woman": r"\bwom[ae]n\b",
+    "a man": r"\b(?:man|men|male|males)\b",
+    "a non-binary person": r"non-?binary",
+}
+
+
+def _enforce_person_in_prompt(prompt: str, variant: dict) -> str:
+    """Garandeer dat de gekozen persoonsvariant daadwerkelijk in de prompt staat.
+
+    De prompt-instructie alleen is niet betrouwbaar gebleken: Claude liet de
+    sekse in bijna de helft van de group-prompts weg, waarna flux/dev er mannen
+    van maakte. Deze functie is de deterministische vangnetlaag — de instructie
+    zorgt voor een natuurlijk verweven formulering, dit zorgt dat het er hoe dan
+    ook staat.
+
+    Pre:  variant is niet leeg (bij een gevoelig onderwerp niet aanroepen)
+    Post: prompt met, indien ontbrekend, een expliciete persoonszin erachter;
+          de uiterlijk-styling van build_appearance_clause() staat er altijd in
+    """
+    if not variant:
+        return prompt
+
+    gender = variant.get("gender", "")
+    pattern = _GENDER_PATTERNS.get(gender)
+    group = variant.get("scene_population") == "group"
+    age = variant.get("age")
+
+    if pattern and not re.search(pattern, prompt, re.IGNORECASE):
+        if group:
+            plural = _GENDER_PLURAL.get(gender, "people")
+            addition = (
+                f" All the people in the scene are {plural} around {age} years old."
+            )
+        else:
+            addition = f" The person in the scene is {gender} around {age} years old."
+        logger.warning(
+            "Sekse ontbrak in de gegenereerde prompt (%s) — expliciet toegevoegd",
+            describe_variant(variant),
+        )
+        prompt = prompt.rstrip() + addition
+
+    # Een gemengde groep glipt anders door de sekse-check heen: de prompt noemt
+    # wél "women", maar zet er "one male colleague" of "and a colleague" naast
+    # (2× waargenomen in de logs). Daarom bij een groep altijd expliciet
+    # afbakenen — flux/dev maakt van een genderloze "colleague" standaard een man.
+    if group and gender in _GENDER_PLURAL:
+        plural = _GENDER_PLURAL[gender]
+        prompt = prompt.rstrip() + (
+            f" Every single person visible in the scene is one of the {plural}, "
+            f"all around {age} years old; no colleague, bystander or background "
+            "figure of any other gender appears anywhere in the frame."
+        )
+
+    # Claude herformuleert de styling meestal (en laat 'sexy' dan weg), dus
+    # toetsen op meerdere markers — anders wordt de clausule dubbel aangehangen.
+    if IMAGE_ATTRACTIVE_WOMEN and gender == "a woman":
+        low = prompt.lower()
+        if not any(marker in low for marker in _ATTRACTIVE_MARKERS):
+            logger.info("Uiterlijk-styling ontbrak in de prompt — expliciet toegevoegd")
+            prompt = prompt.rstrip() + " " + build_appearance_clause(variant)
+
+    return prompt
 
 
 def is_sensitive_topic(title: str, article_text: str) -> bool:
@@ -276,7 +445,7 @@ def generate_image_prompt(title: str, article_text: str) -> tuple[str, dict, boo
 
     instruction = (
         "Return a single JSON field:\n"
-        "\"prompt\": A 2-sentence English prompt for a photorealistic AI image "
+        "\"prompt\": A 2-3 sentence English prompt for a photorealistic AI image "
         "matching this tech news article. Use bright, warm lighting and an optimistic "
         "mood. Avoid dark backgrounds. Choose light, modern, realistic environments "
         "such as daylit offices, meeting rooms, or labs with crisp interfaces. "
@@ -296,11 +465,11 @@ def generate_image_prompt(title: str, article_text: str) -> tuple[str, dict, boo
         # ```json-fences en stuurde dan de ruwe tekst als prompt naar FAL.ai.
         data = _extract_json(raw)
         if isinstance(data, dict) and data.get("prompt"):
-            return data["prompt"], variant, False
+            return _enforce_person_in_prompt(data["prompt"], variant), variant, False
         raise ValueError("geen 'prompt'-veld")
     except Exception:
         logger.warning("Claude returned non-JSON for image prompt, using raw text")
-        return raw, variant, False
+        return _enforce_person_in_prompt(raw, variant), variant, False
 
 
 # Vaste beeldtaal voor editorials, door de redactie vastgesteld. Alleen het

@@ -227,9 +227,43 @@ in die meta, zodat een revisie niets uit WordPress hoeft terug te halen.
 ## Afbeeldingsgeneratie (`IMAGE_STRATEGY=generate`)
 
 Claude genereert een JSON met een `prompt` — fotorealistische beschrijving zonder
-logo's/tekst (FAL.ai hallucineerde anders logo's). FAL.ai krijgt ook een
-`negative_prompt` mee: `"logo, text, letters, words, brand name, watermark, ..."`.
-Daarna zet `add_ai_label()` het AI-label op het beeld.
+logo's/tekst (FAL.ai hallucineerde anders logo's). Daarna zet `add_ai_label()`
+het AI-label op het beeld.
+
+> **`negative_prompt` doet niets.** `fal-ai/flux/dev` kent dat veld niet (de
+> OpenAPI-schema heeft alleen prompt, image_size, num_images,
+> num_inference_steps, guidance_scale, seed, sync_mode, output_format,
+> acceleration, enable_safety_checker) — flux dev is guidance-distilled en heeft
+> geen CFG-negative. Alles wat écht moet landen, hoort in de positieve prompt.
+> Dat geldt ook voor `_SENSITIVE_NEGATIVE_PROMPT`: het wegduwen van
+> "smiling, cheerful, celebratory" gebeurt in de praktijk alleen doordat de
+> gevoelige promptvariant er zelf al om vraagt.
+
+**De persoonsvariant moet letterlijk in de prompt staan.** Claude schrijft de
+nieuwsprompt zelf en liet de gekozen sekse in 25 van de 53 *group*-beelden weg
+("three young colleagues"); flux/dev vult zo'n genderloze groep standaard met
+mannen, dus een gevraagde vrouw werd een man. De group-template sprak zichzelf
+tegen — hij vroeg om "predominantly women" en verbood tegelijk "individual
+demographic traits". Nu eisen de templates de sekse expliciet op, en
+`_enforce_person_in_prompt()` hangt hem er deterministisch achter als hij alsnog
+ontbreekt (met een `WARNING` in de log, zodat wegzakken zichtbaar blijft). Solo
+was altijd al 31/31 goed.
+
+Een *group* is bovendien altijd één sekse. Alleen de sekse eisen was niet
+genoeg: de prompt noemde dan wel "women", maar Claude zette er "one male
+colleague" of "and a colleague" naast — en van een genderloze "colleague" maakt
+flux/dev standaard een man. `_enforce_person_in_prompt()` hangt er bij een groep
+daarom altijd een expliciete afbakening achter (geen bijfiguren van een andere
+sekse, ook niet op de achtergrond); de sekse-check zelf zou zo'n gemengde groep
+niet zien, want het gevraagde woord stáát er.
+
+**Styling van de vrouwelijke variant** staat achter `IMAGE_ATTRACTIVE_WOMEN`
+(default aan): bij `gender == "a woman"` komt er een nadrukkelijk aantrekkelijke
+beschrijving in plaats van de neutrale zakelijke; man en non-binair houden de
+standaard. Onder de 21 jaar (`_ADULT_REINFORCEMENT_MIN_AGE`) gaat er een harde
+"unmistakably a grown adult"-zin achteraan — de bucket 18-22 bestaat, en
+beeldmodellen renderen een "18-jarige" regelmatig duidelijk jonger. Zet de env
+`IMAGE_ATTRACTIVE_WOMEN=false` om alle varianten weer gelijk te trekken.
 
 Twee promptvarianten, bewust gescheiden — en op een fundamenteel andere manier
 opgebouwd:
