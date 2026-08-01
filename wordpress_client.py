@@ -626,15 +626,57 @@ def publish_post(post_id: int) -> dict:
     return resp.json()
 
 
+def delete_media(media_id: int) -> bool:
+    """Permanently deletes a media item (bypasses trash).
+
+    Pre:  media_id is a valid attachment ID
+    Post: True bij succes, False bij elke fout — de aanroeper mag hier niet op
+          klappen; een achtergebleven bestand is minder erg dan een gefaalde flow
+    """
+    client = WordPressClient()
+    try:
+        resp = client.session.delete(
+            f"{client.base_url}/media/{media_id}",
+            params={"force": True},  # media kent geen prullenbak zonder force
+            timeout=30,
+        )
+        resp.raise_for_status()
+        logger.info("Media %d verwijderd", media_id)
+        return True
+    except requests.RequestException as exc:
+        logger.warning("Media %d verwijderen mislukt: %s", media_id, exc)
+        return False
+
+
 def update_featured_image(post_id: int, image_path: str, alt_text: str = "") -> str:
-    """Uploads a new image and sets it as the featured image for an existing post.
+    """Uploads a new image, sets it as featured image and removes the old one.
+
+    Het oude bestand wordt pas verwijderd nádat de post op de nieuwe media staat:
+    andersom zou een mislukte update de post zonder afbeelding achterlaten, en
+    het thema rendert dan een grijs "Geen afbeelding"-vlak van 420px.
+
     Pre:  post_id is a valid WP post ID, image_path exists on disk
-    Post: new image uploaded and set as featured_media; returns new image URL or ""
+    Post: new image uploaded and set as featured_media; de vorige featured media
+          is verwijderd (best effort — mislukt dat, dan blijft alleen een wees
+          achter). Returns new image URL or ""
     """
     client = WordPressClient()
     media  = client.upload_image(image_path, alt_text=alt_text)
     if not media:
         return ""
+
+    old_media_id = 0
+    try:
+        current = client.session.get(
+            f"{client.base_url}/posts/{post_id}",
+            params={"_fields": "featured_media"},
+            timeout=30,
+        )
+        current.raise_for_status()
+        old_media_id = int(current.json().get("featured_media") or 0)
+    except (requests.RequestException, ValueError, TypeError) as exc:
+        logger.warning("Vorige featured media van post %d onbekend: %s", post_id, exc)
+
     resp = client.session.post(
         f"{client.base_url}/posts/{post_id}",
         json={"featured_media": media["id"]},
@@ -642,6 +684,10 @@ def update_featured_image(post_id: int, image_path: str, alt_text: str = "") -> 
     )
     resp.raise_for_status()
     logger.info("Featured image bijgewerkt voor post %d (media %d)", post_id, media["id"])
+
+    if old_media_id and old_media_id != media["id"]:
+        delete_media(old_media_id)
+
     return media["url"]
 
 
