@@ -2,12 +2,24 @@
 Configuratie: laadt environment variables en definieert gedeelde paden en instellingen.
 """
 import os
+import time
 from datetime import date, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Alles in dit project rekent in Amsterdam-tijd, dus pin die vast voordat er
+# ook maar één datum wordt berekend. Cron geeft TZ niet door aan zijn jobs —
+# die vallen terug op /etc/localtime, en dat staat hier op Etc/UTC. Zonder
+# deze pin denkt elk cron-proces dat het twee uur vroeger is: `scheduler.py`
+# bouwde om 00:00 het schema van *gisteren* (waardoor de Reel-regel een dag te
+# laat in de crontab kwam en `weekly_reel.py` hem dan terecht weigerde), en
+# logregels stonden in UTC. Interactief verandert dit niets: daar staat TZ al
+# op Europe/Amsterdam.
+os.environ["TZ"] = "Europe/Amsterdam"
+time.tzset()
 
 BASE_DIR: Path = Path(__file__).parent
 

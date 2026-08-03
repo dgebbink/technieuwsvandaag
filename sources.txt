@@ -6,6 +6,7 @@ www.Androidworld.nl
 emerce.nl|https://emerce.nl/feed
 security.nl
 computable.nl|https://www.computable.nl/feed/
+agconnect.nl
 // EN
 www.techcrunch.com
 www.wired.com
@@ -29,3 +30,5 @@ theregister.com|https://theregister.com/feed
 macrumors.com|https://macrumors.com/rss.xml
 theguardian.com|https://www.theguardian.com/uk/rss
 bleepingcomputer.com|https://www.bleepingcomputer.com/feed/
+thenextweb.com|https://thenextweb.com/feed
+androidauthority.com|https://www.androidauthority.com/feed/

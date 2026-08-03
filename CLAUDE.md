@@ -13,13 +13,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    verwijderen zonder snake elders te regelen.
 3. **Gebruik altijd `venv/bin/python3`** (let op: `venv/`, niet `.venv/` zoals de
    andere projecten) — system Python is pyenv-managed.
-4. **Cron plant in de klok van de daemon, niet in UTC.** Die staat hier op
-   Europe/Amsterdam (geërfd uit zijn omgeving — `/etc/timezone` zegt misleidend
-   `Etc/UTC`), en `CRON_TZ` werkt niet: cron 3.0pl1 negeert het. `scheduler.py`
-   detecteert de offset daarom op runtime (`cet_to_cron_clock()`) en logt hem.
-   Reken tijden dus **niet** zelf om naar UTC — dat was jarenlang de bug waardoor
-   élke job twee uur te vroeg vuurde (artikelen vanaf 05:00 i.p.v. 07:00, de Reel
-   zondag om 17:00 i.p.v. 19:00). Gevonden en gefixt 2026-07-27.
+4. **Reken cron-tijden nooit om — alles in de crontab staat in Amsterdam-tijd.**
+   De daemon plant in die zone (geërfd uit zijn omgeving; `/etc/timezone` zegt
+   misleidend `Etc/UTC`), maar geeft zijn `TZ` níét door aan de jobs: die zagen
+   UTC. Daardoor vuurde élke job twee uur te vroeg, en bouwde `scheduler.py` om
+   00:00 het schema van *gisteren* — met als stil gevolg dat de Reel-regel een
+   dag te laat in de crontab kwam en `weekly_reel.py` hem dan terecht weigerde,
+   dus de Reel postte helemaal niet meer. Twee eerdere "fixes" (`cet_to_utc()`,
+   daarna runtime-detectie met `cet_to_cron_clock()`) maakten het erger: die
+   detectie leest de tijdzone van het eigen proces, en dat is juist niet de klok
+   van de daemon. Nu zet `build_crontab()` een `TZ=Europe/Amsterdam`-regel
+   bovenaan de crontab en pint `config.py` diezelfde zone bij import (`tzset`),
+   zodat planning, `date.today()` en logtijden gelijklopen. `CRON_TZ` is geen
+   alternatief — cron 3.0pl1 negeert het. Gevonden en gefixt 2026-08-03.
 
 ## Commands
 
