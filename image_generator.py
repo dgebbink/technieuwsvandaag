@@ -234,13 +234,13 @@ def build_person_instruction(variant: dict) -> str:
 _APPEARANCE_ATTRACTIVE_SOLO = (
     "Style her like a confident woman with a natural, authentic expression, "
     "natural skin texture and realistic proportions, who is simultaneously "
-    "strikingly beautiful and slightly erotic: natural, well-formed figure. "
+    "slightly erotic: natural, well-formed figure. "
     "Seductive yet confident and competent, never passive or decorative."
 )
 _APPEARANCE_ATTRACTIVE_GROUP = (
     "Give them the appearance of confident professionals with a natural, "
-    "authentic expression, who are simultaneously strikingly beautiful and "
-    "subtly erotic: natural and well-formed figures and fashionable, "
+    "authentic expression, who are simultaneously subtly erotic: natural and "
+    "well-formed figures and fashionable, "
     "form-fitting outfits that flatter their figure. They are committed to "
     "their work, never passive or decorative. Natural skin texture and "
     "realistic proportions throughout."
@@ -264,7 +264,6 @@ def build_appearance_clause(variant: dict) -> str:
 # ook als Claude hem in eigen woorden herschreef.
 _ATTRACTIVE_MARKERS = (
     "erotic",
-    "strikingly beautiful",
     "seductive",
     "well-formed",
     "form-fitting",
