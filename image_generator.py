@@ -380,8 +380,8 @@ def is_sensitive_topic(title: str, article_text: str) -> bool:
 
 # Wat vroeger in _SENSITIVE_NEGATIVE_PROMPT stond. fal-ai/flux/dev kent geen
 # negative_prompt (staat niet in hun schema), dus daar deed het niets; flux volgt
-# wél expliciete uitsluitingen in de prompt zelf — zo werkt "no text, no logos"
-# in de andere varianten ook. Deterministisch aangehangen in plaats van via de
+# wél expliciete uitsluitingen in de prompt zelf — zo werkt "no text or
+# lettering" in de andere varianten ook. Deterministisch aangehangen in plaats van via de
 # Claude-instructie: die laat instructies vallen (zie _enforce_person_in_prompt).
 _SENSITIVE_PROMPT_SUFFIX = (
     " Sober and restrained throughout: nobody in the frame is smiling, laughing, "
@@ -407,7 +407,7 @@ def _build_sensitive_image_prompt(title: str, article_text: str) -> str:
         "Prefer a conceptual, understated scene — architecture, empty spaces, "
         "objects, institutional or infrastructural context — with neutral, even "
         "lighting and a calm, serious mood. "
-        "Include no text, logos, lettering or brand marks. "
+        "Include no text or lettering. "
         "Note: if the article refers to AI or language 'models', this means LLM/AI "
         "models, not fashion or photo models.\n\n"
         f"Article title: {title}\n"
@@ -479,7 +479,7 @@ _EDITORIAL_IMAGE_TEMPLATE = (
     "Editorial photograph, conceptual composition representing {thema}, "
     "dramatic side lighting, high contrast, moody atmosphere, shallow depth of field, "
     "shot on 35mm film, photojournalistic style, muted color palette with one bold accent color, "
-    "subtle tension in composition, no text, no logos, no watermarks, "
+    "subtle tension in composition, no text, no watermarks, "
     "professional editorial photography, 4k detail, realistic textures. "
     "Not a cartoon, not an illustration, not a 3d render; no oversaturated "
     "colours, no distorted hands or extra limbs, nothing low-quality or blurry."
@@ -687,7 +687,7 @@ def generate_fal_image(prompt: str, dest_path: str) -> Optional[str]:
     niet (het staat niet in hun OpenAPI-schema — flux dev is guidance-distilled
     en heeft geen CFG-negative), dus alles wat we meestuurden werd weggegooid.
     Uitsluitingen horen in de positieve prompt; zie _SENSITIVE_PROMPT_SUFFIX en
-    de "no text, no logos"-formuleringen in de promptvarianten.
+    de "no text"-formuleringen in de promptvarianten.
 
     Pre:  FAL_API_KEY is set; prompt is non-empty; dest_path is writable
     Post: JPEG written to dest_path and path returned; None on any failure

@@ -251,7 +251,7 @@ het AI-label op het beeld.
 > seed, sync_mode, output_format, acceleration en enable_safety_checker; flux dev
 > is guidance-distilled en heeft geen CFG-negative. Wat we meestuurden werd dus
 > weggegooid. Uitsluitingen horen in de **positieve** prompt — flux volgt die
-> wél, zoals "no text, no logos" al liet zien. `generate_fal_image()` heeft de
+> wél, zoals "no text or lettering" al liet zien. `generate_fal_image()` heeft de
 > parameter daarom niet meer; voeg hem niet opnieuw toe.
 
 **De persoonsvariant moet letterlijk in de prompt staan.** Claude schrijft de
@@ -297,7 +297,9 @@ opgebouwd:
 |---|---|---|
 | Wie schrijft de prompt | Claude schrijft de hele prompt | **vaste template**; Claude vult alleen `{thema}` in |
 | Sfeer | vast "bright lighting, optimistic mood" | dramatisch zijlicht, hoog contrast, moody, 35mm, gedempt palet met één accentkleur |
-| Uitsluitingen | "no text, logos, lettering" in de prompt zelf | idem, plus "not a cartoon, not a 3d render, no oversaturated colours, no distorted hands" in de template |
+| Uitsluitingen | "no text or lettering" in de prompt zelf | idem, plus "not a cartoon, not a 3d render, no oversaturated colours, no distorted hands" in de template |
+
+Logo-uitsluitingen zijn er in alle drie de varianten uit (2026-08-04, op verzoek). Ze stonden er omdat flux/dev anders merktekens hallucineert; zie je vervormde pseudo-logo's terugkomen, dan is dát de plek om te kijken.
 
 De beeldtaal voor editorials ligt vast in `_EDITORIAL_IMAGE_TEMPLATE` zodat ze als
 **serie** herkenbaar zijn; alleen het thema wisselt. Claude levert daarvoor een
