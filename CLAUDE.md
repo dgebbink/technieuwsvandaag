@@ -296,7 +296,7 @@ opgebouwd:
 | | `generate_image_prompt()` (nieuws) | `generate_editorial_image_prompt()` |
 |---|---|---|
 | Wie schrijft de prompt | Claude schrijft de hele prompt | **vaste template**; Claude vult alleen `{thema}` in |
-| Sfeer | vast "bright, warm lighting, optimistic mood" | dramatisch zijlicht, hoog contrast, moody, 35mm, gedempt palet met één accentkleur |
+| Sfeer | vast "bright lighting, optimistic mood" | dramatisch zijlicht, hoog contrast, moody, 35mm, gedempt palet met één accentkleur |
 | Uitsluitingen | "no text, logos, lettering" in de prompt zelf | idem, plus "not a cartoon, not a 3d render, no oversaturated colours, no distorted hands" in de template |
 
 De beeldtaal voor editorials ligt vast in `_EDITORIAL_IMAGE_TEMPLATE` zodat ze als

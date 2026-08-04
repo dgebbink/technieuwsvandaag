@@ -340,7 +340,7 @@ def _enforce_person_in_prompt(prompt: str, variant: dict) -> str:
 def is_sensitive_topic(title: str, article_text: str) -> bool:
     """Beoordeelt of de standaard beeldstijl ongepast is voor dit artikel.
 
-    De nieuwsprompt dwingt "bright, warm lighting and an optimistic mood" af en
+    De nieuwsprompt dwingt "bright lighting and an optimistic mood" af en
     zet standaard een persoon centraal. Bij een artikel over bijvoorbeeld
     beeldmisbruik levert dat een opgewekte foto met een vrouw als middelpunt op
     — tone-deaf en mogelijk hervictimiserend. Deze check zet die twee dingen uit.
@@ -445,7 +445,7 @@ def generate_image_prompt(title: str, article_text: str) -> tuple[str, dict, boo
     instruction = (
         "Return a single JSON field:\n"
         "\"prompt\": A 2-3 sentence English prompt for a photorealistic AI image "
-        "matching this tech news article. Use bright, warm lighting and an optimistic "
+        "matching this tech news article. Use bright lighting and an optimistic "
         "mood. Avoid dark backgrounds. Choose light, modern, realistic environments "
         "such as daylit offices, meeting rooms, or labs with crisp interfaces. "
         "Convey the brand identity through color palette, product design, "
@@ -493,7 +493,7 @@ def generate_editorial_image_prompt(title: str, editorial_text: str) -> str:
     Bewust anders dan generate_image_prompt(): daar schrijft Claude de hele
     prompt, hier alleen het onderwerp. De beeldtaal (zijlicht, hoog contrast,
     35mm, gedempt palet met één accentkleur) ligt vast, zodat editorials als
-    serie herkenbaar blijven — en zodat de "bright, warm, optimistic" toon van
+    serie herkenbaar blijven — en zodat de "bright, optimistic" toon van
     de nieuwsprompt, die een kritisch stuk ondermijnt, hier niet kan terugkomen.
 
     Pre:  claude CLI is beschikbaar; title is niet-leeg
