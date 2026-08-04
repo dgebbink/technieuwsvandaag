@@ -60,8 +60,7 @@ IMAGE_STRATEGY: str = os.environ.get("IMAGE_STRATEGY", "generate")
 IMAGE_DISTRIBUTION_FILE: Path = BASE_DIR / "image_distribution.json"
 IMAGE_DISTRIBUTION_TARGETS: dict = {
     "gender": {
-        "a woman": 70,
-        "a non-binary person": 15,
+        "a woman": 85,
         "a man": 15,
     },
     "ethnicity": {
@@ -73,7 +72,7 @@ IMAGE_DISTRIBUTION_TARGETS: dict = {
         "mixed-race": 1,
     },
     "age_bucket": {
-        "18-22": 1,
+        "20-22": 1,
         "23-26": 1,
         "27-30": 1,
     },
@@ -86,14 +85,6 @@ IMAGE_DISTRIBUTION_TARGETS: dict = {
 # ethniciteit expliciet in de solo person-instructie wordt benoemd.
 IMAGE_MENTION_ETHNICITY_PROBABILITY: float = 0.30
 
-# Redactionele keuze: de vrouwelijke beeldvariant krijgt een nadrukkelijk
-# aantrekkelijke styling i.p.v. de neutrale zakelijke beschrijving. Geldt alleen
-# voor gender 'a woman'; man en non-binair houden de standaardstyling. Zet op
-# false om alle varianten weer gelijk te trekken.
-IMAGE_ATTRACTIVE_WOMEN: bool = (
-    os.environ.get("IMAGE_ATTRACTIVE_WOMEN", "true").strip().lower()
-    in ("1", "true", "yes")
-)
 FAL_API_KEY: str = os.environ.get("FAL_API_KEY", "")
 # Admin-scoped FAL.ai key voor de billing- en usage-endpoints (api.fal.ai/v1/...).
 # De gewone FAL_API_KEY (API-scope) mag deze endpoints niet (403). Aanmaken via

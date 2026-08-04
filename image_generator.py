@@ -15,7 +15,6 @@ from config import (
     FAL_API_KEY,
     FAL_CREDIT_THRESHOLD,
     REQUEST_TIMEOUT,
-    IMAGE_ATTRACTIVE_WOMEN,
     IMAGE_DISTRIBUTION_FILE,
     IMAGE_DISTRIBUTION_TARGETS,
     IMAGE_MENTION_ETHNICITY_PROBABILITY,
@@ -174,7 +173,6 @@ _PERSON_TEMPLATE_GROUP = (
 _GENDER_PLURAL = {
     "a woman": "women",
     "a man": "men",
-    "a non-binary person": "non-binary people",
 }
 
 # Standaard styling: neutraal en zakelijk.
@@ -225,73 +223,50 @@ def build_person_instruction(variant: dict) -> str:
     )
 
 
-# Styling voor de vrouwelijke variant, achter IMAGE_ATTRACTIVE_WOMEN.
-# Bewust bóvenop de zakelijke basis en niet in plaats daarvan: de twee sluiten
-# elkaar niet uit, en zonder die basis stond er "sexy" tegenover het "confident,
-# professional" van de mannelijke variant — een verschil dat op een nieuwssite
-# opvalt zodra je een paar artikelen achter elkaar ziet.
-# Aparte clausule per scene_population: in een groep werkt "eye contact with the
-# camera" niet.
+# Styling voor de vrouwelijke variant; de mannelijke houdt de neutrale basis.
+# De erotische omschrijving staat bewust bóvenop de zakelijke en niet in plaats
+# daarvan: de twee sluiten elkaar niet uit, en zonder die basis stond ze
+# tegenover het "confident, professional" van de mannelijke variant — een
+# verschil dat op een nieuwssite opvalt zodra je een paar artikelen achter
+# elkaar ziet.
+# Aparte clausule per scene_population: in een groep werkt een enkelvoudige,
+# op de camera gerichte omschrijving niet.
 _APPEARANCE_ATTRACTIVE_SOLO = (
-    "Style her as a confident, professional woman with a natural, genuine "
-    "expression, natural skin texture and realistic proportions, who is at the "
-    "same time strikingly beautiful and sexy: a photogenic, model-like face "
-    "with symmetrical features, expressive eyes and full lips, "
-    "glossy well-styled hair, subtle glamour makeup, a slim and shapely figure, "
-    "and a fashionable, form-fitting outfit that flatters her figure while "
-    "still suiting the professional setting. Alluring but self-assured and "
-    "competent, never passive or decorative."
+    "Style her like a confident woman with a natural, authentic expression, "
+    "natural skin texture and realistic proportions, who is simultaneously "
+    "strikingly beautiful and slightly erotic: natural, well-formed figure. "
+    "Seductive yet confident and competent, never passive or decorative."
 )
 _APPEARANCE_ATTRACTIVE_GROUP = (
-    "Style them as confident professionals with natural, genuine expressions, "
-    "who are at the same time strikingly beautiful and sexy: photogenic, "
-    "model-like faces, glossy well-styled hair, subtle glamour makeup, slim and "
-    "shapely figures, and fashionable, form-fitting outfits that flatter their "
-    "figures while still suiting the professional setting. They are engaged in "
-    "the work, never passive or decorative. Natural skin texture and realistic "
-    "proportions throughout."
-)
-# De jongste leeftijdsbucket begint op 18. Beeldmodellen renderen een "18-jarige"
-# regelmatig duidelijk jonger, en juist in combinatie met bovenstaande styling
-# mag daar geen twijfel over bestaan — vandaar deze harde toevoeging onder de
-# grens. Ophogen van de bucket zelf zou de leeftijdsverdeling wijzigen.
-_ADULT_REINFORCEMENT_MIN_AGE = 21
-_ADULT_REINFORCEMENT = (
-    " She is unmistakably a grown adult woman with mature adult facial features "
-    "and an adult body; absolutely no teenage or youthful-minor appearance."
-)
-_ADULT_REINFORCEMENT_GROUP = (
-    " They are unmistakably grown adult women with mature adult facial features "
-    "and adult bodies; absolutely no teenage or youthful-minor appearance."
+    "Give them the appearance of confident professionals with a natural, "
+    "authentic expression, who are simultaneously strikingly beautiful and "
+    "subtly erotic: natural and well-formed figures and fashionable, "
+    "form-fitting outfits that flatter their figure. They are committed to "
+    "their work, never passive or decorative. Natural skin texture and "
+    "realistic proportions throughout."
 )
 
 
 def build_appearance_clause(variant: dict) -> str:
     """Kies de uiterlijk-styling voor deze variant.
 
-    Pre:  variant bevat gender, age en scene_population
-    Post: de attractieve styling alleen bij gender 'a woman' én
-          IMAGE_ATTRACTIVE_WOMEN; alle andere varianten houden de neutrale,
-          zakelijke styling. Onder _ADULT_REINFORCEMENT_MIN_AGE komt er een
-          expliciete volwassen-bevestiging achter.
+    Pre:  variant bevat gender en scene_population
+    Post: de attractieve styling bij gender 'a woman'; alle andere varianten
+          houden de neutrale, zakelijke styling.
     """
     group = variant.get("scene_population") == "group"
-    if not (IMAGE_ATTRACTIVE_WOMEN and variant.get("gender") == "a woman"):
+    if variant.get("gender") != "a woman":
         return _APPEARANCE_DEFAULT_GROUP if group else _APPEARANCE_DEFAULT_SOLO
-
-    clause = _APPEARANCE_ATTRACTIVE_GROUP if group else _APPEARANCE_ATTRACTIVE_SOLO
-    if int(variant.get("age", 0)) < _ADULT_REINFORCEMENT_MIN_AGE:
-        clause += _ADULT_REINFORCEMENT_GROUP if group else _ADULT_REINFORCEMENT
-    return clause
+    return _APPEARANCE_ATTRACTIVE_GROUP if group else _APPEARANCE_ATTRACTIVE_SOLO
 
 
 # Markers waaraan te zien is dat de attractieve styling al in de prompt zit,
 # ook als Claude hem in eigen woorden herschreef.
 _ATTRACTIVE_MARKERS = (
-    "sexy",
+    "erotic",
     "strikingly beautiful",
-    "model-like",
-    "glamour makeup",
+    "seductive",
+    "well-formed",
     "form-fitting",
     "alluring",
 )
@@ -301,7 +276,6 @@ _ATTRACTIVE_MARKERS = (
 _GENDER_PATTERNS = {
     "a woman": r"\bwom[ae]n\b",
     "a man": r"\b(?:man|men|male|males)\b",
-    "a non-binary person": r"non-?binary",
 }
 
 
@@ -354,7 +328,7 @@ def _enforce_person_in_prompt(prompt: str, variant: dict) -> str:
 
     # Claude herformuleert de styling meestal (en laat 'sexy' dan weg), dus
     # toetsen op meerdere markers — anders wordt de clausule dubbel aangehangen.
-    if IMAGE_ATTRACTIVE_WOMEN and gender == "a woman":
+    if gender == "a woman":
         low = prompt.lower()
         if not any(marker in low for marker in _ATTRACTIVE_MARKERS):
             logger.info("Uiterlijk-styling ontbrak in de prompt — expliciet toegevoegd")

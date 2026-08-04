@@ -272,16 +272,23 @@ daarom altijd een expliciete afbakening achter (geen bijfiguren van een andere
 sekse, ook niet op de achtergrond); de sekse-check zelf zou zo'n gemengde groep
 niet zien, want het gevraagde woord stáát er.
 
-**Styling van de vrouwelijke variant** staat achter `IMAGE_ATTRACTIVE_WOMEN`
-(default aan): bij `gender == "a woman"` komt er een nadrukkelijk aantrekkelijke
-beschrijving **bovenop** de zakelijke ("confident, professional", plus expliciet
-"never passive or decorative"), niet in plaats daarvan — de twee sluiten elkaar
-niet uit, en zonder die basis stond "sexy" tegenover het "confident,
-professional" van de mannelijke variant. Man en non-binair houden de standaard.
-Onder de 21 jaar (`_ADULT_REINFORCEMENT_MIN_AGE`) gaat er een harde
-"unmistakably a grown adult"-zin achteraan — de bucket 18-22 bestaat, en
-beeldmodellen renderen een "18-jarige" regelmatig duidelijk jonger. Zet de env
-`IMAGE_ATTRACTIVE_WOMEN=false` om alle varianten weer gelijk te trekken.
+**Styling van de vrouwelijke variant** is nadrukkelijk aantrekkelijk/erotisch en
+staat **bovenop** de zakelijke beschrijving ("confident", plus expliciet "never
+passive or decorative"), niet in plaats daarvan — de twee sluiten elkaar niet
+uit, en zonder die basis stond de erotische omschrijving tegenover het
+"confident, professional" van de mannelijke variant. Alleen `gender == "a woman"`
+krijgt hem; man houdt de standaard. Er is geen toggle meer: `IMAGE_ATTRACTIVE_WOMEN`
+is verwijderd (2026-08-04), net als de `non-binary`-variant en de
+`_ADULT_REINFORCEMENT`-zin die onder de 21 jaar volwassenheid afdwong. Die zin
+verviel samen met het optrekken van de jongste leeftijdsbucket van 18-22 naar
+**20-22**; verlaag die ondergrens niet zonder de zin terug te zetten, want
+beeldmodellen renderen een opgegeven leeftijd regelmatig duidelijk jonger en de
+styling is expliciet.
+
+`_ATTRACTIVE_MARKERS` moet meebewegen met die styling-teksten: die lijst is hoe
+`_enforce_person_in_prompt()` ziet dát de styling al in de prompt zit (Claude
+herformuleert hem meestal). Staat er geen enkel woord uit de tekst in, dan hangt
+de clausule er een tweede keer achter.
 
 Twee promptvarianten, bewust gescheiden — en op een fundamenteel andere manier
 opgebouwd:
