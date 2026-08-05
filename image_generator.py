@@ -233,7 +233,8 @@ def build_person_instruction(variant: dict) -> str:
 # op de camera gerichte omschrijving niet.
 _APPEARANCE_ATTRACTIVE_SOLO = (
     "Style her like a confident woman with a natural, authentic expression, "
-    "natural skin texture and realistic proportions, who is simultaneously "
+    "natural skin texture and realistic proportions, wearing no makeup or "
+    "barely any makeup, who is simultaneously "
     "slightly erotic: natural, well-formed figure. "
     "Seductive yet confident and competent, never passive or decorative."
 )
@@ -243,7 +244,7 @@ _APPEARANCE_ATTRACTIVE_GROUP = (
     "well-formed figures and fashionable, "
     "form-fitting outfits that flatter their figure. They are committed to "
     "their work, never passive or decorative. Natural skin texture and "
-    "realistic proportions throughout."
+    "realistic proportions throughout, wearing no makeup or barely any makeup."
 )
 
 
