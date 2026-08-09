@@ -121,6 +121,8 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
   Een *algemeen* nieuwsmedium mag alleen mee met de RSS-feed van zijn
   tech-sectie (`tech_rss` in het reputatie-oordeel, eerst geverifieerd op echte
   items); zonder die eis kwam `nytimes.com` binnen op zijn brede voorpaginafeed.
+  Na een geslaagde toevoeging werkt het script ook `/bronnen/` bij via
+  `bronnen_page.py` (zie Hulpscripts).
 - **Op oracle-web**: cron (ubuntu) 06:00+18:00 draait `nginx_stats.py` → JSON-cache
   voor de analytics-pagina; root-cron 05:15 UTC draait
   `/usr/local/bin/ssl_watchdog.sh` (kopie van `ssl_watchdog.sh` hier) — controleert
@@ -131,6 +133,18 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
 
 - `backfill.py` — vult de site geantidateerd met historische artikelen
 - `publish_pages.py` — publiceert/updatet WP-pagina's vanuit `assets/`
+- `bronnen_page.py` — genereert `/bronnen/` uit `sources.txt`; `--publish` zet hem
+  ook op WordPress. `source_discovery.py` roept dit zelf aan na een toevoeging,
+  zodat de publieke bronnenlijst niet achterloopt (aug. 2026 stonden er 21
+  vermeld tegen 35 in gebruik). Omschrijvingen staan per domein in
+  `assets/bronnen_meta.json`; een onbekend domein laat het script eenmalig door
+  Claude beschrijven en cachet dat. `assets/pagina-veel-gebruikte-bronnen.html`
+  is dus **gegenereerd** — bewerk het bestand niet met de hand.
+  > **Geen lege regels in pagina-HTML.** WordPress' `wpautop` maakt van elke lege
+  > regel een alineagrens en doet dat óók binnen `<style>`: er belandde een
+  > letterlijke `</p><p>` midden in de CSS, waarna de browser de rest van het blok
+  > oversloeg. De mobiele media-query stond dus wél in de paginabron maar werkte
+  > niet. `build_html()` haalt daarom alle lege regels eruit.
 - `adhoc_processor.py` — één URL → WP-draft (gebruikt door approval-server dashboard)
 - `update_bluesky_profile.py` — eenmalig Bluesky-profiel bijwerken
 - `brand.py` — **één bron voor het merk**: het T-teken, het woordmerk en de hele

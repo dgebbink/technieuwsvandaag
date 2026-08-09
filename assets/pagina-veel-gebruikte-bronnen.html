@@ -1,24 +1,18 @@
 <!--
-  WordPress-pagina: "Veel Gebruikte Bronnen"
-  Kopieer de inhoud hieronder (alles tussen de <div>-tags) naar de WordPress-editor
-  in de HTML-modus (blok: Aangepaste HTML of de "Broncode"-knop van de teksteditor).
-
-  SEO meta description (instellen via Yoast / RankMath):
-  "Ontdek welke toonaangevende tech-nieuwssites TechNieuwsVandaag gebruikt als bron
-   voor zijn dagelijkse Nederlandstalige samenvattingen – van Tweakers tot TechCrunch."
+  GEGENEREERD BESTAND — niet met de hand bewerken.
+  Bron: sources.txt + assets/bronnen_meta.json
+  Opnieuw genereren: venv/bin/python3 bronnen_page.py --publish
 -->
-
 <div class="tnv-bronnen-pagina">
-
   <p class="tnv-intro">
     TechNieuwsVandaag selecteert dagelijks de meest relevante technologienieuws&shy;berichten
-    uit een vaste set betrouwbare, internationaal erkende bronnen.
+    uit een vaste set van 35 betrouwbare, internationaal erkende bronnen.
     Onderstaand overzicht laat zien welke websites worden gescand en waarom ze zijn gekozen.
   </p>
-
   <style>
     .tnv-bronnen-pagina { max-width: 820px; }
     .tnv-intro { font-size: 1.05em; line-height: 1.75; margin-bottom: 2em; color: #444; }
+    .tnv-kop { font-size: 1.25em; margin: 1.6em 0 0.6em; }
     .tnv-tabel { width: 100%; border-collapse: collapse; font-size: 0.95em; margin-bottom: 2em; }
     .tnv-tabel thead th {
       background: #1a73e8; color: #fff; text-align: left;
@@ -28,6 +22,7 @@
     .tnv-tabel tbody td { padding: 9px 14px; border-bottom: 1px solid #e4e8f0; vertical-align: top; }
     .tnv-tabel tbody td a { color: #1a73e8; text-decoration: none; }
     .tnv-tabel tbody td a:hover { text-decoration: underline; }
+    .tnv-domein { display: block; font-size: 0.82em; color: #777; margin-top: 2px; }
     .tnv-badge {
       display: inline-block; font-size: 0.78em; padding: 2px 8px;
       border-radius: 12px; font-weight: 600; white-space: nowrap;
@@ -41,147 +36,226 @@
       padding: 14px 18px; font-size: 0.9em; line-height: 1.7;
       color: #555; border-radius: 0 4px 4px 0;
     }
+    .tnv-bijgewerkt { font-size: 0.85em; color: #777; margin: 0 0 2em; }
+    /* Mobiel: drie kolommen worden op een telefoon onleesbaar smal (de
+       beschrijving breekt dan op elk woord), dus elke rij wordt daar een kaart.
+       De koprij verdwijnt: naam, beschrijving en badge spreken zonder labels
+       voor zich. De data-label-attributen blijven de haakjes voor deze regels. */
+    @media (max-width: 640px) {
+      /* Het thema zet randen op table en td; in de kaartweergave blijft daar een
+         los verticaal streepje van over, dus die worden hier teruggezet. */
+      table.tnv-tabel { font-size: 1em; border: 0; }
+      .tnv-tabel thead {
+        position: absolute; width: 1px; height: 1px;
+        overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+      }
+      .tnv-tabel, .tnv-tabel tbody, .tnv-tabel tr, .tnv-tabel td {
+        display: block; width: 100%; box-sizing: border-box;
+      }
+      .tnv-tabel tbody tr {
+        border: 1px solid #e4e8f0; border-radius: 8px;
+        padding: 12px 14px; margin-bottom: 12px; background: #fff;
+      }
+      .tnv-tabel tbody tr:nth-child(even) { background: #f5f8ff; }
+      .tnv-tabel tbody td { padding: 0; border: 0; }
+      .tnv-tabel tbody td + td { margin-top: 8px; }
+      .tnv-tabel tbody td[data-label="Bron"] { font-size: 1.08em; }
+      .tnv-tabel tbody td[data-label="Beschrijving"] { line-height: 1.6; color: #444; }
+      .tnv-domein { display: inline-block; margin: 0 0 0 6px; }
+    }
   </style>
-
+  <h2 class="tnv-kop">Nederlandse bronnen</h2>
   <table class="tnv-tabel">
     <thead>
-      <tr>
-        <th>Naam</th>
-        <th>Website</th>
-        <th>Beschrijving</th>
-        <th>Type</th>
-      </tr>
+      <tr><th>Bron</th><th>Beschrijving</th><th>Type</th></tr>
     </thead>
     <tbody>
       <tr>
-        <td><strong>Tweakers</strong></td>
-        <td><a href="https://www.tweakers.net" target="_blank" rel="noopener">tweakers.net</a></td>
-        <td>Hét Nederlandse platform voor technologie-nieuws, reviews en prijsvergelijking.</td>
-        <td><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+        <td data-label="Bron"><a href="https://tweakers.net" target="_blank" rel="noopener nofollow"><strong>Tweakers</strong></a><span class="tnv-domein">tweakers.net</span></td>
+        <td data-label="Beschrijving">Hét Nederlandse platform voor technologie-nieuws, reviews en prijsvergelijking.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
       </tr>
       <tr>
-        <td><strong>Bright</strong></td>
-        <td><a href="https://www.bright.nl" target="_blank" rel="noopener">bright.nl</a></td>
-        <td>Nederlandstalig tech-magazine gericht op gadgets, wetenschap en digitale trends.</td>
-        <td><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+        <td data-label="Bron"><a href="https://bright.nl" target="_blank" rel="noopener nofollow"><strong>Bright</strong></a><span class="tnv-domein">bright.nl</span></td>
+        <td data-label="Beschrijving">Nederlandstalig tech-magazine gericht op gadgets, wetenschap en digitale trends.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
       </tr>
       <tr>
-        <td><strong>Dutchcowboys</strong></td>
-        <td><a href="https://www.dutchcowboys.nl" target="_blank" rel="noopener">dutchcowboys.nl</a></td>
-        <td>Nederlandse tech- en internetcultuur-blog met nieuws over startups en innovatie.</td>
-        <td><span class="tnv-badge tnv-badge-blog">Blog</span></td>
+        <td data-label="Bron"><a href="https://dutchcowboys.nl" target="_blank" rel="noopener nofollow"><strong>Dutchcowboys</strong></a><span class="tnv-domein">dutchcowboys.nl</span></td>
+        <td data-label="Beschrijving">Nederlandse tech- en internetcultuur-blog met nieuws over startups en innovatie.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-blog">Blog</span></td>
       </tr>
       <tr>
-        <td><strong>Androidworld</strong></td>
-        <td><a href="https://www.androidworld.nl" target="_blank" rel="noopener">androidworld.nl</a></td>
-        <td>Specialistisch Nederlandstalig nieuws- en reviewplatform voor Android-gebruikers.</td>
-        <td><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+        <td data-label="Bron"><a href="https://androidworld.nl" target="_blank" rel="noopener nofollow"><strong>Androidworld</strong></a><span class="tnv-domein">androidworld.nl</span></td>
+        <td data-label="Beschrijving">Specialistisch Nederlandstalig nieuws- en reviewplatform voor Android-gebruikers.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
       </tr>
       <tr>
-        <td><strong>TechCrunch</strong></td>
-        <td><a href="https://www.techcrunch.com" target="_blank" rel="noopener">techcrunch.com</a></td>
-        <td>Toonaangevend Amerikaans tech-nieuwsmedium met focus op startups en venture capital.</td>
-        <td><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+        <td data-label="Bron"><a href="https://emerce.nl" target="_blank" rel="noopener nofollow"><strong>Emerce</strong></a><span class="tnv-domein">emerce.nl</span></td>
+        <td data-label="Beschrijving">Nederlands platform over e-commerce, online marketing en digitaal ondernemen, gericht op professionals in de digitale sector.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
       </tr>
       <tr>
-        <td><strong>Wired</strong></td>
-        <td><a href="https://www.wired.com" target="_blank" rel="noopener">wired.com</a></td>
-        <td>Diepgravend Amerikaans tijdschrift over de impact van technologie op samenleving en cultuur.</td>
-        <td><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
+        <td data-label="Bron"><a href="https://security.nl" target="_blank" rel="noopener nofollow"><strong>Security.NL</strong></a><span class="tnv-domein">security.nl</span></td>
+        <td data-label="Beschrijving">Nederlandse nieuwssite over computerbeveiliging, met dagelijks nieuws over kwetsbaarheden, datalekken en privacy.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
       </tr>
       <tr>
-        <td><strong>The Verge</strong></td>
-        <td><a href="https://www.theverge.com" target="_blank" rel="noopener">theverge.com</a></td>
-        <td>Populair Amerikaans techmedium met breed nieuws over gadgets, wetenschap en entertainment.</td>
-        <td><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+        <td data-label="Bron"><a href="https://computable.nl" target="_blank" rel="noopener nofollow"><strong>Computable</strong></a><span class="tnv-domein">computable.nl</span></td>
+        <td data-label="Beschrijving">Nederlands vakmedium voor ICT-professionals, met nieuws en achtergronden over de Nederlandse IT-markt.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
       </tr>
       <tr>
-        <td><strong>Ars Technica</strong></td>
-        <td><a href="https://www.arstechnica.com" target="_blank" rel="noopener">arstechnica.com</a></td>
-        <td>Diepgravend techplatform voor gevorderde lezers met uitgebreide analyses en reviews.</td>
-        <td><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
-      </tr>
-      <tr>
-        <td><strong>Gizmodo</strong></td>
-        <td><a href="https://www.gizmodo.com" target="_blank" rel="noopener">gizmodo.com</a></td>
-        <td>Amerikaans techblog met nieuws over gadgets, wetenschap en populaire cultuur.</td>
-        <td><span class="tnv-badge tnv-badge-blog">Blog</span></td>
-      </tr>
-      <tr>
-        <td><strong>Engadget</strong></td>
-        <td><a href="https://www.engadget.com" target="_blank" rel="noopener">engadget.com</a></td>
-        <td>Consumentgericht techmedium met dagelijks nieuws over gadgets en elektronica.</td>
-        <td><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
-      </tr>
-      <tr>
-        <td><strong>Hacker News</strong></td>
-        <td><a href="https://news.ycombinator.com" target="_blank" rel="noopener">news.ycombinator.com</a></td>
-        <td>Community-gedreven aggregator van tech- en startupnieuws, populair onder ontwikkelaars.</td>
-        <td><span class="tnv-badge tnv-badge-aggregator">Aggregator</span></td>
-      </tr>
-      <tr>
-        <td><strong>CNET</strong></td>
-        <td><a href="https://www.cnet.com" target="_blank" rel="noopener">cnet.com</a></td>
-        <td>Breed Amerikaans techmedium met nieuws, reviews en koopadvies voor consumenten.</td>
-        <td><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
-      </tr>
-      <tr>
-        <td><strong>ZDNet</strong></td>
-        <td><a href="https://www.zdnet.com" target="_blank" rel="noopener">zdnet.com</a></td>
-        <td>Business-gericht technieuws met nadruk op IT, enterprise software en cybersecurity.</td>
-        <td><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
-      </tr>
-      <tr>
-        <td><strong>MIT Technology Review</strong></td>
-        <td><a href="https://www.technologyreview.com" target="_blank" rel="noopener">technologyreview.com</a></td>
-        <td>Wetenschappelijk en diepgravend techmedium van het MIT, gericht op opkomende technologieën.</td>
-        <td><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
-      </tr>
-      <tr>
-        <td><strong>IEEE Spectrum</strong></td>
-        <td><a href="https://spectrum.ieee.org" target="_blank" rel="noopener">spectrum.ieee.org</a></td>
-        <td>Toonaangevend ingenieurstijdschrift van de IEEE met nieuws over elektronica en technologie.</td>
-        <td><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
-      </tr>
-      <tr>
-        <td><strong>Tom's Hardware</strong></td>
-        <td><a href="https://www.tomshardware.com" target="_blank" rel="noopener">tomshardware.com</a></td>
-        <td>Specialistisch hardwaremedium met uitgebreide benchmarks, reviews en bouwgidsen.</td>
-        <td><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
-      </tr>
-      <tr>
-        <td><strong>AnandTech</strong></td>
-        <td><a href="https://www.anandtech.com" target="_blank" rel="noopener">anandtech.com</a></td>
-        <td>Technisch diepgravend hardwareplatform bekend om gedetailleerde processor- en GPU-analyses.</td>
-        <td><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
-      </tr>
-      <tr>
-        <td><strong>9to5Mac</strong></td>
-        <td><a href="https://www.9to5mac.com" target="_blank" rel="noopener">9to5mac.com</a></td>
-        <td>Gespecialiseerd Apple-nieuws&shy;blog met breaking news over iPhone, Mac en iOS-ecosysteem.</td>
-        <td><span class="tnv-badge tnv-badge-blog">Blog</span></td>
-      </tr>
-      <tr>
-        <td><strong>Slashdot</strong></td>
-        <td><a href="https://www.slashdot.org" target="_blank" rel="noopener">slashdot.org</a></td>
-        <td>Veteraan tech-nieuwsaggregator met community-discussies, populair onder IT-professionals.</td>
-        <td><span class="tnv-badge tnv-badge-aggregator">Aggregator</span></td>
-      </tr>
-      <tr>
-        <td><strong>InfoQ</strong></td>
-        <td><a href="https://www.infoq.com" target="_blank" rel="noopener">infoq.com</a></td>
-        <td>Vakplatform voor software-ontwikkelaars met artikelen over architectuur en best practices.</td>
-        <td><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
-      </tr>
-      <tr>
-        <td><strong>TechRepublic</strong></td>
-        <td><a href="https://www.techrepublic.com" target="_blank" rel="noopener">techrepublic.com</a></td>
-        <td>IT-gericht zakelijk techmedium met nieuws, analyses en praktische adviezen voor professionals.</td>
-        <td><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
+        <td data-label="Bron"><a href="https://agconnect.nl" target="_blank" rel="noopener nofollow"><strong>AG Connect</strong></a><span class="tnv-domein">agconnect.nl</span></td>
+        <td data-label="Beschrijving">Nederlands vakblad voor IT-professionals, voortgekomen uit Automatisering Gids, over technologie en het IT-vak.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
       </tr>
     </tbody>
   </table>
-
+  <h2 class="tnv-kop">Internationale bronnen</h2>
+  <table class="tnv-tabel">
+    <thead>
+      <tr><th>Bron</th><th>Beschrijving</th><th>Type</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td data-label="Bron"><a href="https://techcrunch.com" target="_blank" rel="noopener nofollow"><strong>TechCrunch</strong></a><span class="tnv-domein">techcrunch.com</span></td>
+        <td data-label="Beschrijving">Toonaangevend Amerikaans tech-nieuwsmedium met focus op startups en venture capital.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://wired.com" target="_blank" rel="noopener nofollow"><strong>Wired</strong></a><span class="tnv-domein">wired.com</span></td>
+        <td data-label="Beschrijving">Diepgravend Amerikaans tijdschrift over de impact van technologie op samenleving en cultuur.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://theverge.com" target="_blank" rel="noopener nofollow"><strong>The Verge</strong></a><span class="tnv-domein">theverge.com</span></td>
+        <td data-label="Beschrijving">Populair Amerikaans techmedium met breed nieuws over gadgets, wetenschap en entertainment.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://arstechnica.com" target="_blank" rel="noopener nofollow"><strong>Ars Technica</strong></a><span class="tnv-domein">arstechnica.com</span></td>
+        <td data-label="Beschrijving">Diepgravend techplatform voor gevorderde lezers met uitgebreide analyses en reviews.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://gizmodo.com" target="_blank" rel="noopener nofollow"><strong>Gizmodo</strong></a><span class="tnv-domein">gizmodo.com</span></td>
+        <td data-label="Beschrijving">Amerikaans techblog met nieuws over gadgets, wetenschap en populaire cultuur.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-blog">Blog</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://engadget.com" target="_blank" rel="noopener nofollow"><strong>Engadget</strong></a><span class="tnv-domein">engadget.com</span></td>
+        <td data-label="Beschrijving">Consumentgericht techmedium met dagelijks nieuws over gadgets en elektronica.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://news.ycombinator.com" target="_blank" rel="noopener nofollow"><strong>Hacker News</strong></a><span class="tnv-domein">news.ycombinator.com</span></td>
+        <td data-label="Beschrijving">Community-gedreven aggregator van tech- en startupnieuws, populair onder ontwikkelaars.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-aggregator">Aggregator</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://cnet.com" target="_blank" rel="noopener nofollow"><strong>CNET</strong></a><span class="tnv-domein">cnet.com</span></td>
+        <td data-label="Beschrijving">Breed Amerikaans techmedium met nieuws, reviews en koopadvies voor consumenten.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://zdnet.com" target="_blank" rel="noopener nofollow"><strong>ZDNet</strong></a><span class="tnv-domein">zdnet.com</span></td>
+        <td data-label="Beschrijving">Business-gericht technieuws met nadruk op IT, enterprise software en cybersecurity.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://technologyreview.com" target="_blank" rel="noopener nofollow"><strong>MIT Technology Review</strong></a><span class="tnv-domein">technologyreview.com</span></td>
+        <td data-label="Beschrijving">Wetenschappelijk en diepgravend techmedium van het MIT, gericht op opkomende technologieën.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://spectrum.ieee.org" target="_blank" rel="noopener nofollow"><strong>IEEE Spectrum</strong></a><span class="tnv-domein">spectrum.ieee.org</span></td>
+        <td data-label="Beschrijving">Toonaangevend ingenieurstijdschrift van de IEEE met nieuws over elektronica en technologie.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://tomshardware.com" target="_blank" rel="noopener nofollow"><strong>Tom&#x27;s Hardware</strong></a><span class="tnv-domein">tomshardware.com</span></td>
+        <td data-label="Beschrijving">Specialistisch hardwaremedium met uitgebreide benchmarks, reviews en bouwgidsen.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://anandtech.com" target="_blank" rel="noopener nofollow"><strong>AnandTech</strong></a><span class="tnv-domein">anandtech.com</span></td>
+        <td data-label="Beschrijving">Technisch diepgravend hardwareplatform bekend om gedetailleerde processor- en GPU-analyses.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://9to5mac.com" target="_blank" rel="noopener nofollow"><strong>9to5Mac</strong></a><span class="tnv-domein">9to5mac.com</span></td>
+        <td data-label="Beschrijving">Gespecialiseerd Apple-nieuwsblog met breaking news over iPhone, Mac en iOS-ecosysteem.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-blog">Blog</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://slashdot.org" target="_blank" rel="noopener nofollow"><strong>Slashdot</strong></a><span class="tnv-domein">slashdot.org</span></td>
+        <td data-label="Beschrijving">Veteraan tech-nieuwsaggregator met community-discussies, populair onder IT-professionals.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-aggregator">Aggregator</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://infoq.com" target="_blank" rel="noopener nofollow"><strong>InfoQ</strong></a><span class="tnv-domein">infoq.com</span></td>
+        <td data-label="Beschrijving">Vakplatform voor software-ontwikkelaars met artikelen over architectuur en best practices.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://techrepublic.com" target="_blank" rel="noopener nofollow"><strong>TechRepublic</strong></a><span class="tnv-domein">techrepublic.com</span></td>
+        <td data-label="Beschrijving">IT-gericht zakelijk techmedium met nieuws, analyses en praktische adviezen voor professionals.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-vakblad">Vakblad</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://howtogeek.com" target="_blank" rel="noopener nofollow"><strong>How-To Geek</strong></a><span class="tnv-domein">howtogeek.com</span></td>
+        <td data-label="Beschrijving">Engelstalige site met uitleg, handleidingen en tips over consumententechnologie, besturingssystemen en software.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-blog">Blog</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://theregister.com" target="_blank" rel="noopener nofollow"><strong>The Register</strong></a><span class="tnv-domein">theregister.com</span></td>
+        <td data-label="Beschrijving">Brits techmedium over enterprise-IT, cloud en beveiliging, bekend om zijn kritische en ironische toon.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://macrumors.com" target="_blank" rel="noopener nofollow"><strong>MacRumors</strong></a><span class="tnv-domein">macrumors.com</span></td>
+        <td data-label="Beschrijving">Amerikaanse site die zich volledig richt op Apple, met productnieuws, geruchten en actieve gebruikersforums.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://theguardian.com" target="_blank" rel="noopener nofollow"><strong>The Guardian</strong></a><span class="tnv-domein">theguardian.com</span></td>
+        <td data-label="Beschrijving">Britse krant met een techsectie over Big Tech, privacy, AI en digitale samenleving.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://bleepingcomputer.com" target="_blank" rel="noopener nofollow"><strong>BleepingComputer</strong></a><span class="tnv-domein">bleepingcomputer.com</span></td>
+        <td data-label="Beschrijving">Amerikaanse site over cybersecurity, bekend om technische analyses van malware, ransomware en beveiligingslekken.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://thenextweb.com" target="_blank" rel="noopener nofollow"><strong>The Next Web</strong></a><span class="tnv-domein">thenextweb.com</span></td>
+        <td data-label="Beschrijving">Van oorsprong Amsterdams techmedium over startups, innovatie en de Europese technologiesector.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://androidauthority.com" target="_blank" rel="noopener nofollow"><strong>Android Authority</strong></a><span class="tnv-domein">androidauthority.com</span></td>
+        <td data-label="Beschrijving">Engelstalige site over Android, smartphones en wearables, met nieuws, reviews en toestelvergelijkingen.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://nytimes.com" target="_blank" rel="noopener nofollow"><strong>The New York Times</strong></a><span class="tnv-domein">nytimes.com</span></td>
+        <td data-label="Beschrijving">Amerikaanse krant met een techredactie over technologiebedrijven, regulering en de maatschappelijke gevolgen ervan.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://404media.co" target="_blank" rel="noopener nofollow"><strong>404 Media</strong></a><span class="tnv-domein">404media.co</span></td>
+        <td data-label="Beschrijving">Amerikaans journalistencollectief dat onderzoek doet naar technologie, internetcultuur en misbruik van digitale systemen.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+      </tr>
+      <tr>
+        <td data-label="Bron"><a href="https://restofworld.org" target="_blank" rel="noopener nofollow"><strong>Rest of World</strong></a><span class="tnv-domein">restofworld.org</span></td>
+        <td data-label="Beschrijving">Non-profitmedium dat verslag doet van technologie en de gevolgen daarvan buiten het Westen.</td>
+        <td data-label="Type"><span class="tnv-badge tnv-badge-nieuwssite">Nieuwssite</span></td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="tnv-bijgewerkt">Laatst bijgewerkt: 9 augustus 2026.</p>
   <div class="tnv-disclaimer">
     <strong>Journalistieke onafhankelijkheid</strong><br>
     TechNieuwsVandaag neemt geen content over van bovenstaande bronnen.
@@ -190,5 +264,4 @@
     Originele auteurs en uitgevers behouden alle rechten op hun werk.
     Elk artikel op TechNieuwsVandaag bevat een directe link naar de bronpublicatie.
   </div>
-
 </div>

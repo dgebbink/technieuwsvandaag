@@ -1,0 +1,177 @@
+{
+  "404media.co": {
+    "beschrijving": "Amerikaans journalistencollectief dat onderzoek doet naar technologie, internetcultuur en misbruik van digitale systemen.",
+    "naam": "404 Media",
+    "type": "Nieuwssite"
+  },
+  "9to5mac.com": {
+    "beschrijving": "Gespecialiseerd Apple-nieuwsblog met breaking news over iPhone, Mac en iOS-ecosysteem.",
+    "naam": "9to5Mac",
+    "type": "Blog"
+  },
+  "agconnect.nl": {
+    "beschrijving": "Nederlands vakblad voor IT-professionals, voortgekomen uit Automatisering Gids, over technologie en het IT-vak.",
+    "naam": "AG Connect",
+    "type": "Vakblad"
+  },
+  "anandtech.com": {
+    "beschrijving": "Technisch diepgravend hardwareplatform bekend om gedetailleerde processor- en GPU-analyses.",
+    "naam": "AnandTech",
+    "type": "Vakblad"
+  },
+  "androidauthority.com": {
+    "beschrijving": "Engelstalige site over Android, smartphones en wearables, met nieuws, reviews en toestelvergelijkingen.",
+    "naam": "Android Authority",
+    "type": "Nieuwssite"
+  },
+  "androidworld.nl": {
+    "beschrijving": "Specialistisch Nederlandstalig nieuws- en reviewplatform voor Android-gebruikers.",
+    "naam": "Androidworld",
+    "type": "Nieuwssite"
+  },
+  "arstechnica.com": {
+    "beschrijving": "Diepgravend techplatform voor gevorderde lezers met uitgebreide analyses en reviews.",
+    "naam": "Ars Technica",
+    "type": "Vakblad"
+  },
+  "bleepingcomputer.com": {
+    "beschrijving": "Amerikaanse site over cybersecurity, bekend om technische analyses van malware, ransomware en beveiligingslekken.",
+    "naam": "BleepingComputer",
+    "type": "Nieuwssite"
+  },
+  "bright.nl": {
+    "beschrijving": "Nederlandstalig tech-magazine gericht op gadgets, wetenschap en digitale trends.",
+    "naam": "Bright",
+    "type": "Nieuwssite"
+  },
+  "cnet.com": {
+    "beschrijving": "Breed Amerikaans techmedium met nieuws, reviews en koopadvies voor consumenten.",
+    "naam": "CNET",
+    "type": "Nieuwssite"
+  },
+  "computable.nl": {
+    "beschrijving": "Nederlands vakmedium voor ICT-professionals, met nieuws en achtergronden over de Nederlandse IT-markt.",
+    "naam": "Computable",
+    "type": "Vakblad"
+  },
+  "dutchcowboys.nl": {
+    "beschrijving": "Nederlandse tech- en internetcultuur-blog met nieuws over startups en innovatie.",
+    "naam": "Dutchcowboys",
+    "type": "Blog"
+  },
+  "emerce.nl": {
+    "beschrijving": "Nederlands platform over e-commerce, online marketing en digitaal ondernemen, gericht op professionals in de digitale sector.",
+    "naam": "Emerce",
+    "type": "Vakblad"
+  },
+  "engadget.com": {
+    "beschrijving": "Consumentgericht techmedium met dagelijks nieuws over gadgets en elektronica.",
+    "naam": "Engadget",
+    "type": "Nieuwssite"
+  },
+  "gizmodo.com": {
+    "beschrijving": "Amerikaans techblog met nieuws over gadgets, wetenschap en populaire cultuur.",
+    "naam": "Gizmodo",
+    "type": "Blog"
+  },
+  "howtogeek.com": {
+    "beschrijving": "Engelstalige site met uitleg, handleidingen en tips over consumententechnologie, besturingssystemen en software.",
+    "naam": "How-To Geek",
+    "type": "Blog"
+  },
+  "infoq.com": {
+    "beschrijving": "Vakplatform voor software-ontwikkelaars met artikelen over architectuur en best practices.",
+    "naam": "InfoQ",
+    "type": "Vakblad"
+  },
+  "macrumors.com": {
+    "beschrijving": "Amerikaanse site die zich volledig richt op Apple, met productnieuws, geruchten en actieve gebruikersforums.",
+    "naam": "MacRumors",
+    "type": "Nieuwssite"
+  },
+  "news.ycombinator.com": {
+    "beschrijving": "Community-gedreven aggregator van tech- en startupnieuws, populair onder ontwikkelaars.",
+    "naam": "Hacker News",
+    "type": "Aggregator"
+  },
+  "nytimes.com": {
+    "beschrijving": "Amerikaanse krant met een techredactie over technologiebedrijven, regulering en de maatschappelijke gevolgen ervan.",
+    "naam": "The New York Times",
+    "type": "Nieuwssite"
+  },
+  "restofworld.org": {
+    "beschrijving": "Non-profitmedium dat verslag doet van technologie en de gevolgen daarvan buiten het Westen.",
+    "naam": "Rest of World",
+    "type": "Nieuwssite"
+  },
+  "security.nl": {
+    "beschrijving": "Nederlandse nieuwssite over computerbeveiliging, met dagelijks nieuws over kwetsbaarheden, datalekken en privacy.",
+    "naam": "Security.NL",
+    "type": "Nieuwssite"
+  },
+  "slashdot.org": {
+    "beschrijving": "Veteraan tech-nieuwsaggregator met community-discussies, populair onder IT-professionals.",
+    "naam": "Slashdot",
+    "type": "Aggregator"
+  },
+  "spectrum.ieee.org": {
+    "beschrijving": "Toonaangevend ingenieurstijdschrift van de IEEE met nieuws over elektronica en technologie.",
+    "naam": "IEEE Spectrum",
+    "type": "Vakblad"
+  },
+  "techcrunch.com": {
+    "beschrijving": "Toonaangevend Amerikaans tech-nieuwsmedium met focus op startups en venture capital.",
+    "naam": "TechCrunch",
+    "type": "Nieuwssite"
+  },
+  "technologyreview.com": {
+    "beschrijving": "Wetenschappelijk en diepgravend techmedium van het MIT, gericht op opkomende technologieën.",
+    "naam": "MIT Technology Review",
+    "type": "Vakblad"
+  },
+  "techrepublic.com": {
+    "beschrijving": "IT-gericht zakelijk techmedium met nieuws, analyses en praktische adviezen voor professionals.",
+    "naam": "TechRepublic",
+    "type": "Vakblad"
+  },
+  "theguardian.com": {
+    "beschrijving": "Britse krant met een techsectie over Big Tech, privacy, AI en digitale samenleving.",
+    "naam": "The Guardian",
+    "type": "Nieuwssite"
+  },
+  "thenextweb.com": {
+    "beschrijving": "Van oorsprong Amsterdams techmedium over startups, innovatie en de Europese technologiesector.",
+    "naam": "The Next Web",
+    "type": "Nieuwssite"
+  },
+  "theregister.com": {
+    "beschrijving": "Brits techmedium over enterprise-IT, cloud en beveiliging, bekend om zijn kritische en ironische toon.",
+    "naam": "The Register",
+    "type": "Nieuwssite"
+  },
+  "theverge.com": {
+    "beschrijving": "Populair Amerikaans techmedium met breed nieuws over gadgets, wetenschap en entertainment.",
+    "naam": "The Verge",
+    "type": "Nieuwssite"
+  },
+  "tomshardware.com": {
+    "beschrijving": "Specialistisch hardwaremedium met uitgebreide benchmarks, reviews en bouwgidsen.",
+    "naam": "Tom's Hardware",
+    "type": "Vakblad"
+  },
+  "tweakers.net": {
+    "beschrijving": "Hét Nederlandse platform voor technologie-nieuws, reviews en prijsvergelijking.",
+    "naam": "Tweakers",
+    "type": "Nieuwssite"
+  },
+  "wired.com": {
+    "beschrijving": "Diepgravend Amerikaans tijdschrift over de impact van technologie op samenleving en cultuur.",
+    "naam": "Wired",
+    "type": "Vakblad"
+  },
+  "zdnet.com": {
+    "beschrijving": "Business-gericht technieuws met nadruk op IT, enterprise software en cybersecurity.",
+    "naam": "ZDNet",
+    "type": "Vakblad"
+  }
+}

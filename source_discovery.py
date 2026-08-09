@@ -323,6 +323,17 @@ def main() -> None:
 
     add_to_sources_file(accepted, dry_run=args.dry_run)
 
+    if accepted:
+        # De bronnenpagina hoort bij sources.txt: liep die met de hand achter, dan
+        # klopte de publieke verantwoording niet meer (aug. 2026: 21 vermeld, 35 in
+        # gebruik). Faalt dit, dan blijft de bron gewoon staan — alleen de pagina
+        # is dan even oud, en `bronnen_page.py --publish` haalt dat handmatig in.
+        try:
+            from bronnen_page import regenerate  # noqa: PLC0415
+            regenerate(publish=True, dry_run=args.dry_run)
+        except Exception as exc:
+            logger.error("Bronnenpagina bijwerken mislukt: %s", exc)
+
 
 if __name__ == "__main__":
     main()
