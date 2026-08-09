@@ -28,7 +28,10 @@ www.techrepublic.com
 howtogeek.com|https://howtogeek.com/feed
 theregister.com|https://theregister.com/feed
 macrumors.com|https://macrumors.com/rss.xml
-theguardian.com|https://www.theguardian.com/uk/rss
+theguardian.com|https://www.theguardian.com/uk/technology/rss
 bleepingcomputer.com|https://www.bleepingcomputer.com/feed/
 thenextweb.com|https://thenextweb.com/feed
 androidauthority.com|https://www.androidauthority.com/feed/
+nytimes.com|https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml
+404media.co|https://www.404media.co/rss/
+restofworld.org|https://restofworld.org/feed/latest/

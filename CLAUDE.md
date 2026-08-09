@@ -118,6 +118,9 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
   eerst een bereikbaarheids-/RSS-check én een Claude-reputatie-oordeel
   doorstaan. Toevoegingen (en dry-run-resultaten) staan in
   `source_discovery_log.txt` — controleer/draai daar desgewenst iets terug.
+  Een *algemeen* nieuwsmedium mag alleen mee met de RSS-feed van zijn
+  tech-sectie (`tech_rss` in het reputatie-oordeel, eerst geverifieerd op echte
+  items); zonder die eis kwam `nytimes.com` binnen op zijn brede voorpaginafeed.
 - **Op oracle-web**: cron (ubuntu) 06:00+18:00 draait `nginx_stats.py` → JSON-cache
   voor de analytics-pagina; root-cron 05:15 UTC draait
   `/usr/local/bin/ssl_watchdog.sh` (kopie van `ssl_watchdog.sh` hier) — controleert
@@ -166,6 +169,15 @@ scraper.py → ai_processor.py → image_generator.py → wordpress_client.py �
 **Dataflow:**
 - `scraper.py` produceert `list[Article]` (dataclass met title, url, pub_date, excerpt, image_url)
 - `ai_processor.py` consumeert `list[Article]`, vraagt Claude om selectie en per artikel JSON met titel/samenvatting/trefwoorden/categorie; produceert `list[ProcessedArticle]`
+  - **`filter_tech_articles()` draait als eerste stap**, vóór deduplicatie en
+    selectie: gerenommeerde maar brede bronnen (`nytimes.com`,
+    `theguardian.com`) leveren ook muziek, sport en algemeen nieuws, en de
+    selectieprompt alleen was niet genoeg — op 2026-08-09 won een artikel over
+    een blink-182-album de selectie en stond het op de site. Zulke bronnen staan
+    daarom óók op hun tech-sectiefeed in `sources.txt`; de filter is het vangnet
+    voor wat daar alsnog doorheen komt. Een lege uitkomst is een geldig oordeel
+    (dan publiceert de run niets); alleen een *mislukte* Claude-call laat alle
+    kandidaten staan, zodat de filter de pijplijn nooit blokkeert.
 - `image_generator.py` vraagt Claude om een FAL.ai prompt + brand_domain (JSON), genereert afbeelding via FAL.ai, haalt echt logo op via Google favicon service en composit het over de afbeelding (PIL, bottom-right)
 - `wordpress_client.py` maakt categorieën/tags aan, uploadt afbeelding, publiceert de post; produceert `list[dict]` met `{'article': ProcessedArticle, 'post': {'id', 'preview_url', 'link', 'image_url', 'title'}}`
 - `mailer.py` verstuurt HTML-notificatiemail met de afbeelding en twee knoppen per artikel

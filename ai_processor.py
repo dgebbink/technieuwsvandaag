@@ -154,6 +154,70 @@ def _extract_json(text: str) -> object:
 
 
 # ---------------------------------------------------------------------------
+# Tech-relevantiefilter
+# ---------------------------------------------------------------------------
+
+def filter_tech_articles(articles: list[Article]) -> list[Article]:
+    """Drop candidates that are not tech news.
+
+    Pre:  articles is a list of Article objects
+    Post: returns the subset that is tech news. An empty result is a valid
+          verdict (dan publiceert de run niets); alleen bij een mislukte of
+          onparseerbare Claude-respons komt de volledige lijst terug.
+    """
+    if not articles:
+        return articles
+
+    numbered = "\n".join(
+        f"{i + 1}. [{_domain(a.source)}] {a.title} — {a.excerpt[:150]}"
+        for i, a in enumerate(articles)
+    )
+
+    prompt = (
+        "Je bent redacteur van een Nederlandse TECH-nieuwswebsite. Beoordeel per "
+        "artikel of het thuishoort op een tech-site.\n\n"
+        "WEL tech: software, hardware, AI, internet, telecom, chips, cybersecurity, "
+        "privacy en regulering van technologie, ruimtevaart- en wetenschapstechniek, "
+        "gaming-technologie, en het zakelijke nieuws van technologiebedrijven "
+        "(overnames, cijfers, rechtszaken, personeel).\n"
+        "NIET tech: muziek, film, tv, celebrity's, sport, algemene politiek, "
+        "economie zonder tech-invalshoek, lifestyle, gezondheid, misdaad en cultuur.\n\n"
+        "Twijfelgeval: de technologie moet de KERN van het verhaal zijn, niet het "
+        "decor. Een muzikant die een album aankondigt in een podcast is GEEN "
+        "tech-nieuws, ook niet als de podcast van een techbedrijf is. Een artikel "
+        "over de aanbevelingsalgoritmes van een streamingdienst is dat WEL.\n"
+        "Bij twijfel: weglaten.\n\n"
+        f"Artikelen:\n{numbered}\n\n"
+        "Geef ALLEEN een JSON array met de nummers van de tech-artikelen, "
+        "bijv: [1, 4, 5]. Is geen enkel artikel tech-nieuws, geef dan []. "
+        "Geen uitleg."
+    )
+
+    try:
+        response = _call_claude(prompt, timeout=120)
+        match = re.search(r"\[[\d,\s]*\]", response)
+        if not match:
+            logger.warning("Tech-filter: geen JSON in antwoord — alle kandidaten behouden")
+            return articles
+
+        keep = {i for i in json.loads(match.group()) if 0 < i <= len(articles)}
+    except Exception as exc:
+        logger.warning("Tech-filter mislukt: %s — alle kandidaten behouden", exc)
+        return articles
+
+    kept = [a for i, a in enumerate(articles) if i + 1 in keep]
+    for i, a in enumerate(articles):
+        if i + 1 not in keep:
+            logger.info("Tech-filter: '%s' (%s) is geen tech-nieuws — overgeslagen",
+                        a.title, _domain(a.source))
+
+    if not kept:
+        logger.warning("Tech-filter: geen enkele kandidaat is tech-nieuws — deze run publiceert niets")
+
+    return kept
+
+
+# ---------------------------------------------------------------------------
 # Deduplicatie helpers
 # ---------------------------------------------------------------------------
 
@@ -642,6 +706,19 @@ def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
 
     if len(articles) == 0:
         logger.warning("Geen artikelen beschikbaar voor verwerking")
+        return []
+
+    # Stap A0: tech-relevantie. Bronnen als nytimes.com en theguardian.com zijn
+    # betrouwbaar maar breed; zonder deze filter kan een muziek- of sportartikel
+    # de selectie winnen (2026-08-09: een blink-182-album haalde de site).
+    before_tech = len(articles)
+    articles = filter_tech_articles(articles)
+    if len(articles) < before_tech:
+        logger.info("Tech-filter: %d van %d kandidaten overgebleven",
+                    len(articles), before_tech)
+
+    if not articles:
+        logger.warning("Geen tech-artikelen tussen de kandidaten")
         return []
 
     # Stap A: semantische deduplicatie over alle kandidaten

@@ -30,11 +30,13 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
+import feedparser
 from bs4 import BeautifulSoup
 
 from ai_processor import _call_claude, _extract_json
 from config import BASE_DIR, REQUEST_TIMEOUT, SOURCES_FILE
 from scraper import (
+    USER_AGENT,
     _make_session,
     extract_outbound_domains,
     load_sources,
@@ -168,6 +170,15 @@ def verify_candidate(domain: str, session) -> tuple[bool, Optional[str], str]:
     return True, rss_url, title
 
 
+def _feed_has_entries(rss_url: str) -> bool:
+    """True als rss_url een RSS-feed met minstens één item oplevert."""
+    try:
+        return bool(feedparser.parse(rss_url, agent=USER_AGENT).entries)
+    except Exception as exc:
+        logger.debug("Feed-check mislukt voor %s: %s", rss_url, exc)
+        return False
+
+
 def judge_reputability(candidates: list[dict]) -> list[dict]:
     """Ask Claude in one batch call whether each verified candidate is a
     reputable tech-news source, and to confirm its language.
@@ -186,9 +197,16 @@ def judge_reputability(candidates: list[dict]) -> list[dict]:
         "gedreven technologie-nieuwssite is (geschikt als bron voor een "
         "Nederlandse tech-nieuwssite) — geen forum, geen prijsvergelijker, "
         "geen contentfarm/SEO-site, geen persbureau-feed zonder eigen redactie.\n\n"
+        "Is de kandidaat een ALGEMEEN nieuwsmedium (krant, omroep, magazine) met "
+        "een aparte tech-sectie, dan mag hij alleen mee met de RSS-feed van die "
+        "tech-sectie — anders levert hij vooral niet-tech nieuws. Zet in dat geval "
+        'die feed-URL in "tech_rss". Ken je zo\'n feed niet met zekerheid, zet dan '
+        "reputable op false. Een site die al volledig over technologie gaat, "
+        'laat "tech_rss" leeg.\n\n'
         f"{numbered}\n\n"
         "Antwoord ALLEEN met een JSON-array, exact één object per kandidaat, "
-        'in dezelfde volgorde: [{"reputable": true/false, "lang": "NL of EN"}]'
+        'in dezelfde volgorde: '
+        '[{"reputable": true/false, "lang": "NL of EN", "tech_rss": "URL of leeg"}]'
     )
     try:
         data = _extract_json(_call_claude(prompt, timeout=90))
@@ -197,6 +215,18 @@ def judge_reputability(candidates: list[dict]) -> list[dict]:
             for c, verdict in zip(candidates, data):
                 if isinstance(verdict, dict) and verdict.get("reputable") is True:
                     c["lang"] = str(verdict.get("lang", "EN")).strip().upper()
+                    tech_rss = str(verdict.get("tech_rss") or "").strip()
+                    if tech_rss:
+                        # Nooit ongezien overnemen: een verzonnen feed-URL zou de
+                        # bron stil onbruikbaar maken.
+                        if _feed_has_entries(tech_rss):
+                            c["rss"] = tech_rss
+                        else:
+                            logger.warning(
+                                "%s: opgegeven tech-feed %s levert niets op — overgeslagen",
+                                c["domain"], tech_rss,
+                            )
+                            continue
                     accepted.append(c)
             return accepted
     except Exception as exc:
