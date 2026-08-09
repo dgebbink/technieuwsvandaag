@@ -140,11 +140,14 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
   `assets/bronnen_meta.json`; een onbekend domein laat het script eenmalig door
   Claude beschrijven en cachet dat. `assets/pagina-veel-gebruikte-bronnen.html`
   is dus **gegenereerd** — bewerk het bestand niet met de hand.
-  > **Geen lege regels in pagina-HTML.** WordPress' `wpautop` maakt van elke lege
-  > regel een alineagrens en doet dat óók binnen `<style>`: er belandde een
-  > letterlijke `</p><p>` midden in de CSS, waarna de browser de rest van het blok
-  > oversloeg. De mobiele media-query stond dus wél in de paginabron maar werkte
-  > niet. `build_html()` haalt daarom alle lege regels eruit.
+  > **Let op bij álle pagina's in `assets/`: `wpautop` verbouwt witruimte.** Een
+  > lege regel wordt een alineagrens — óók binnen `<style>`, waar een letterlijke
+  > `</p><p>` midden in de CSS belandt en de browser de rest van het blok
+  > overslaat (de mobiele media-query stond zo wél in de paginabron maar werkte
+  > niet). Een enkele regelovergang bínnen een alinea wordt een `<br>`, wat op
+  > mobiel afgebroken regels midden in een zin geeft. Dus: geen lege regels in
+  > een `<style>`-blok, en alinea-tekst op één regel. `build_html()` doet dat
+  > automatisch; handgeschreven pagina's zoals `pagina-colofon.html` niet.
 - `adhoc_processor.py` — één URL → WP-draft (gebruikt door approval-server dashboard)
 - `update_bluesky_profile.py` — eenmalig Bluesky-profiel bijwerken
 - `brand.py` — **één bron voor het merk**: het T-teken, het woordmerk en de hele

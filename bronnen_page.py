@@ -248,27 +248,24 @@ def build_html(meta: dict[str, dict]) -> str:
         "  Opnieuw genereren: venv/bin/python3 bronnen_page.py --publish\n"
         "-->\n",
         '<div class="tnv-bronnen-pagina">\n',
-        '  <p class="tnv-intro">\n'
-        "    TechNieuwsVandaag selecteert dagelijks de meest relevante "
-        "technologienieuws&shy;berichten\n"
-        f"    uit een vaste set van {total} betrouwbare, internationaal erkende bronnen.\n"
-        "    Onderstaand overzicht laat zien welke websites worden gescand en "
-        "waarom ze zijn gekozen.\n"
-        "  </p>\n",
+        # Alles op één regel: wpautop maakt van elke regelovergang in een alinea
+        # een <br>, wat op mobiel afgebroken regels midden in een zin oplevert.
+        '  <p class="tnv-intro">TechNieuwsVandaag selecteert dagelijks de meest '
+        "relevante technologienieuws&shy;berichten uit een vaste set van "
+        f"{total} betrouwbare, internationaal erkende bronnen. Onderstaand "
+        "overzicht laat zien welke websites worden gescand en waarom ze zijn "
+        "gekozen.</p>\n",
         _STYLE,
         _table("Nederlandse bronnen", nl_rows),
         _table("Internationale bronnen", en_rows),
         f'  <p class="tnv-bijgewerkt">Laatst bijgewerkt: {_dutch_date()}.</p>\n',
-        '  <div class="tnv-disclaimer">\n'
-        "    <strong>Journalistieke onafhankelijkheid</strong><br>\n"
-        "    TechNieuwsVandaag neemt geen content over van bovenstaande bronnen.\n"
-        "    Artikelen zijn AI-gegenereerde Nederlandstalige <em>samenvattingen</em> "
-        "op basis van\n"
-        "    openbaar beschikbare RSS-feeds en webpagina's.\n"
-        "    Originele auteurs en uitgevers behouden alle rechten op hun werk.\n"
-        "    Elk artikel op TechNieuwsVandaag bevat een directe link naar de "
-        "bronpublicatie.\n"
-        "  </div>\n",
+        '  <div class="tnv-disclaimer"><strong>Journalistieke onafhankelijkheid'
+        "</strong><br>TechNieuwsVandaag neemt geen content over van bovenstaande "
+        "bronnen. Artikelen zijn AI-gegenereerde Nederlandstalige "
+        "<em>samenvattingen</em> op basis van openbaar beschikbare RSS-feeds en "
+        "webpagina's. Originele auteurs en uitgevers behouden alle rechten op hun "
+        "werk. Elk artikel op TechNieuwsVandaag bevat een directe link naar de "
+        "bronpublicatie.</div>\n",
         "</div>\n",
     ]
     html = "\n".join(p for p in parts if p)
