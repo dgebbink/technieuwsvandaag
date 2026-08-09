@@ -371,6 +371,21 @@ beeldmisbruik bijna een opgewekt beeld met een vrouw als middelpunt op.
 - DB: `wpdbtech` op `localhost`, user `dgebbink`
 - WP-CLI beschikbaar: `sudo -u www-data wp ...` (vanuit de WordPress root)
 - Thema templates: `index.php` (homepage), `archive.php` (categorie/tag), `template-nieuws.php` (alle nieuws, pagina ID 778)
+- **Mobiele navigatie zit in het thema, niet in WordPress-instellingen.** Onder
+  640px verbergt de CSS de menubalk; de hamburgerknop (`#tnv-menu-toggle` in
+  `header.php`, gedrag in `tnv-news.js`, opmaak in de `max-width: 640px`-blok van
+  `style.css`) klapt `#primary-menu` uit als paneel. Tot 2026-08-09 bestond die
+  knop niet en was er op mobiel dus géén navigatie — ook de categorieën waren
+  alleen via de footer of zoeken bereikbaar. Twee dingen om te weten bij
+  wijzigingen: de knop moet `background`/`box-shadow` expliciet uitzetten voor
+  `:hover`/`:focus`/`:active` (GeneratePress geeft élke `<button>` een grijs vlak)
+  en hij mag niet krimpen (`flex: 0 0 40px`), anders zakt hij terug naar de
+  breedte van het icoon. De sociale iconen wijken onder 640px om ruimte te maken
+  voor het logo — die regel heeft `.site-header` ervoor nodig, want de basisregel
+  `.tnv-social-nav` staat verderop in `style.css` en wint anders.
+- **Bump `Version:` in `style.css`** na elke wijziging aan het thema: dat nummer
+  is de cache-buster van `wp_enqueue_*`, en zonder bump draaien terugkerende
+  bezoekers de oude JS tegen de nieuwe markup.
 
 ## WordPress auth
 
