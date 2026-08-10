@@ -283,10 +283,27 @@ implementaties zitten in het pakket `image_providers/` achter één interface
 `image_generator.py` gaat alleen nog over de prompt en de nabewerking en roept
 `generate_provider_image()` aan. Twee dingen om te weten bij wijzigingen:
 
+- **De keten is `webgemini` → `nanobanana` → `fal`** (`IMAGE_PROVIDER` +
+  komma-gescheiden `IMAGE_FALLBACK_PROVIDER`), van gratis naar duur.
+  `webgemini` genereert via gemini.google.com in de Selenium-Firefox op
+  meterkast en levert 1376×768 — dezelfde resolutie als de betaalde API op 1K.
+  Drie dingen die hem laten falen, en alle drie zijn normaal: het gratis
+  dagquotum (~3 beelden), een verlopen Google-sessie, of een gewijzigde DOM.
+  Elk daarvan geeft `None` en schuift de keten door.
+  > **De sessie kan niet automatisch herstellen.** Google weigert een
+  > geautomatiseerde login, dus de provider leent de cookies uit het
+  > Firefox-profiel (`WEBGEMINI_PROFILE`) waar met de hand is ingelogd. Staat er
+  > structureel `Web-Gemini: niet ingelogd` in de log, dan is dát de reden en
+  > moet je opnieuw inloggen in de Firefox-container. Tot die tijd betaalt de
+  > site gewoon via `nanobanana` — stil duurder, niet stuk.
+  > Twee valkuilen bij onderhoud: het beeld in de DOM is een **preview** van
+  > 1024px (de volle resolutie zit achter "Download full size image", die een
+  > PNG in de downloadmap van de Selenium-container zet), en de pagina draait
+  > **Trusted Types**, dus de prompt moet met native WebDriver-typen ingevoerd
+  > worden — `innerHTML` wordt door de CSP geblokkeerd.
 - **Terugval bij een mislukt beeld, níét bij een misconfiguratie.** Levert de
-  primaire provider geen beeld op (quota op, time-out), dan neemt
-  `IMAGE_FALLBACK_PROVIDER` (standaard `fal`) het over, met een `WARNING` in de
-  log. Ontbreekt daarentegen de *key* van de primaire provider of is
+  primaire provider geen beeld op (quota op, time-out), dan neemt de volgende
+  schakel het over, met een `WARNING` in de log. Ontbreekt daarentegen de *key* van de primaire provider of is
   `IMAGE_PROVIDER` onbekend, dan volgt een `ImageProviderError` en stopt
   `main.py` vóór het eerste beeld (in `--dry-run` alleen een waarschuwing) —
   terugval zou die fout verbergen en de site maanden ongemerkt op de verkeerde

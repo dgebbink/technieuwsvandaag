@@ -208,10 +208,24 @@ dutchcowboys.nl|https://www.dutchcowboys.nl/sitemap/news.xml
 Bij `IMAGE_STRATEGY=generate` schrijft Claude de beeldprompt en maakt een
 *beeldprovider* het beeld. Welke dat is, staat in `IMAGE_PROVIDER`:
 
-| `IMAGE_PROVIDER` | Dienst | Model | Vereiste env-var |
-|---|---|---|---|
-| `fal` | FAL.ai | `fal-ai/flux/dev` | `FAL_API_KEY` |
-| `nanobanana` | Google Gemini API | Nano Banana 2 (`gemini-3.1-flash-image`) | `GEMINI_API_KEY` |
+| `IMAGE_PROVIDER` | Dienst | Model | Kosten/beeld | Vereist |
+|---|---|---|---|---|
+| `webgemini` | gemini.google.com via de browser | Gemini (web) | **gratis** | Selenium-grid + ingelogde sessie |
+| `nanobanana` | Google Gemini API | `gemini-3.1-flash-image` | $0,067 | `GEMINI_API_KEY` |
+| `fal` | FAL.ai | `fal-ai/flux/dev` | $0,0325 | `FAL_API_KEY` |
+
+**Productie draait als keten**: `webgemini` → `nanobanana` → `fal`. De eerste is
+gratis maar heeft een dagquotum van ~3 beelden en hangt aan een handmatig
+aangemaakte Google-sessie; loopt die af of is het quotum op, dan schuift de
+keten vanzelf door. `webgemini` levert 1376×768 — dezelfde resolutie als de
+betaalde API op 1K.
+
+> **De web-sessie is de zwakke schakel en kan niet automatisch herstellen.** Er
+> wordt niet ingelogd: Google weigert een geautomatiseerde login ("this browser
+> or app may not be secure"). De provider leent de cookies uit het
+> Firefox-profiel op meterkast. Zie je in de log structureel
+> `Web-Gemini: niet ingelogd`, log dan met de hand opnieuw in via de
+> Firefox-container — tot die tijd draait alles op de betaalde API.
 
 > De code valt zonder instelling terug op `fal`; **productie draait sinds
 > 2026-08-10 op `nanobanana`** (ingesteld in `.env`). Let op: beeldgeneratie zit
