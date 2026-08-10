@@ -122,6 +122,12 @@ def _call_claude(prompt: str, timeout: int = 90) -> str:
     )
     if result.returncode != 0:
         err = result.stderr.strip()
+        # De CLI meldt niet alles op stderr: bij een usage-/rate-limit kwam er
+        # exit 1 met een léég stderr terug, waardoor de log alleen "exit 1" zei
+        # en de oorzaak nergens stond (2026-08-10, hele run zonder artikelen).
+        # Daarom stdout erbij pakken als stderr niets prijsgeeft.
+        if not err:
+            err = result.stdout.strip()[:500] or "(geen output op stderr of stdout)"
         if "credit" in err.lower():
             raise InsufficientCreditsError(err)
         raise RuntimeError(f"claude CLI mislukt (exit {result.returncode}): {err}")

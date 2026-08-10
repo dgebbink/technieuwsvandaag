@@ -243,10 +243,12 @@ een regel in `_PROVIDERS`.
 
 **Providerspecifieke promptaanvulling.** Een provider mag via `prompt_suffix`
 iets achter elke prompt laten plakken, voor eigenaardigheden van zijn eigen
-model. Nano Banana gebruikt dat voor een logo-uitsluiting: het model tekent
-anders échte, herkenbare merklogo's (Play Store, WhatsApp, Instagram) op
-schermen in beeld. `FalImageProvider.prompt_suffix` is leeg, zodat de
-flux/dev-prompts exact blijven zoals ze waren.
+model. Nano Banana gebruikt dat om échte merklogo's *subtiel* in het beeld te
+verwerken: klein en terloops, dáár waar ze in een echte foto zouden staan, nooit
+als blikvanger. Dat kan bij dit model omdat het merktekens correct rendert;
+flux/dev maakte er vervormde pseudo-logo's van, dus
+`FalImageProvider.prompt_suffix` is leeg en de flux-prompts blijven exact zoals
+ze waren.
 
 > De losse hulpscripts `generate_header_image.py` en `update_bluesky_profile.py`
 > hebben nog hun eigen, directe FAL.ai-aanroep en volgen `IMAGE_PROVIDER` niet.
@@ -265,7 +267,8 @@ flux/dev-prompts exact blijven zoals ze waren.
 | FAL.ai timeout | FAL.ai kan 60-90 sec nodig hebben; verhoog `FAL_IMAGE_TIMEOUT` in `image_providers/fal.py` |
 | `Beeldprovider niet bruikbaar: ...` | De API-sleutel van de provider uit `IMAGE_PROVIDER` ontbreekt, of de waarde is niet `fal`/`nanobanana` — zie [Beeldprovider kiezen](#beeldprovider-kiezen) |
 | Nano Banana: `HTTP 429 ... limit: 0` | Beeldgeneratie zit **niet** in de gratis Gemini-tier: elk image-model geeft quota 0 tot er billing aan staat op het Google Cloud-project. Aanzetten via [aistudio.google.com](https://aistudio.google.com/apikey) → project → billing. Een gewone rate limit geeft een limit > 0 |
-| Echte merklogo's in een Nano Banana-beeld | Zou niet meer moeten: `NanoBananaImageProvider.prompt_suffix` sluit ze uit. Controleer in de log of de regel `Prompt aangevuld voor nanobanana: ...` erbij staat; zo niet, dan draait de run op een andere provider |
+| Merklogo te groot/dominant in een Nano Banana-beeld | Bedoeld is klein en terloops; scherp zo nodig `_BRAND_PROMPT_SUFFIX` in `image_providers/nanobanana.py` aan. Controleer in de log dat de regel `Prompt aangevuld voor nanobanana: ...` erbij staat — zo niet, dan draaide de run op een andere provider |
+| Klein onleesbaar tekstje in beeld (UI-labels, winkelbordjes) | Bijwerking van de logo-uitzondering op de "no text or lettering"-regel; zie de slotzin van `_BRAND_PROMPT_SUFFIX` |
 | FAL.ai tegoed laag | Je ontvangt automatisch een waarschuwingsmail; herlaad via fal.ai → Dashboard → Billing |
 | `atproto` niet gevonden | Voer `pip install atproto` uit |
 

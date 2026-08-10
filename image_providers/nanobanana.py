@@ -69,22 +69,28 @@ def _extract_image_b64(payload: dict) -> Optional[str]:
     return None
 
 
-# Dit model tekent échte, herkenbare merklogo's — Play Store, WhatsApp,
-# Instagram, Facebook, Telegram stonden alle in de eerste twee testbeelden op
-# schermen in beeld, terwijl er "no text or lettering" in de prompt stond. De
-# logo-uitsluitingen gingen op 2026-08-04 uit de gedeelde prompts omdat
-# flux/dev alleen vervórmde pseudo-logo's maakte; die afweging valt hier anders
-# uit. Vandaar providerspecifiek: de flux-prompts blijven letterlijk zoals ze
-# toen zijn achtergelaten.
+# Dit model tekent échte merklogo's correct — geen vervormde pseudo-logo's
+# zoals flux/dev, maar herkenbare, goed geproportioneerde merktekens. Dat mag
+# hier bewust: op verzoek (2026-08-10) worden logo's subtiel in het beeld
+# verwerkt in plaats van uitgesloten. Providerspecifiek, dus de flux-prompts
+# blijven letterlijk zoals ze op 2026-08-04 zijn achtergelaten — flux kan dit
+# niet en zou er vervormde merktekens van maken.
 #
-# Als positieve uitsluiting geformuleerd — er is geen negative prompt, en
-# schermen waren juist de plek waar de logo's opdoken, dus die worden expliciet
-# genoemd.
-_LOGO_PROMPT_SUFFIX = (
-    " No brand logos, trademarks, wordmarks, app icons or company marks appear "
-    "anywhere in the image: any screens, phones, monitors, signage or clothing "
-    "show only plain, generic, unbranded shapes, colours and placeholder "
-    "graphics that resemble no existing company or product."
+# De laatste zin is niet optioneel: de gedeelde nieuwsprompt vraagt om "no text
+# or lettering", en een woordmerk ís lettering. Zonder die expliciete uitzondering
+# staan er twee tegenstrijdige instructies in één prompt, en dan laat het model
+# er willekeurig één vallen — precies het mechanisme dat de group-template eerder
+# de sekse deed weglaten (zie CLAUDE.md, Afbeeldingsgeneratie).
+_BRAND_PROMPT_SUFFIX = (
+    " Real brand logos and product marks may appear where they would naturally "
+    "occur in a genuine photograph — on devices, screens, signage, packaging or "
+    "clothing. Render them accurately and in correct proportion, but keep them "
+    "subtle and secondary: small, incidental, softened by depth of field or "
+    "viewing angle, never the focal point of the composition, and never "
+    "enlarged, repeated or distorted for emphasis. This is a deliberate "
+    "exception to the instruction above about text and lettering: brand "
+    "wordmarks and logos are permitted, while other text — captions, headlines, "
+    "labels and UI copy — remains absent."
 )
 
 
@@ -93,7 +99,7 @@ class NanoBananaImageProvider(ImageProvider):
 
     name = "nanobanana"
     api_key_env = "GEMINI_API_KEY"
-    prompt_suffix = _LOGO_PROMPT_SUFFIX
+    prompt_suffix = _BRAND_PROMPT_SUFFIX
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None) -> None:
         self.api_key = GEMINI_API_KEY if api_key is None else api_key

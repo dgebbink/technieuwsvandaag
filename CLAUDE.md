@@ -298,20 +298,24 @@ implementaties zitten in het pakket `image_providers/` achter één interface
   Google Cloud-project werkt `nanobanana` niet. Billing staat sinds 2026-08-10
   aan en de provider is die dag end-to-end getest: ~19 s per beeld, 2752×1536
   JPEG (≈3 MB ruw, ≈1 MB nadat `add_ai_label()` het opnieuw wegschrijft).
-- **Nano Banana tekent échte merklogo's — opgevangen via `prompt_suffix`.** In
-  de eerste twee testbeelden stonden herkenbare, correcte logo's (Play Store,
-  WhatsApp, Instagram, Facebook, Telegram) op schermen in beeld, ondanks "no
-  text or lettering" in de prompt. De logo-uitsluitingen gingen er op
-  2026-08-04 uit omdat flux/dev alleen vervórmde pseudo-logo's maakte; dit
-  model is goed genoeg om de echte merktekens te renderen, wat een zwaarder
-  probleem is op een publieke nieuwssite. Daarom hangt
-  `NanoBananaImageProvider.prompt_suffix` er een expliciete uitsluiting achter
-  (positief geformuleerd; er is geen negative prompt). `generate_provider_image()`
-  plakt die er op het laatste moment aan, dus hij geldt voor álle
-  promptvarianten — nieuws, editorial én gevoelig onderwerp.
-  **De FAL-prompts zijn hierdoor letterlijk ongewijzigd** t.o.v. 2026-08-04:
-  `FalImageProvider.prompt_suffix` is leeg. Wie een uitsluiting voor beide
-  providers wil, zet hem in de gedeelde prompt in `image_generator.py`, niet hier.
+- **Nano Banana verwerkt échte merklogo's subtiel in het beeld** (op verzoek,
+  2026-08-10). Dit model rendert herkenbare, correct geproportioneerde
+  merktekens in plaats van de vervormde pseudo-logo's van flux/dev, en dat mag
+  hier bewust: `NanoBananaImageProvider.prompt_suffix` vraagt om logo's dáár
+  waar ze in een echte foto zouden staan (apparaten, schermen, signage,
+  verpakking), klein en terloops, nooit als blikvanger.
+  `generate_provider_image()` plakt de suffix er op het laatste moment achter,
+  dus hij geldt voor álle promptvarianten — nieuws, editorial én gevoelig
+  onderwerp. **De FAL-prompts zijn hierdoor letterlijk ongewijzigd** t.o.v.
+  2026-08-04: `FalImageProvider.prompt_suffix` is leeg, en flux zou er toch
+  vervormde merktekens van maken.
+  > **De uitzonderingszin achteraan is niet optioneel.** De gedeelde
+  > nieuwsprompt eist "no text or lettering", en een woordmerk ís lettering.
+  > Zonder de expliciete uitzondering staan er twee tegenstrijdige instructies
+  > in één prompt en laat het model er willekeurig één vallen — hetzelfde
+  > mechanisme dat de group-template eerder de sekse deed weglaten.
+  > Bijwerking: er duikt soms klein, onleesbaar tekstje op in UI-panelen en op
+  > winkelbordjes. Wil je dat strakker, dan is die zin de plek.
 - `generate_header_image.py` en `update_bluesky_profile.py` hebben nog hun eigen
   directe FAL.ai-aanroep en volgen `IMAGE_PROVIDER` niet — losse hulpscripts.
 
