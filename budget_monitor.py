@@ -163,16 +163,36 @@ _GEMINI_PRICING_DEFAULT = _GEMINI_PRICING["gemini-3.1-flash-image"]
 _LEDGER_RETENTION_DAYS = 62
 
 
-def cost_from_usage(usage: dict, model: str) -> float:
-    """Reken het `usage`-blok van één Gemini-antwoord om naar dollars.
+# Prijs per gegenereerd beeld, per formaat. **Dit is de basis voor de
+# beeldkosten, níét de image-tokens uit `usage`.** Gemeten op 2026-08-10:
+# de API rapporteert 1120 image-tokens bij 1K, 2K én 4K — dat getal beweegt dus
+# niet mee met het formaat, terwijl de prijs dat wél doet. Rekenen op tokens gaf
+# daardoor voor elk formaat ~$0.068 en verzweeg een derde van de kosten van een
+# 2K-beeld. Bron: ai.google.dev/gemini-api/docs/pricing.
+_GEMINI_IMAGE_PRICE = {
+    "0.5K": 0.045,
+    "1K": 0.067,
+    "2K": 0.101,
+    "4K": 0.151,
+}
+
+
+def cost_from_usage(usage: dict, model: str, image_size: str = "1K") -> float:
+    """Reken één gegenereerd Gemini-beeld om naar dollars.
+
+    Het beeld zelf gaat op de vaste prijs voor `image_size`; de tekst-/denk- en
+    invoertokens komen daar bovenop tegen hun tokentarief.
 
     Pre:  usage is het usage-object uit een Interactions-antwoord
-    Post: kosten in USD. Onbekend model → tarieven van gemini-3.1-flash-image;
-          een onleesbaar usage-blok levert 0.0 op in plaats van een fout, want
-          dit mag de beeldgeneratie nooit onderuithalen.
+    Post: kosten in USD. Onbekend formaat → prijs van 1K; onbekend model →
+          tarieven van gemini-3.1-flash-image; een onleesbaar usage-blok levert
+          alsnog de beeldprijs op, want het beeld is wél gemaakt. Gooit nooit:
+          dit mag de beeldgeneratie niet onderuithalen.
     """
     try:
         price = _GEMINI_PRICING.get(model, _GEMINI_PRICING_DEFAULT)
+        image_cost = _GEMINI_IMAGE_PRICE.get(image_size, _GEMINI_IMAGE_PRICE["1K"])
+
         input_tokens = float(usage.get("total_input_tokens") or 0)
         output_total = float(usage.get("total_output_tokens") or 0)
         image_tokens = sum(
@@ -180,16 +200,15 @@ def cost_from_usage(usage: dict, model: str) -> float:
             for m in (usage.get("output_tokens_by_modality") or [])
             if m.get("modality") == "image"
         )
-        # Wat niet als beeld is gerapporteerd is tekst/denkwerk en kost minder.
+        # Alles wat niet als beeld is gerapporteerd is tekst/denkwerk.
         text_tokens = max(output_total - image_tokens, 0.0)
-        return (
-            input_tokens * price["input"]
-            + text_tokens * price["text_output"]
-            + image_tokens * price["image_output"]
+        token_cost = (
+            input_tokens * price["input"] + text_tokens * price["text_output"]
         ) / 1_000_000
+        return image_cost + token_cost
     except Exception as exc:
         logger.warning("Gemini-kosten berekenen mislukt: %s", exc)
-        return 0.0
+        return _GEMINI_IMAGE_PRICE.get(image_size, _GEMINI_IMAGE_PRICE["1K"])
 
 
 def _load_ledger() -> dict:
@@ -222,7 +241,7 @@ def _load_ledger() -> dict:
     return {"entries": [], "lifetime_cost": 0.0, "lifetime_images": 0, "since": None}
 
 
-def record_gemini_usage(usage: dict, model: str) -> None:
+def record_gemini_usage(usage: dict, model: str, image_size: str = "1K") -> None:
     """Boek één gegenereerd beeld in `gemini_usage.json`.
 
     Pre:  usage komt uit een geslaagd Interactions-antwoord
@@ -240,11 +259,12 @@ def record_gemini_usage(usage: dict, model: str) -> None:
                 "Gemini gaf geen usage terug — kosten van dit beeld niet geboekt "
                 "(prepaid tegoed telt dit beeld dus niet mee)"
             )
-        cost = round(cost_from_usage(usage, model), 6)
+        cost = round(cost_from_usage(usage, model, image_size), 6)
         ledger = _load_ledger()
         ledger["entries"].append({
             "ts": now.isoformat(),
             "model": model,
+            "image_size": image_size,
             "cost": cost,
             "total_tokens": usage.get("total_tokens"),
         })

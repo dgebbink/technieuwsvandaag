@@ -297,10 +297,23 @@ implementaties zitten in het pakket `image_providers/` achter één interface
 - **Gemini-kosten houden we zelf bij.** Een Gemini API-key heeft geen
   billing-endpoint (FAL.ai wél), dus `record_gemini_usage()` schrijft per beeld
   een regel in `gemini_usage.json` en `budget_monitor.py` telt die op voor het
-  dagoverzicht. De berekening sluit aan op Google's eigen prijslijst (1120
-  image-tokens × $60/1M = $0.067 voor een 1K-beeld). Er is geen "resterend
-  tegoed": Google is postpaid. `GEMINI_MONTHLY_BUDGET` geeft desgewenst een
-  zelfgekozen plafond om vanaf te rekenen.
+  dagoverzicht.
+  > **Reken de beeldkosten op het formaat, niet op de image-tokens.** De API
+  > rapporteert **1120 image-tokens bij élk formaat** — 1K, 2K en 4K geven
+  > exact hetzelfde getal (gemeten 2026-08-10), terwijl de prijs wél per
+  > formaat verschilt. Op tokens rekenen gaf daardoor voor alles ~$0.068 en
+  > verzweeg een derde van de kosten van een 2K-beeld. `_GEMINI_IMAGE_PRICE`
+  > is de bron; de tokentarieven gelden alleen nog voor de invoer- en
+  > tekst-/denktokens erbovenop.
+  Er is geen "resterend tegoed" bij Google (postpaid). `GEMINI_PREPAID_CREDIT`
+  telt af vanaf het ongesnoeide lifetime-verbruik; `GEMINI_MONTHLY_BUDGET` is
+  het alternatief dat elke maand opnieuw begint.
+- **`GEMINI_IMAGE_SIZE` staat op 1K, en dat is een bewuste ondergrens.** Het
+  thema registreert `tnv-hero` op 780×439 en `tnv-card` op 480×270; Instagram
+  krijgt 1080×1350. 1K levert 1376×768 — ruim boven alles wat er getoond wordt,
+  terwijl 2K de helft duurder is ($0.101 tegen $0.067) en alleen pixels
+  oplevert die WordPress meteen wegschaalt. 0.5K (688×384) is te klein voor
+  Instagram. Verhoog dit alleen als het thema grotere formaten registreert.
 - **De promptteksten zijn op flux/dev afgestemd.** De uitsluitingen staan
   bewust in de *positieve* prompt (flux kent geen `negative_prompt`, zie
   hieronder). Gemini leest die net zo goed, maar wie de prompts herschrijft voor

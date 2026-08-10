@@ -190,6 +190,9 @@ dutchcowboys.nl|https://www.dutchcowboys.nl/sitemap/news.xml
 | `FAL_API_KEY` | API-sleutel van fal.ai (vereist bij `IMAGE_PROVIDER=fal`) | — |
 | `GEMINI_API_KEY` | API-sleutel van Google AI Studio (vereist bij `IMAGE_PROVIDER=nanobanana`) | — |
 | `GEMINI_IMAGE_MODEL` | Gemini-model voor beeldgeneratie | `gemini-3.1-flash-image` |
+| `GEMINI_IMAGE_SIZE` | `0.5K`, `1K`, `2K` of `4K` — zie [Beeldformaat en kosten](#beeldformaat-en-kosten) | `1K` |
+| `GEMINI_PREPAID_CREDIT` | Vooruitbetaald tegoed; `0` = geen | `0` |
+| `GEMINI_CREDIT_CURRENCY` | Munteenheid van dat tegoed (`EUR`/`USD`) | `USD` |
 | `IMAGE_FALLBACK_PROVIDER` | Neemt het over als de primaire provider geen beeld oplevert; leeg = geen terugval | `fal` |
 | `GEMINI_MONTHLY_BUDGET` | Maandplafond in USD, alleen voor de weergave in het dagoverzicht; `0` = alleen verbruik tonen | `0` |
 | `ENABLE_SOCIAL_POSTING` | `true` om automatisch naar Bluesky te posten | `false` |
@@ -261,13 +264,33 @@ betaalmodellen verschillen:
 
 Een Gemini API-key heeft **geen billing-endpoint**; Google verwijst naar de
 Cloud Billing-console, die alleen met OAuth te bevragen is en uren achterloopt.
-Google's eigen advies is per antwoord de `usage` te loggen. Dat doet
-`record_gemini_usage()` bij elk gegenereerd beeld; `budget_monitor.py` telt het
-op. Geen schatting: een 1K-beeld meldt 1120 image-tokens à $60/1M = $0.0672,
-precies de $0.067 die Google zelf voor een 1K-beeld rekent.
+Daarom boekt `record_gemini_usage()` elk gegenereerd beeld zelf, en telt
+`budget_monitor.py` dat op.
 
-Wil je tóch een "nog over"-getal, zet dan `GEMINI_MONTHLY_BUDGET` — dan trekt
-het rapport het maandverbruik van dat zelfgekozen plafond af.
+> **De beeldprijs volgt het formaat, niet de tokens.** De API meldt bij 1K, 2K
+> én 4K exact 1120 image-tokens; alleen de prijs verschilt. Rekenen op tokens
+> gaf voor elk formaat ~$0.068 en verzweeg dus een derde van de kosten van een
+> 2K-beeld. `_GEMINI_IMAGE_PRICE` in `budget_monitor.py` is de bron.
+
+Voor een "nog over"-getal zijn er twee opties, die elkaar uitsluiten:
+`GEMINI_PREPAID_CREDIT` (vooruitbetaald tegoed, loopt door over maanden heen —
+telt af vanaf het totale verbruik sinds het bijhouden begon) of
+`GEMINI_MONTHLY_BUDGET` (zelfgekozen maandplafond dat elke 1e opnieuw begint).
+Prepaid wint als beide gezet zijn.
+
+### Beeldformaat en kosten
+
+| Formaat | Resolutie (16:9) | Prijs | €10 ≈ |
+|---|---|---|---|
+| `0.5K` | 688×384 | $0.045 | 235 beelden |
+| **`1K` (standaard)** | **1376×768** | **$0.067** | **159 beelden** |
+| `2K` | 2752×1536 | $0.101 | 106 beelden |
+| `4K` | 5504×3072 | $0.151 | 71 beelden |
+
+`GEMINI_IMAGE_SIZE=1K` is bewust gekozen: het thema toont een featured image
+nergens groter dan `tnv-hero` (780×439), en Instagram krijgt 1080×1350. Alles
+boven ~1400px breed schaalt WordPress meteen weg. 0.5K is te klein voor
+Instagram.
 
 De code zit in het pakket `image_providers/`: `base.py` definieert de interface
 (`ImageProvider.generate_image(prompt, dest_path, options)`), `fal.py` en

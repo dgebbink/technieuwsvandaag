@@ -15,7 +15,7 @@ from typing import Optional
 
 import requests
 
-from config import GEMINI_API_KEY, GEMINI_IMAGE_MODEL
+from config import GEMINI_API_KEY, GEMINI_IMAGE_MODEL, GEMINI_IMAGE_SIZE
 
 from .base import ImageOptions, ImageProvider, ImageProviderError
 
@@ -23,9 +23,6 @@ logger = logging.getLogger(__name__)
 
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"
 GEMINI_IMAGE_TIMEOUT = 120
-# 1K/2K/4K — 2K is ruim genoeg voor een featured image en een stuk goedkoper
-# dan 4K. Let op de hoofdletter K; de API weigert "2k".
-GEMINI_IMAGE_SIZE = "2K"
 
 
 def _error_message(resp) -> str:
@@ -101,9 +98,15 @@ class NanoBananaImageProvider(ImageProvider):
     api_key_env = "GEMINI_API_KEY"
     prompt_suffix = _BRAND_PROMPT_SUFFIX
 
-    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        image_size: Optional[str] = None,
+    ) -> None:
         self.api_key = GEMINI_API_KEY if api_key is None else api_key
         self.model = model or GEMINI_IMAGE_MODEL
+        self.image_size = image_size or GEMINI_IMAGE_SIZE
         if not self.api_key:
             raise ImageProviderError(
                 "IMAGE_PROVIDER=nanobanana, maar GEMINI_API_KEY is niet gezet. "
@@ -138,7 +141,7 @@ class NanoBananaImageProvider(ImageProvider):
                         "type": "image",
                         "mime_type": "image/jpeg",
                         "aspect_ratio": options.aspect_ratio,
-                        "image_size": GEMINI_IMAGE_SIZE,
+                        "image_size": self.image_size,
                     },
                 },
                 timeout=GEMINI_IMAGE_TIMEOUT,
@@ -162,7 +165,9 @@ class NanoBananaImageProvider(ImageProvider):
             try:
                 from budget_monitor import record_gemini_usage  # noqa: PLC0415
 
-                record_gemini_usage(payload.get("usage") or {}, self.model)
+                record_gemini_usage(
+                    payload.get("usage") or {}, self.model, self.image_size
+                )
             except Exception as exc:  # boekhouding mag nooit een beeld kosten
                 logger.warning("Gemini-verbruik niet vastgelegd: %s", exc)
 

@@ -115,6 +115,14 @@ GEMINI_IMAGE_MODEL: str = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-3.1-flash
 # billing-endpoint heeft (zie budget_monitor.py); zonder dit bestand is er geen
 # enkel zicht op de kosten in het dagoverzicht.
 GEMINI_USAGE_FILE: Path = BASE_DIR / "gemini_usage.json"
+# Beeldformaat bij Gemini: 0.5K, 1K, 2K of 4K (let op de hoofdletter K).
+# **1K (1376x768) is bewust de standaard.** Het thema registreert als grootste
+# formaat `tnv-hero` op 780x439 en `tnv-card` op 480x270; Instagram krijgt
+# 1080x1350. Alles boven ~1400px breed wordt dus door WordPress weggeschaald en
+# door niemand bekeken, terwijl 2K wél de helft duurder is ($0.101 tegen
+# $0.067) en 4K ruim het dubbele. Verhoog dit alleen als het thema grotere
+# afbeeldingsformaten gaat registreren.
+GEMINI_IMAGE_SIZE: str = os.environ.get("GEMINI_IMAGE_SIZE", "1K")
 # Optioneel maandplafond, puur voor de weergave. Staat dit op 0, dan toont het
 # dagoverzicht alleen het verbruik en geen "nog over".
 GEMINI_MONTHLY_BUDGET: float = float(os.environ.get("GEMINI_MONTHLY_BUDGET", "0"))
