@@ -28,6 +28,22 @@ GEMINI_IMAGE_TIMEOUT = 120
 GEMINI_IMAGE_SIZE = "2K"
 
 
+def _error_message(resp) -> str:
+    """Haal de leesbare reden uit een foutantwoord van de Gemini API.
+
+    De reden staat in `error.message` en is lang (met doc-links erin); botweg
+    afkappen op N tekens sneed uitgerekend de bruikbare staart eraf — bij een
+    429 is dat `limit: 0, model: ...`, precies wat je moet weten. Daarom eerst
+    het message-veld eruit vissen en pas dat afkappen, met de ruwe body als
+    terugval wanneer het antwoord geen JSON is.
+    """
+    try:
+        message = resp.json()["error"]["message"]
+    except Exception:
+        message = resp.text
+    return " ".join(str(message).split())[:500]
+
+
 def _extract_image_b64(payload: dict) -> Optional[str]:
     """Vis de base64-beeldbytes uit een Interactions-antwoord.
 
@@ -102,9 +118,7 @@ class NanoBananaImageProvider(ImageProvider):
                 timeout=GEMINI_IMAGE_TIMEOUT,
             )
             if resp.status_code >= 400:
-                # Gemini zet de reden (quota, geweigerde prompt, verkeerde
-                # model-id) in de body; zonder die tekst is een 400 niet te duiden.
-                raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:400]}")
+                raise RuntimeError(f"HTTP {resp.status_code}: {_error_message(resp)}")
 
             payload = resp.json()
             image_b64 = _extract_image_b64(payload)
