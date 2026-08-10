@@ -33,8 +33,11 @@ import requests
 from config import (
     FAL_API_KEY,
     FAL_ADMIN_API_KEY,
+    GEMINI_CREDIT_CURRENCY,
     GEMINI_MONTHLY_BUDGET,
+    GEMINI_PREPAID_CREDIT,
     GEMINI_USAGE_FILE,
+    GEMINI_USD_TO_EUR,
     LOGS_DIR,
 )
 
@@ -189,14 +192,34 @@ def cost_from_usage(usage: dict, model: str) -> float:
         return 0.0
 
 
-def _load_ledger() -> list:
-    """Lees het grootboek; ontbrekend of corrupt levert een lege lijst op."""
+def _load_ledger() -> dict:
+    """Lees het grootboek als {entries, lifetime_cost, lifetime_images}.
+
+    `entries` wordt gesnoeid op ouderdom (voor "vandaag"/"deze maand"), maar
+    `lifetime_*` niet: dat is de teller waar het prepaid tegoed vanaf loopt, en
+    die mag niet meegroeien als oude regels verdwijnen — anders lijkt het tegoed
+    zich vanzelf bij te vullen. Accepteert nog het oude lijst-formaat.
+    """
     try:
         with open(GEMINI_USAGE_FILE, "r", encoding="utf-8") as fh:
             data = json.load(fh)
-        return data if isinstance(data, list) else []
     except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return []
+        data = None
+
+    if isinstance(data, list):  # formaat van vóór de prepaid-teller
+        return {
+            "entries": data,
+            "lifetime_cost": round(sum(float(e.get("cost") or 0) for e in data), 6),
+            "lifetime_images": len(data),
+            "since": (data[0].get("ts") if data else None),
+        }
+    if isinstance(data, dict):
+        data.setdefault("entries", [])
+        data.setdefault("lifetime_cost", 0.0)
+        data.setdefault("lifetime_images", 0)
+        data.setdefault("since", None)
+        return data
+    return {"entries": [], "lifetime_cost": 0.0, "lifetime_images": 0, "since": None}
 
 
 def record_gemini_usage(usage: dict, model: str) -> None:
@@ -209,15 +232,33 @@ def record_gemini_usage(usage: dict, model: str) -> None:
     """
     try:
         now = datetime.now(CET)
+        if not usage:
+            # Een geslaagd beeld zonder usage-blok kost wél geld, maar is niet
+            # te berekenen. Zichtbaar maken: anders zakt het als €0 weg en loopt
+            # het prepaid tegoed stilletjes achter op de werkelijkheid.
+            logger.warning(
+                "Gemini gaf geen usage terug — kosten van dit beeld niet geboekt "
+                "(prepaid tegoed telt dit beeld dus niet mee)"
+            )
+        cost = round(cost_from_usage(usage, model), 6)
         ledger = _load_ledger()
-        ledger.append({
+        ledger["entries"].append({
             "ts": now.isoformat(),
             "model": model,
-            "cost": round(cost_from_usage(usage, model), 6),
+            "cost": cost,
             "total_tokens": usage.get("total_tokens"),
         })
+        # Lifetime-tellers lopen door, ook als de regel later gesnoeid wordt.
+        ledger["lifetime_cost"] = round(float(ledger.get("lifetime_cost") or 0) + cost, 6)
+        ledger["lifetime_images"] = int(ledger.get("lifetime_images") or 0) + 1
+        if not ledger.get("since"):
+            ledger["since"] = now.isoformat()
+
         cutoff = now - timedelta(days=_LEDGER_RETENTION_DAYS)
-        ledger = [e for e in ledger if _parse_ts(e.get("ts")) and _parse_ts(e["ts"]) >= cutoff]
+        ledger["entries"] = [
+            e for e in ledger["entries"]
+            if (ts := _parse_ts(e.get("ts"))) and ts >= cutoff
+        ]
         with open(GEMINI_USAGE_FILE, "w", encoding="utf-8") as fh:
             json.dump(ledger, fh, indent=2)
     except Exception as exc:
@@ -241,7 +282,7 @@ def get_gemini_cost(start: datetime) -> dict:
           uitkomst, geen storing.
     """
     try:
-        entries = [e for e in _load_ledger()
+        entries = [e for e in _load_ledger()["entries"]
                    if (ts := _parse_ts(e.get("ts"))) and ts >= start]
         return {
             "success": True,
@@ -251,6 +292,20 @@ def get_gemini_cost(start: datetime) -> dict:
         }
     except Exception as exc:
         return {"success": False, "cost": None, "images": 0, "error": str(exc)}
+
+
+def get_gemini_lifetime() -> dict:
+    """Totaal verbruik sinds het bijhouden begon (ongesnoeid).
+
+    Post: dict — cost (USD), images, since (ISO-tijdstip van de eerste boeking
+          of None). Dit is de teller waar het prepaid tegoed vanaf loopt.
+    """
+    ledger = _load_ledger()
+    return {
+        "cost": round(float(ledger.get("lifetime_cost") or 0), 4),
+        "images": int(ledger.get("lifetime_images") or 0),
+        "since": ledger.get("since"),
+    }
 
 
 def _http_error(resp: requests.Response) -> str:
@@ -290,14 +345,29 @@ def collect_funds_report() -> dict:
         "link": DASHBOARD_LINK,
     }
 
-    # Gemini: geen tegoed maar verbruik. `remaining` bestaat alleen als er een
-    # eigen maandplafond is ingesteld — Google is postpaid en kent geen saldo.
     g_today = get_gemini_cost(today_start)
     g_month = get_gemini_cost(month_start)
+    lifetime = get_gemini_lifetime()
+
+    # Twee soorten "nog over", die elkaar uitsluiten:
+    #  - prepaid tegoed: loopt door over maanden heen, telt vanaf het totale
+    #    verbruik sinds we begonnen met bijhouden;
+    #  - maandplafond: zelfgekozen grens die elke 1e opnieuw begint.
+    # Prepaid wint, want dat is echt geld dat op kan.
+    credit = GEMINI_PREPAID_CREDIT or None
     budget = GEMINI_MONTHLY_BUDGET or None
-    remaining = None
-    if budget and g_month.get("cost") is not None:
-        remaining = round(budget - g_month["cost"], 2)
+    rate = GEMINI_USD_TO_EUR if GEMINI_CREDIT_CURRENCY == "EUR" else 1.0
+
+    remaining = kind = None
+    total = None
+    if credit:
+        total = round(lifetime["cost"] * rate, 4)
+        remaining = round(credit - total, 2)
+        kind = "prepaid"
+    elif budget and g_month.get("cost") is not None:
+        total = g_month["cost"]
+        remaining = round(budget - total, 2)
+        kind = "monthly"
 
     gemini = {
         "success": g_today["success"] and g_month["success"],
@@ -305,9 +375,18 @@ def collect_funds_report() -> dict:
         "month_cost": g_month.get("cost"),
         "today_images": g_today.get("images"),
         "month_images": g_month.get("images"),
-        "budget": budget,
+        "lifetime_cost": lifetime["cost"],
+        "lifetime_images": lifetime["images"],
+        "tracking_since": lifetime["since"],
+        "budget": credit or budget,
+        "budget_kind": kind,
+        "spent_against_budget": total,
         "remaining": remaining,
         "currency": "USD",
+        # Munteenheid waarin tegoed én resterend worden getoond; verbruik zelf
+        # is altijd in USD berekend.
+        "budget_currency": GEMINI_CREDIT_CURRENCY if credit else "USD",
+        "converted": bool(credit) and rate != 1.0,
         "error": g_today.get("error") or g_month.get("error"),
         "link": GEMINI_CONSOLE_LINK,
     }

@@ -115,10 +115,20 @@ GEMINI_IMAGE_MODEL: str = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-3.1-flash
 # billing-endpoint heeft (zie budget_monitor.py); zonder dit bestand is er geen
 # enkel zicht op de kosten in het dagoverzicht.
 GEMINI_USAGE_FILE: Path = BASE_DIR / "gemini_usage.json"
-# Optioneel maandplafond in dollars, puur voor de weergave: Google is postpaid,
-# dus er ís geen resterend tegoed. Staat dit op 0, dan toont het dagoverzicht
-# alleen het verbruik en geen "nog over".
+# Optioneel maandplafond, puur voor de weergave. Staat dit op 0, dan toont het
+# dagoverzicht alleen het verbruik en geen "nog over".
 GEMINI_MONTHLY_BUDGET: float = float(os.environ.get("GEMINI_MONTHLY_BUDGET", "0"))
+
+# Vooruitbetaald tegoed. Anders dan een maandplafond loopt dit dóór over
+# maandgrenzen heen: het wordt afgetrokken van het totale verbruik sinds we
+# begonnen met bijhouden, niet van het verbruik deze maand. 0 = geen tegoed.
+GEMINI_PREPAID_CREDIT: float = float(os.environ.get("GEMINI_PREPAID_CREDIT", "0"))
+GEMINI_CREDIT_CURRENCY: str = os.environ.get("GEMINI_CREDIT_CURRENCY", "USD").upper()
+# Google's gepubliceerde prijslijst is in dollars, dus verbruik wordt in USD
+# berekend. Staat het tegoed in euro's, dan is deze koers nodig om de twee te
+# kunnen vergelijken — het resultaat is dan een benadering, en het dagoverzicht
+# zegt dat er ook bij. Bijwerken als de koers ver wegloopt.
+GEMINI_USD_TO_EUR: float = float(os.environ.get("GEMINI_USD_TO_EUR", "0.92"))
 
 # Social media
 ENABLE_SOCIAL_POSTING: bool = os.environ.get("ENABLE_SOCIAL_POSTING", "false").lower() == "true"

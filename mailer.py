@@ -1067,22 +1067,28 @@ def render_gemini_funds_section(gemini: dict) -> str:
             "</div>"
         )
 
-    # Plafondblok alleen als er een budget is ingesteld; anders zou hier een
-    # "resterend tegoed" staan dat bij Google domweg niet bestaat.
+    # Tegoedblok alleen als er een prepaid tegoed of maandplafond is; anders zou
+    # hier een saldo staan dat bij Google domweg niet bestaat.
     budget_block = ""
     budget, remaining = gemini.get("budget"), gemini.get("remaining")
+    kind = gemini.get("budget_kind")
     if budget and remaining is not None:
+        sym = "€" if gemini.get("budget_currency") == "EUR" else "$"
         share = remaining / budget if budget else 0
         color = "#28a745" if share > 0.5 else "#ffc107" if share > 0.15 else "#dc3545"
-        warn = "&nbsp;⚠️ <b>Maandplafond bijna bereikt!</b>" if share <= 0.15 else ""
+        if kind == "prepaid":
+            label = f"Resterend prepaid tegoed (van {sym}{budget:.2f})"
+            warn = "&nbsp;⚠️ <b>Tegoed bijna op!</b>" if share <= 0.15 else ""
+        else:
+            label = f"Nog over deze maand (van {sym}{budget:.2f})"
+            warn = "&nbsp;⚠️ <b>Maandplafond bijna bereikt!</b>" if share <= 0.15 else ""
         budget_block = (
             "<table style='width:100%;border-collapse:collapse;margin-bottom:12px'>"
             "<tr style='background:#1A1A1A'>"
             "<th style='text-align:left;padding:8px;color:#fff;font-size:11px;"
-            "text-transform:uppercase;letter-spacing:0.8px'>Nog over deze maand "
-            f"(van ${budget:.2f})</th></tr>"
+            f"text-transform:uppercase;letter-spacing:0.8px'>{label}</th></tr>"
             f"<tr><td style='padding:10px 8px;color:{color};font-size:18px;"
-            f"font-weight:700'>${remaining:.2f} USD{warn}</td></tr>"
+            f"font-weight:700'>{sym}{remaining:.2f}{warn}</td></tr>"
             "</table>"
         )
 
@@ -1096,12 +1102,29 @@ def render_gemini_funds_section(gemini: dict) -> str:
             f"<td style='padding:8px;color:#666'>{count}</td></tr>"
         )
 
+    # Het tegoed is alleen zo betrouwbaar als de teller: verbruik van vóór de
+    # eerste boeking zit er niet in. Dat hoort erbij te staan, anders lijkt het
+    # een saldo uit de API te zijn.
+    caveats = [
+        "Zelf bijgehouden per gegenereerd beeld: een Gemini API-key heeft geen "
+        "billing-endpoint."
+    ]
+    since = gemini.get("tracking_since")
+    if kind == "prepaid" and since:
+        caveats.append(
+            f"Afgetrokken van het verbruik sinds {str(since)[:10]} "
+            f"({gemini.get('lifetime_images', 0)} beelden) &mdash; wat je daarvóór "
+            "verbruikte staat er niet in."
+        )
+    if gemini.get("converted"):
+        caveats.append(
+            "Google rekent per beeld in dollars; omgerekend naar euro's, dus "
+            "een benadering."
+        )
     note = (
         "<p style='margin:10px 0 0;font-size:11px;color:#999'>"
-        "Zelf bijgehouden per gegenereerd beeld: een Gemini API-key heeft geen "
-        "billing-endpoint. Google rekent postpaid af, dus er is geen resterend "
-        "tegoed &mdash; alleen verbruik. "
-        f"<a href='{console}' style='color:#1a73e8'>Open Cloud Billing →</a></p>"
+        + " ".join(caveats)
+        + f" <a href='{console}' style='color:#1a73e8'>Open Cloud Billing →</a></p>"
     )
 
     return (
