@@ -1,8 +1,9 @@
 """
 Beeldgeneratie-providers, gekozen via IMAGE_PROVIDER in .env.
 
-    IMAGE_PROVIDER=fal          → FAL.ai flux/dev            (FAL_API_KEY)
+    IMAGE_PROVIDER=webgemini    → gratis via de browser      (Selenium + sessie)
     IMAGE_PROVIDER=nanobanana   → Nano Banana 2 / Gemini     (GEMINI_API_KEY)
+    IMAGE_PROVIDER=fal          → FAL.ai flux/dev            (FAL_API_KEY)
 
 `IMAGE_FALLBACK_PROVIDER` wijst de provider aan die het overneemt als de eerste
 geen beeld oplevert (bijvoorbeeld doordat het Gemini-budget op is). Twee soorten
@@ -24,12 +25,14 @@ from config import IMAGE_FALLBACK_PROVIDER, IMAGE_PROVIDER
 from .base import ImageOptions, ImageProvider, ImageProviderError
 from .fal import FalImageProvider
 from .nanobanana import NanoBananaImageProvider
+from .webgemini import WebGeminiImageProvider
 
 logger = logging.getLogger(__name__)
 
 _PROVIDERS: dict[str, type[ImageProvider]] = {
     FalImageProvider.name: FalImageProvider,
     NanoBananaImageProvider.name: NanoBananaImageProvider,
+    WebGeminiImageProvider.name: WebGeminiImageProvider,
 }
 
 __all__ = [
@@ -38,7 +41,9 @@ __all__ = [
     "ImageProvider",
     "ImageProviderError",
     "NanoBananaImageProvider",
+    "WebGeminiImageProvider",
     "get_fallback_provider",
+    "get_fallback_providers",
     "get_image_provider",
 ]
 
@@ -65,20 +70,34 @@ def get_image_provider(name: Optional[str] = None) -> ImageProvider:
 
 
 @lru_cache(maxsize=None)
-def get_fallback_provider(primary_name: str) -> Optional[ImageProvider]:
-    """De provider die het overneemt als `primary_name` geen beeld oplevert.
+def get_fallback_providers(primary_name: str) -> tuple[ImageProvider, ...]:
+    """De keten die het overneemt als `primary_name` geen beeld oplevert.
+
+    `IMAGE_FALLBACK_PROVIDER` is komma-gescheiden en wordt op volgorde
+    geprobeerd, zodat je van gratis naar duur kunt aflopen
+    (`webgemini` → `nanobanana` → `fal`).
 
     Pre:  primary_name is de naam van de actieve provider
-    Post: een ImageProvider, of None als terugval uit staat, op zichzelf wijst,
-          of niet bruikbaar is. Raises nooit: een onbruikbare terugval mag de
-          gewone weg niet blokkeren — dan is er simpelweg geen vangnet, en dat
-          staat als waarschuwing in de log.
+    Post: tuple met bruikbare providers, in volgorde; leeg als terugval uit
+          staat of niets bruikbaar is. De primaire provider en dubbelen worden
+          overgeslagen. Raises nooit: een onbruikbare schakel mag de gewone weg
+          niet blokkeren — die wordt overgeslagen met een waarschuwing.
     """
-    key = (IMAGE_FALLBACK_PROVIDER or "").strip().lower()
-    if not key or key == primary_name:
-        return None
-    try:
-        return get_image_provider(key)
-    except ImageProviderError as exc:
-        logger.warning("Terugvalprovider %r niet bruikbaar: %s", key, exc)
-        return None
+    chain: list[ImageProvider] = []
+    seen = {primary_name}
+    for raw in (IMAGE_FALLBACK_PROVIDER or "").split(","):
+        key = raw.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        try:
+            chain.append(get_image_provider(key))
+        except ImageProviderError as exc:
+            logger.warning("Terugvalprovider %r overgeslagen: %s", key, exc)
+    return tuple(chain)
+
+
+def get_fallback_provider(primary_name: str) -> Optional[ImageProvider]:
+    """Eerste schakel van de terugvalketen (of None). Voor losse aanroepen."""
+    chain = get_fallback_providers(primary_name)
+    return chain[0] if chain else None

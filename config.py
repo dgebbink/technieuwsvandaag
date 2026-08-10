@@ -91,11 +91,25 @@ IMAGE_MENTION_ETHNICITY_PROBABILITY: float = 0.30
 # get_image_provider(); ontbreekt de key van de gekozen provider, dan volgt een
 # ImageProviderError — er is bewust geen terugval op de andere provider.
 IMAGE_PROVIDER: str = os.environ.get("IMAGE_PROVIDER", "fal")
-# Neemt het over als IMAGE_PROVIDER géén beeld oplevert (quota op, time-out).
-# Leeg = geen terugval. Geldt alleen voor runtime-fouten: een ontbrekende key
-# van de primaire provider blijft luid stuklopen, anders draait de site
-# ongemerkt maanden op de verkeerde dienst.
-IMAGE_FALLBACK_PROVIDER: str = os.environ.get("IMAGE_FALLBACK_PROVIDER", "fal")
+# Keten die het overneemt als IMAGE_PROVIDER géén beeld oplevert (quota op,
+# time-out, verlopen sessie). Komma-gescheiden en op volgorde geprobeerd; leeg
+# = geen terugval. Geldt alleen voor runtime-fouten: een ontbrekende key van de
+# primaire provider blijft luid stuklopen, anders draait de site ongemerkt
+# maanden op de verkeerde dienst.
+# Standaard 'nanobanana,fal': gratis web-Gemini vooraan (zie IMAGE_PROVIDER),
+# daarna de betaalde API, en FAL.ai als laatste redmiddel.
+IMAGE_FALLBACK_PROVIDER: str = os.environ.get("IMAGE_FALLBACK_PROVIDER", "nanobanana,fal")
+
+# Web-Gemini (gratis, via de browser). Geen API-key maar een Selenium-grid plus
+# een Firefox-profiel waarin met de hand is ingelogd op Google — zie
+# image_providers/webgemini.py voor waarom dat zo moet.
+SELENIUM_GRID_URL: str = os.environ.get("SELENIUM_GRID_URL", "http://192.168.2.44:4444")
+WEBGEMINI_SSH_HOST: str = os.environ.get("WEBGEMINI_SSH_HOST", "meterkast")
+WEBGEMINI_FIREFOX_CONTAINER: str = os.environ.get("WEBGEMINI_FIREFOX_CONTAINER", "firefox")
+WEBGEMINI_SELENIUM_CONTAINER: str = os.environ.get("WEBGEMINI_SELENIUM_CONTAINER", "selenium-firefox")
+WEBGEMINI_PROFILE: str = os.environ.get("WEBGEMINI_PROFILE", "h272lyqm.default-release")
+# Ruim genomen: genereren duurde 12-24 s, maar de app kan traag laden.
+WEBGEMINI_TIMEOUT: int = int(os.environ.get("WEBGEMINI_TIMEOUT", "180"))
 
 FAL_API_KEY: str = os.environ.get("FAL_API_KEY", "")
 # Admin-scoped FAL.ai key voor de billing- en usage-endpoints (api.fal.ai/v1/...).

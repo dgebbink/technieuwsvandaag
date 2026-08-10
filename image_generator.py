@@ -22,7 +22,7 @@ from config import (
     IMAGE_MENTION_ETHNICITY_PROBABILITY,
 )
 from ai_processor import _call_claude, _extract_json
-from image_providers import ImageProviderError, get_fallback_provider, get_image_provider
+from image_providers import ImageProviderError, get_fallback_providers, get_image_provider
 
 logger = logging.getLogger(__name__)
 
@@ -708,20 +708,24 @@ def generate_provider_image(prompt: str, dest_path: str) -> Optional[str]:
     if result:
         return result
 
-    fallback = get_fallback_provider(provider.name)
-    if fallback is None:
+    chain = get_fallback_providers(provider.name)
+    if not chain:
         logger.error("Beeld mislukt bij %s en er is geen terugval ingesteld", provider.name)
         return None
 
-    logger.warning(
-        "Beeld mislukt bij %s — terugval op %s", provider.name, fallback.name
+    for fallback in chain:
+        logger.warning("Beeld mislukt bij %s — terugval op %s", provider.name, fallback.name)
+        result = _generate_with(fallback, prompt, dest_path)
+        if result:
+            logger.warning("Beeld alsnog gemaakt door terugvalprovider %s", fallback.name)
+            return result
+        provider = fallback  # volgende melding noemt de juiste voorganger
+
+    logger.error(
+        "Geen enkele provider leverde een beeld (%s)",
+        " → ".join([get_image_provider().name] + [p.name for p in chain]),
     )
-    result = _generate_with(fallback, prompt, dest_path)
-    if result:
-        logger.warning("Beeld alsnog gemaakt door terugvalprovider %s", fallback.name)
-    else:
-        logger.error("Ook terugvalprovider %s leverde geen beeld", fallback.name)
-    return result
+    return None
 
 
 def _generate_with(provider, prompt: str, dest_path: str) -> Optional[str]:
