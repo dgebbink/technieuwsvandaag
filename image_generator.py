@@ -684,7 +684,9 @@ def add_ai_label(image_path: str) -> None:
         logger.warning("AI-label toevoegen mislukt: %s", exc)
 
 
-def generate_provider_image(prompt: str, dest_path: str) -> Optional[str]:
+def generate_provider_image(
+    prompt: str, dest_path: str, used_out: Optional[dict] = None
+) -> Optional[str]:
     """Genereer het beeld via de ingestelde provider (IMAGE_PROVIDER).
 
     Elke provider krijgt zijn eigen `prompt_suffix` achter de prompt geplakt,
@@ -698,14 +700,19 @@ def generate_provider_image(prompt: str, dest_path: str) -> Optional[str]:
     dáár komen er vervormde merktekens uit.
 
     Pre:  prompt is niet-leeg; dest_path is schrijfbaar
-    Post: dest_path bij succes, None als beide providers falen. Raises
-          ImageProviderError als IMAGE_PROVIDER onbekend is of de API-key van de
-          primaire provider ontbreekt — dat is een configuratiefout die
-          zichtbaar moet zijn, geen beeld dat toevallig niet lukte.
+    Post: dest_path bij succes, None als álle providers falen. Is `used_out`
+          meegegeven, dan staat daar onder key 'provider' de naam van de
+          provider die het beeld écht maakte — de mail noemt die, en bij een
+          keten is dat lang niet altijd de primaire. Raises ImageProviderError
+          als IMAGE_PROVIDER onbekend is of de API-key van de primaire provider
+          ontbreekt — dat is een configuratiefout die zichtbaar moet zijn, geen
+          beeld dat toevallig niet lukte.
     """
     provider = get_image_provider()
     result = _generate_with(provider, prompt, dest_path)
     if result:
+        if used_out is not None:
+            used_out["provider"] = provider.name
         return result
 
     chain = get_fallback_providers(provider.name)
@@ -718,6 +725,8 @@ def generate_provider_image(prompt: str, dest_path: str) -> Optional[str]:
         result = _generate_with(fallback, prompt, dest_path)
         if result:
             logger.warning("Beeld alsnog gemaakt door terugvalprovider %s", fallback.name)
+            if used_out is not None:
+                used_out["provider"] = fallback.name
             return result
         provider = fallback  # volgende melding noemt de juiste voorganger
 
@@ -767,9 +776,14 @@ def generate_image_for_article(
             prompt_out["prompt"] = image_prompt
         logger.info("Gegenereerde prompt: %s", image_prompt)
 
-        result = generate_provider_image(image_prompt, dest_path)
+        used: dict = {}
+        result = generate_provider_image(image_prompt, dest_path, used_out=used)
         if result:
             add_ai_label(dest_path)
+            # De mail noemt de provider die het beeld écht maakte; met een keten
+            # is dat regelmatig niet de primaire.
+            if prompt_out is not None:
+                prompt_out["provider"] = used.get("provider", "")
         return result
     except ImageProviderError:
         # Configuratiefout, geen mislukt beeld — niet wegmoffelen als "geen beeld".

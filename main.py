@@ -260,6 +260,7 @@ def main() -> int:
             )
             processed.image_variant = variant or None
             processed.image_prompt = prompt_info.get("prompt", "")
+            processed.image_provider = prompt_info.get("provider", "")
             if not processed.image_path:
                 logger.warning("Afbeelding mislukt voor '%s' — doorgaan zonder", processed.titel)
     else:

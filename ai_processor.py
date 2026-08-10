@@ -53,6 +53,9 @@ class ProcessedArticle:
     image_variant: Optional[dict] = None
     # Prompt waarmee de FAL.ai-afbeelding gegenereerd is (generate-modus)
     image_prompt: str = ""
+    # Provider die het beeld daadwerkelijk maakte (webgemini/nanobanana/fal);
+    # met een terugvalketen is dat lang niet altijd de primaire.
+    image_provider: str = ""
     # Gerandomiseerd woordaantal waarmee de samenvatting is opgevraagd (300-1000)
     target_words: int = 0
     # Instagram-velden: korte kop voor op het beeld, de losse hook-tekst (voor

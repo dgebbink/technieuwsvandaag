@@ -126,9 +126,13 @@ def _article_section(index: int, data: dict, buttons_html: str | None = None) ->
     word_count = article.target_words or len(article.samenvatting.split())
     image_prompt_html = ""
     if article.image_prompt:
+        # Niet hardcoderen: sinds de providerketen (webgemini -> nanobanana ->
+        # fal) is de maker van het beeld per artikel verschillend, en "FAL.ai"
+        # stond er dan simpelweg naast.
+        provider = getattr(article, "image_provider", "") or "onbekend"
         image_prompt_html = f"""
         <p style="margin:12px 0 0; font-size:12px; color:#888;">
-          <strong>Beeldprompt (FAL.ai):</strong> {article.image_prompt}
+          <strong>Beeldprompt ({provider}):</strong> {article.image_prompt}
         </p>"""
 
     meta_footer_html = f"""
