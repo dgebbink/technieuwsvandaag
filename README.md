@@ -78,6 +78,8 @@ technieuwsvandaag/
 ├── scheduler.py         # Genereert dagelijks een willekeurig cron-schema
 ├── log_cleaner.py       # Dagelijkse log-rotatie en opruiming
 ├── social_poster.py     # Bluesky-posting na publicatie
+├── image_generator.py   # Beeldprompt via Claude + nabewerking (AI-label)
+├── image_providers/     # Beeldproviders: base.py (interface), fal.py, nanobanana.py
 ├── backfill.py          # Terugvullen van artikelen voor een datumbereik
 ├── adhoc_processor.py   # Losse verwerking van één URL
 ├── sources.txt          # Lijst van te scrapen bronnen (NL + EN, ~21 bronnen)
@@ -183,13 +185,59 @@ dutchcowboys.nl|https://www.dutchcowboys.nl/sitemap/news.xml
 
 | Variabele | Omschrijving | Standaard |
 |---|---|---|
-| `IMAGE_STRATEGY` | `generate` (FAL.ai) of `scrape` (og:image van bron) | `generate` |
-| `FAL_API_KEY` | API-sleutel van fal.ai (vereist bij `generate`) | — |
+| `IMAGE_STRATEGY` | `generate` (AI-beeld) of `scrape` (og:image van bron) | `generate` |
+| `IMAGE_PROVIDER` | Welke dienst het beeld maakt bij `generate`: `fal` of `nanobanana` — zie [Beeldprovider kiezen](#beeldprovider-kiezen) | `fal` |
+| `FAL_API_KEY` | API-sleutel van fal.ai (vereist bij `IMAGE_PROVIDER=fal`) | — |
+| `GEMINI_API_KEY` | API-sleutel van Google AI Studio (vereist bij `IMAGE_PROVIDER=nanobanana`) | — |
+| `GEMINI_IMAGE_MODEL` | Gemini-model voor beeldgeneratie | `gemini-3.1-flash-image` |
 | `ENABLE_SOCIAL_POSTING` | `true` om automatisch naar Bluesky te posten | `false` |
 | `BLUESKY_HANDLE` | Je Bluesky handle (bijv. `technieuwsvandaag.bsky.social`) | — |
 | `BLUESKY_APP_PASSWORD` | Bluesky App Password (Instellingen → App Passwords) | — |
 | `FAL_CREDIT_THRESHOLD` | Stuur waarschuwingsmail als FAL.ai tegoed onder dit bedrag (USD) valt; `0` schakelt uit | `2.0` |
 | `FAL_ADMIN_API_KEY` | **ADMIN**-scoped FAL.ai key voor de officiële billing/usage-endpoints (`api.fal.ai/v1/...`); toont het werkelijke tegoed en de echte kosten van vandaag/deze maand in het dagoverzicht. Aanmaken via [fal.ai/dashboard/keys](https://fal.ai/dashboard/keys) met scope ADMIN | — |
+
+---
+
+## Beeldprovider kiezen
+
+Bij `IMAGE_STRATEGY=generate` schrijft Claude de beeldprompt en maakt een
+*beeldprovider* het beeld. Welke dat is, staat in `IMAGE_PROVIDER`:
+
+| `IMAGE_PROVIDER` | Dienst | Model | Vereiste env-var |
+|---|---|---|---|
+| `fal` (standaard) | FAL.ai | `fal-ai/flux/dev` | `FAL_API_KEY` |
+| `nanobanana` | Google Gemini API | Nano Banana 2 (`gemini-3.1-flash-image`) | `GEMINI_API_KEY` |
+
+Omschakelen is één regel in `.env` — er hoeft geen code aangepast te worden:
+
+```bash
+# FAL.ai (standaard)
+IMAGE_PROVIDER=fal
+FAL_API_KEY=...
+
+# of Nano Banana 2 / Gemini 3.1 Flash Image
+IMAGE_PROVIDER=nanobanana
+GEMINI_API_KEY=...          # aanmaken via https://aistudio.google.com/apikey
+```
+
+Beide sleutels komen uitsluitend uit de omgeving (`.env`); ze staan nergens in
+de code. Je hoeft alleen de sleutel van de *gekozen* provider te zetten.
+
+**Geen automatische terugval.** Ontbreekt de sleutel van de gekozen provider —
+of staat er een onbekende waarde in `IMAGE_PROVIDER` — dan stopt `main.py`
+meteen met een expliciete melding (`Beeldprovider niet bruikbaar: ...`) in plaats
+van stilletjes de andere provider te gebruiken of zonder beeld door te gaan. In
+`--dry-run` is het alleen een waarschuwing, zodat je zonder complete sleutelset
+kunt testen.
+
+De code zit in het pakket `image_providers/`: `base.py` definieert de interface
+(`ImageProvider.generate_image(prompt, dest_path, options)`), `fal.py` en
+`nanobanana.py` implementeren hem, en `__init__.py` bevat de keuze
+(`get_image_provider()`). Een derde provider toevoegen is een module erbij plus
+een regel in `_PROVIDERS`.
+
+> De losse hulpscripts `generate_header_image.py` en `update_bluesky_profile.py`
+> hebben nog hun eigen, directe FAL.ai-aanroep en volgen `IMAGE_PROVIDER` niet.
 
 ---
 
@@ -202,7 +250,8 @@ dutchcowboys.nl|https://www.dutchcowboys.nl/sitemap/news.xml
 | SMTP-authenticatie mislukt | Gmail vereist een App Password (2FA aan) |
 | `ANTHROPIC_API_KEY` fout | Controleer sleutel op console.anthropic.com |
 | Meta-veld waarschuwing | Voeg `register_post_meta` toe aan WordPress (zie hierboven) |
-| FAL.ai timeout | FAL.ai kan 60-90 sec nodig hebben; verhoog timeout in `image_generator.py` |
+| FAL.ai timeout | FAL.ai kan 60-90 sec nodig hebben; verhoog `FAL_IMAGE_TIMEOUT` in `image_providers/fal.py` |
+| `Beeldprovider niet bruikbaar: ...` | De API-sleutel van de provider uit `IMAGE_PROVIDER` ontbreekt, of de waarde is niet `fal`/`nanobanana` — zie [Beeldprovider kiezen](#beeldprovider-kiezen) |
 | FAL.ai tegoed laag | Je ontvangt automatisch een waarschuwingsmail; herlaad via fal.ai → Dashboard → Billing |
 | `atproto` niet gevonden | Voer `pip install atproto` uit |
 

@@ -1,6 +1,10 @@
 """
-Afbeeldingen genereren via Claude (prompt) + FAL.ai flux/dev (beeld).
+Afbeeldingen genereren via Claude (prompt) + een beeldprovider (beeld).
 Wordt gebruikt wanneer IMAGE_STRATEGY=generate is ingesteld.
+
+Welke dienst het beeld maakt bepaalt IMAGE_PROVIDER (fal of nanobanana); dit
+bestand gaat alleen over de prompt en de nabewerking, niet over het endpoint —
+dat zit in het pakket image_providers.
 """
 import json
 import logging
@@ -12,19 +16,15 @@ import requests
 from PIL import Image, ImageDraw, ImageFont
 
 from config import (
-    FAL_API_KEY,
     FAL_CREDIT_THRESHOLD,
-    REQUEST_TIMEOUT,
     IMAGE_DISTRIBUTION_FILE,
     IMAGE_DISTRIBUTION_TARGETS,
     IMAGE_MENTION_ETHNICITY_PROBABILITY,
 )
 from ai_processor import _call_claude, _extract_json
+from image_providers import ImageProviderError, get_image_provider
 
 logger = logging.getLogger(__name__)
-
-FAL_ENDPOINT = "https://fal.run/fal-ai/flux/dev"
-FAL_IMAGE_TIMEOUT = 120  # FAL.ai genereert in 60-90 seconden
 
 
 def check_fal_balance() -> Optional[float]:
@@ -541,7 +541,7 @@ def generate_image_for_editorial(
     dest_path: str,
     dry_run: bool = False,
 ) -> Optional[str]:
-    """Genereer het beeld bij een editorial: prompt via Claude, beeld via FAL.ai.
+    """Genereer het beeld bij een editorial: prompt via Claude, beeld via de provider.
 
     Pre:  title is niet-leeg; dest_path is schrijfbaar
     Post: dest_path bij succes, None bij elke fout of in dry-run. Krijgt hetzelfde
@@ -555,10 +555,13 @@ def generate_image_for_editorial(
         image_prompt = generate_editorial_image_prompt(title, editorial_text)
         logger.info("Gegenereerde editorial-prompt: %s", image_prompt)
 
-        result = generate_fal_image(image_prompt, dest_path)
+        result = generate_provider_image(image_prompt, dest_path)
         if result:
             add_ai_label(dest_path)
         return result
+    except ImageProviderError:
+        # Configuratiefout, geen mislukt beeld — niet wegmoffelen als "geen beeld".
+        raise
     except Exception as exc:
         logger.error("Editorial-afbeelding genereren mislukt voor '%s': %s", title, exc)
         return None
@@ -681,51 +684,16 @@ def add_ai_label(image_path: str) -> None:
         logger.warning("AI-label toevoegen mislukt: %s", exc)
 
 
-def generate_fal_image(prompt: str, dest_path: str) -> Optional[str]:
-    """Generate an image via FAL.ai flux/dev and save it to dest_path.
+def generate_provider_image(prompt: str, dest_path: str) -> Optional[str]:
+    """Genereer het beeld via de ingestelde provider (IMAGE_PROVIDER).
 
-    Er is bewust géén negative_prompt-parameter: fal-ai/flux/dev kent dat veld
-    niet (het staat niet in hun OpenAPI-schema — flux dev is guidance-distilled
-    en heeft geen CFG-negative), dus alles wat we meestuurden werd weggegooid.
-    Uitsluitingen horen in de positieve prompt; zie _SENSITIVE_PROMPT_SUFFIX en
-    de "no text"-formuleringen in de promptvarianten.
-
-    Pre:  FAL_API_KEY is set; prompt is non-empty; dest_path is writable
-    Post: JPEG written to dest_path and path returned; None on any failure
+    Pre:  prompt is niet-leeg; dest_path is schrijfbaar
+    Post: dest_path bij succes, None als het genereren mislukt. Raises
+          ImageProviderError als IMAGE_PROVIDER onbekend is of de API-key van de
+          gekozen provider ontbreekt — dat is een configuratiefout die zichtbaar
+          moet zijn, geen beeld dat toevallig niet lukte.
     """
-    if not FAL_API_KEY:
-        logger.error("FAL_API_KEY niet geconfigureerd — kan geen afbeelding genereren")
-        return None
-    try:
-        resp = requests.post(
-            FAL_ENDPOINT,
-            headers={
-                "Authorization": f"Key {FAL_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "prompt": prompt,
-                "image_size": "landscape_16_9",
-                "num_images": 1,
-                "enable_safety_checker": True,
-            },
-            timeout=FAL_IMAGE_TIMEOUT,
-        )
-        resp.raise_for_status()
-        result = resp.json()
-        image_url = result["images"][0]["url"]
-
-        img_resp = requests.get(image_url, timeout=REQUEST_TIMEOUT)
-        img_resp.raise_for_status()
-        with open(dest_path, "wb") as f:
-            f.write(img_resp.content)
-
-        logger.info("FAL.ai afbeelding gegenereerd en opgeslagen: %s", dest_path)
-        return dest_path
-
-    except Exception as exc:
-        logger.error("FAL.ai afbeelding genereren mislukt: %s", exc)
-        return None
+    return get_image_provider().generate_image(prompt, dest_path)
 
 
 def generate_image_for_article(
@@ -736,16 +704,16 @@ def generate_image_for_article(
     variant_out: Optional[dict] = None,
     prompt_out: Optional[dict] = None,
 ) -> Optional[str]:
-    """Generate an AI image for one article: prompt via Claude, image via FAL.ai.
+    """Generate an AI image for one article: prompt via Claude, image via the provider.
 
     Pre:  title is non-empty; dest_path is writable
     Post: returns dest_path on success, None on any failure or in dry-run.
           Als variant_out is meegegeven, wordt die gevuld met de gekozen
           persoonsvariant (gender/ethnicity/age). Als prompt_out is meegegeven,
-          wordt die gevuld met de gegenereerde FAL.ai-prompt onder key 'prompt'.
+          wordt die gevuld met de gegenereerde beeldprompt onder key 'prompt'.
     """
     if dry_run:
-        logger.info("[DRY RUN] Zou FAL.ai afbeelding genereren voor: %s", title)
+        logger.info("[DRY RUN] Zou afbeelding genereren voor: %s", title)
         return None
     try:
         logger.info("Afbeeldingsprompt genereren via Claude voor: %s", title)
@@ -759,10 +727,13 @@ def generate_image_for_article(
             prompt_out["prompt"] = image_prompt
         logger.info("Gegenereerde prompt: %s", image_prompt)
 
-        result = generate_fal_image(image_prompt, dest_path)
+        result = generate_provider_image(image_prompt, dest_path)
         if result:
             add_ai_label(dest_path)
         return result
+    except ImageProviderError:
+        # Configuratiefout, geen mislukt beeld — niet wegmoffelen als "geen beeld".
+        raise
     except Exception as exc:
         logger.error("Afbeelding genereren mislukt voor '%s': %s", title, exc)
         return None

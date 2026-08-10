@@ -275,6 +275,27 @@ Claude genereert een JSON met een `prompt` — fotorealistische beschrijving zon
 logo's/tekst (FAL.ai hallucineerde anders logo's). Daarna zet `add_ai_label()`
 het AI-label op het beeld.
 
+**Wélke dienst het beeld maakt staat los van de prompt**: `IMAGE_PROVIDER` in
+`.env` kiest tussen `fal` (FAL.ai flux/dev, standaard) en `nanobanana` (Nano
+Banana 2 / `gemini-3.1-flash-image` via de Gemini Interactions API). De
+implementaties zitten in het pakket `image_providers/` achter één interface
+(`ImageProvider.generate_image(prompt, dest_path, options)`);
+`image_generator.py` gaat alleen nog over de prompt en de nabewerking en roept
+`generate_provider_image()` aan. Twee dingen om te weten bij wijzigingen:
+
+- **Geen terugval tussen providers, met opzet.** Ontbreekt de key van de gekozen
+  provider, dan volgt een `ImageProviderError` — `main.py` stopt de run vóór het
+  eerste beeld (in `--dry-run` alleen een waarschuwing). De helpers in
+  `image_generator.py` laten die fout er expliciet doorheen; alle *andere*
+  beeldfouten blijven een gelogde `None`, zodat een artikel gewoon zonder beeld
+  doorgaat. Een stille wissel zou onzichtbaar maken welke dienst de beelden maakt.
+- **De promptteksten zijn op flux/dev afgestemd.** De uitsluitingen staan
+  bewust in de *positieve* prompt (flux kent geen `negative_prompt`, zie
+  hieronder). Gemini leest die net zo goed, maar wie de prompts herschrijft voor
+  één provider, verandert ze voor beide.
+- `generate_header_image.py` en `update_bluesky_profile.py` hebben nog hun eigen
+  directe FAL.ai-aanroep en volgen `IMAGE_PROVIDER` niet — losse hulpscripts.
+
 > **Geen `negative_prompt` — dat veld bestaat niet.** `fal-ai/flux/dev` heeft
 > alleen prompt, image_size, num_images, num_inference_steps, guidance_scale,
 > seed, sync_mode, output_format, acceleration en enable_safety_checker; flux dev

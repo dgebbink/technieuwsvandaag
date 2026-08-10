@@ -85,6 +85,13 @@ IMAGE_DISTRIBUTION_TARGETS: dict = {
 # ethniciteit expliciet in de solo person-instructie wordt benoemd.
 IMAGE_MENTION_ETHNICITY_PROBABILITY: float = 0.30
 
+# Welke dienst de beelden maakt bij IMAGE_STRATEGY=generate: 'fal' (FAL.ai
+# flux/dev) of 'nanobanana' (Nano Banana 2 / Gemini 3.1 Flash Image). Wordt bij
+# de eerste beeldaanvraag één keer uitgelezen door image_providers.
+# get_image_provider(); ontbreekt de key van de gekozen provider, dan volgt een
+# ImageProviderError — er is bewust geen terugval op de andere provider.
+IMAGE_PROVIDER: str = os.environ.get("IMAGE_PROVIDER", "fal")
+
 FAL_API_KEY: str = os.environ.get("FAL_API_KEY", "")
 # Admin-scoped FAL.ai key voor de billing- en usage-endpoints (api.fal.ai/v1/...).
 # De gewone FAL_API_KEY (API-scope) mag deze endpoints niet (403). Aanmaken via
@@ -92,6 +99,13 @@ FAL_API_KEY: str = os.environ.get("FAL_API_KEY", "")
 FAL_ADMIN_API_KEY: str = os.environ.get("FAL_ADMIN_API_KEY", "")
 # Waarschuwingsdrempel voor FAL.ai tegoed (in dollars); 0 schakelt de check uit
 FAL_CREDIT_THRESHOLD: float = float(os.environ.get("FAL_CREDIT_THRESHOLD", "2.0"))
+
+# Gemini (Nano Banana 2) — alleen nodig bij IMAGE_PROVIDER=nanobanana.
+# Key aanmaken via https://aistudio.google.com/apikey.
+GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
+# Model-id staat in .env zodat een opvolger geen codewijziging vergt; Google
+# rouleert deze namen (nano banana → gemini-2.5-flash-image → 3.1).
+GEMINI_IMAGE_MODEL: str = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image")
 
 # Social media
 ENABLE_SOCIAL_POSTING: bool = os.environ.get("ENABLE_SOCIAL_POSTING", "false").lower() == "true"

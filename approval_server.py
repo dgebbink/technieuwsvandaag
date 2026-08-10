@@ -327,7 +327,7 @@ def _revise_form(
 def new_image(token: str):
     """Handles New Image button click.
     Pre:  token is a URL-safe string from the email button
-    Post: new image generated via FAL.ai and set as featured image on WordPress post;
+    Post: new image generated via the configured provider and set as featured image;
           token is NOT marked used so it can be clicked multiple times within 4 hours
     """
     entry = get_token(token)
@@ -359,7 +359,7 @@ def new_image(token: str):
             )
 
             if not new_image_path:
-                logging.error(f"FAL.ai image generation failed for post {post_id}")
+                logging.error(f"Image generation failed for post {post_id}")
                 return
 
             new_image_url = update_featured_image(

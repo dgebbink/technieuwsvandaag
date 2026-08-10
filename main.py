@@ -223,6 +223,21 @@ def main() -> int:
 
     if IMAGE_STRATEGY == "generate":
         from image_generator import generate_image_for_article, is_fal_balance_low  # noqa: PLC0415
+        from image_providers import ImageProviderError, get_image_provider  # noqa: PLC0415
+
+        # Providerkeuze hier al uitlezen: een onbekende IMAGE_PROVIDER of een
+        # ontbrekende API-key moet de run stoppen vóór er beelden geprobeerd
+        # worden, niet vijf keer per artikel dezelfde fout loggen.
+        try:
+            logger.info("Beeldprovider: %s", get_image_provider().name)
+        except ImageProviderError as exc:
+            # In dry-run alleen melden: die modus draait juist om te kunnen
+            # testen zonder complete sleutelset, en genereert toch geen beeld.
+            if args.dry_run:
+                logger.warning("Beeldprovider niet bruikbaar: %s", exc)
+            else:
+                logger.error("Beeldprovider niet bruikbaar: %s", exc)
+                return 1
 
         if not args.dry_run and is_fal_balance_low():
             from config import FAL_CREDIT_THRESHOLD  # noqa: PLC0415
@@ -246,7 +261,7 @@ def main() -> int:
             processed.image_variant = variant or None
             processed.image_prompt = prompt_info.get("prompt", "")
             if not processed.image_path:
-                logger.warning("FAL.ai afbeelding mislukt voor '%s' — doorgaan zonder", processed.titel)
+                logger.warning("Afbeelding mislukt voor '%s' — doorgaan zonder", processed.titel)
     else:
         # Scrape-modus: og:image van bronpagina
         from scraper import extract_image_from_page, _make_session  # type: ignore[attr-defined]  # noqa: PLC0415
