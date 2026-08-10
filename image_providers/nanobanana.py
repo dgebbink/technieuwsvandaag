@@ -156,6 +156,16 @@ class NanoBananaImageProvider(ImageProvider):
             with open(dest_path, "wb") as f:
                 f.write(base64.b64decode(image_b64))
 
+            # Verbruik zelf bijhouden — een Gemini-key heeft geen billing-endpoint,
+            # dus dit grootboek is de enige bron voor het dagoverzicht. Late import
+            # houdt de provider los van de rapportagelaag.
+            try:
+                from budget_monitor import record_gemini_usage  # noqa: PLC0415
+
+                record_gemini_usage(payload.get("usage") or {}, self.model)
+            except Exception as exc:  # boekhouding mag nooit een beeld kosten
+                logger.warning("Gemini-verbruik niet vastgelegd: %s", exc)
+
             logger.info(
                 "Nano Banana 2 (%s) afbeelding gegenereerd en opgeslagen: %s",
                 self.model,

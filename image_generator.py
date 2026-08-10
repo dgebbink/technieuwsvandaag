@@ -22,7 +22,7 @@ from config import (
     IMAGE_MENTION_ETHNICITY_PROBABILITY,
 )
 from ai_processor import _call_claude, _extract_json
-from image_providers import ImageProviderError, get_image_provider
+from image_providers import ImageProviderError, get_fallback_provider, get_image_provider
 
 logger = logging.getLogger(__name__)
 
@@ -687,18 +687,45 @@ def add_ai_label(image_path: str) -> None:
 def generate_provider_image(prompt: str, dest_path: str) -> Optional[str]:
     """Genereer het beeld via de ingestelde provider (IMAGE_PROVIDER).
 
-    De provider mag er zijn eigen `prompt_suffix` achter plakken voor
-    eigenaardigheden van zijn model (Nano Banana tekent anders echte merklogo's).
-    Dat gebeurt hier, op het laatste moment, zodat het voor álle promptvarianten
-    geldt — nieuws, editorial en de gevoelig-onderwerp-variant.
+    Elke provider krijgt zijn eigen `prompt_suffix` achter de prompt geplakt,
+    voor eigenaardigheden van zijn model (Nano Banana verwerkt merklogo's
+    subtiel in het beeld). Dat gebeurt hier, op het laatste moment, zodat het
+    voor álle promptvarianten geldt — nieuws, editorial en gevoelig onderwerp.
+
+    Levert de primaire provider niets op, dan neemt `IMAGE_FALLBACK_PROVIDER`
+    het over. **De suffix wordt dan opnieuw bepaald**, vanaf de kale prompt: de
+    logo-instructie van Nano Banana mag niet meeliften naar flux/dev, want juist
+    dáár komen er vervormde merktekens uit.
 
     Pre:  prompt is niet-leeg; dest_path is schrijfbaar
-    Post: dest_path bij succes, None als het genereren mislukt. Raises
+    Post: dest_path bij succes, None als beide providers falen. Raises
           ImageProviderError als IMAGE_PROVIDER onbekend is of de API-key van de
-          gekozen provider ontbreekt — dat is een configuratiefout die zichtbaar
-          moet zijn, geen beeld dat toevallig niet lukte.
+          primaire provider ontbreekt — dat is een configuratiefout die
+          zichtbaar moet zijn, geen beeld dat toevallig niet lukte.
     """
     provider = get_image_provider()
+    result = _generate_with(provider, prompt, dest_path)
+    if result:
+        return result
+
+    fallback = get_fallback_provider(provider.name)
+    if fallback is None:
+        logger.error("Beeld mislukt bij %s en er is geen terugval ingesteld", provider.name)
+        return None
+
+    logger.warning(
+        "Beeld mislukt bij %s — terugval op %s", provider.name, fallback.name
+    )
+    result = _generate_with(fallback, prompt, dest_path)
+    if result:
+        logger.warning("Beeld alsnog gemaakt door terugvalprovider %s", fallback.name)
+    else:
+        logger.error("Ook terugvalprovider %s leverde geen beeld", fallback.name)
+    return result
+
+
+def _generate_with(provider, prompt: str, dest_path: str) -> Optional[str]:
+    """Eén poging bij één provider, met diens eigen promptaanvulling."""
     if provider.prompt_suffix:
         prompt = prompt.rstrip() + provider.prompt_suffix
         logger.info("Prompt aangevuld voor %s: %s", provider.name, prompt)

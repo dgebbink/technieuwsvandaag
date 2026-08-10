@@ -1031,4 +1031,92 @@ def render_funds_section(data: dict) -> str:
         "</table>"
         f"{note}"
         "</div>"
+    ) + render_gemini_funds_section(data.get("gemini") or {})
+
+
+def render_gemini_funds_section(gemini: dict) -> str:
+    """Rendert het Gemini-verbruik als HTML-blok onder het FAL.ai-blok.
+
+    Bewust anders opgebouwd dan het FAL-blok, omdat het betaalmodel anders is:
+    Google is postpaid, dus er is geen "actueel tegoed" te tonen. Wat er wél is,
+    is het zelf bijgehouden verbruik (zie budget_monitor). Alleen als er een
+    GEMINI_MONTHLY_BUDGET is ingesteld valt er iets over "nog over" te zeggen.
+
+    Pre:  gemini is de 'gemini'-subdict van collect_funds_report()
+    Post: self-contained HTML div; lege string als er geen gegevens zijn
+    """
+    if not gemini:
+        return ""
+
+    console = gemini.get("link") or "https://console.cloud.google.com/billing"
+    header = (
+        "<h2 style='margin-top:0;font-size:16px;text-transform:uppercase;"
+        "letter-spacing:0.5px'>🍌 Gemini (Nano Banana) verbruik</h2>"
+    )
+    wrapper = (
+        "<div style='background:#f9f9f9;padding:16px;border-radius:6px;"
+        "margin:20px 0;border:1px solid #e0e0e0'>"
+    )
+
+    if not gemini.get("success"):
+        err = gemini.get("error") or "Verbruiksgegevens niet beschikbaar"
+        return (
+            f"{wrapper}{header}"
+            f"<p style='color:#999;margin:0'>{err} &mdash; "
+            f"<a href='{console}' style='color:#1a73e8'>open Cloud Billing →</a></p>"
+            "</div>"
+        )
+
+    # Plafondblok alleen als er een budget is ingesteld; anders zou hier een
+    # "resterend tegoed" staan dat bij Google domweg niet bestaat.
+    budget_block = ""
+    budget, remaining = gemini.get("budget"), gemini.get("remaining")
+    if budget and remaining is not None:
+        share = remaining / budget if budget else 0
+        color = "#28a745" if share > 0.5 else "#ffc107" if share > 0.15 else "#dc3545"
+        warn = "&nbsp;⚠️ <b>Maandplafond bijna bereikt!</b>" if share <= 0.15 else ""
+        budget_block = (
+            "<table style='width:100%;border-collapse:collapse;margin-bottom:12px'>"
+            "<tr style='background:#1A1A1A'>"
+            "<th style='text-align:left;padding:8px;color:#fff;font-size:11px;"
+            "text-transform:uppercase;letter-spacing:0.8px'>Nog over deze maand "
+            f"(van ${budget:.2f})</th></tr>"
+            f"<tr><td style='padding:10px 8px;color:{color};font-size:18px;"
+            f"font-weight:700'>${remaining:.2f} USD{warn}</td></tr>"
+            "</table>"
+        )
+
+    def row(label: str, cost, images) -> str:
+        cost_str = f"${cost:.2f} USD" if cost is not None else "—"
+        count = f"{images} beeld(en)" if images is not None else "—"
+        return (
+            "<tr style='border-bottom:1px solid #e0e0e0'>"
+            f"<td style='padding:8px'>{label}</td>"
+            f"<td style='padding:8px;font-weight:700'>{cost_str}</td>"
+            f"<td style='padding:8px;color:#666'>{count}</td></tr>"
+        )
+
+    note = (
+        "<p style='margin:10px 0 0;font-size:11px;color:#999'>"
+        "Zelf bijgehouden per gegenereerd beeld: een Gemini API-key heeft geen "
+        "billing-endpoint. Google rekent postpaid af, dus er is geen resterend "
+        "tegoed &mdash; alleen verbruik. "
+        f"<a href='{console}' style='color:#1a73e8'>Open Cloud Billing →</a></p>"
+    )
+
+    return (
+        f"{wrapper}{header}{budget_block}"
+        "<table style='width:100%;border-collapse:collapse'>"
+        "<tr style='background:#1A1A1A'>"
+        "<th style='text-align:left;padding:8px;color:#fff;font-size:11px;"
+        "text-transform:uppercase;letter-spacing:0.8px;width:40%'>Periode</th>"
+        "<th style='text-align:left;padding:8px;color:#fff;font-size:11px;"
+        "text-transform:uppercase;letter-spacing:0.8px'>Kosten</th>"
+        "<th style='text-align:left;padding:8px;color:#fff;font-size:11px;"
+        "text-transform:uppercase;letter-spacing:0.8px'>Aantal</th></tr>"
+        f"{row('Vandaag', gemini.get('today_cost'), gemini.get('today_images'))}"
+        f"{row('Deze maand', gemini.get('month_cost'), gemini.get('month_images'))}"
+        "</table>"
+        f"{note}"
+        "</div>"
     )

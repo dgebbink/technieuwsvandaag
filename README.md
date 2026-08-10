@@ -190,6 +190,8 @@ dutchcowboys.nl|https://www.dutchcowboys.nl/sitemap/news.xml
 | `FAL_API_KEY` | API-sleutel van fal.ai (vereist bij `IMAGE_PROVIDER=fal`) | — |
 | `GEMINI_API_KEY` | API-sleutel van Google AI Studio (vereist bij `IMAGE_PROVIDER=nanobanana`) | — |
 | `GEMINI_IMAGE_MODEL` | Gemini-model voor beeldgeneratie | `gemini-3.1-flash-image` |
+| `IMAGE_FALLBACK_PROVIDER` | Neemt het over als de primaire provider geen beeld oplevert; leeg = geen terugval | `fal` |
+| `GEMINI_MONTHLY_BUDGET` | Maandplafond in USD, alleen voor de weergave in het dagoverzicht; `0` = alleen verbruik tonen | `0` |
 | `ENABLE_SOCIAL_POSTING` | `true` om automatisch naar Bluesky te posten | `false` |
 | `BLUESKY_HANDLE` | Je Bluesky handle (bijv. `technieuwsvandaag.bsky.social`) | — |
 | `BLUESKY_APP_PASSWORD` | Bluesky App Password (Instellingen → App Passwords) | — |
@@ -228,12 +230,44 @@ GEMINI_API_KEY=...          # aanmaken via https://aistudio.google.com/apikey
 Beide sleutels komen uitsluitend uit de omgeving (`.env`); ze staan nergens in
 de code. Je hoeft alleen de sleutel van de *gekozen* provider te zetten.
 
-**Geen automatische terugval.** Ontbreekt de sleutel van de gekozen provider —
-of staat er een onbekende waarde in `IMAGE_PROVIDER` — dan stopt `main.py`
-meteen met een expliciete melding (`Beeldprovider niet bruikbaar: ...`) in plaats
-van stilletjes de andere provider te gebruiken of zonder beeld door te gaan. In
-`--dry-run` is het alleen een waarschuwing, zodat je zonder complete sleutelset
-kunt testen.
+**Terugval bij een mislukt beeld, niet bij een misconfiguratie.** Die twee
+worden bewust uit elkaar gehouden:
+
+- Levert de primaire provider **geen beeld** op (quota op, time-out, geweigerde
+  prompt), dan neemt `IMAGE_FALLBACK_PROVIDER` het over — met een `WARNING` in
+  de log (`Beeld mislukt bij ... — terugval op ...`), zodat het zichtbaar blijft.
+  De terugvalprovider krijgt de **kale** prompt: de logo-instructie van Nano
+  Banana lift niet mee naar flux/dev, dat er anders vervormde merktekens van maakt.
+- Ontbreekt de **sleutel van de primaire provider**, of staat er een onbekende
+  waarde in `IMAGE_PROVIDER`, dan stopt `main.py` meteen met
+  `Beeldprovider niet bruikbaar: ...`. Terugval zou die fout juist verbergen —
+  en dan draait de site maandenlang op de verkeerde dienst zonder dat iemand het
+  merkt. In `--dry-run` is het alleen een waarschuwing, zodat je zonder complete
+  sleutelset kunt testen.
+
+Is de terugvalprovider zelf onbruikbaar (geen key), dan is er simpelweg geen
+vangnet en zegt de log dat; de gewone weg wordt er niet door geblokkeerd.
+
+## Kosten in het dagoverzicht
+
+Het dagoverzicht toont beide providers, maar noodgedwongen verschillend, want de
+betaalmodellen verschillen:
+
+| | FAL.ai | Gemini |
+|---|---|---|
+| Model | prepaid — er ís een tegoed | postpaid — je krijgt een rekening |
+| Bron | officiële billing/usage-API | **zelf bijgehouden** in `gemini_usage.json` |
+| Toont | resterend tegoed + kosten | kosten + aantal beelden |
+
+Een Gemini API-key heeft **geen billing-endpoint**; Google verwijst naar de
+Cloud Billing-console, die alleen met OAuth te bevragen is en uren achterloopt.
+Google's eigen advies is per antwoord de `usage` te loggen. Dat doet
+`record_gemini_usage()` bij elk gegenereerd beeld; `budget_monitor.py` telt het
+op. Geen schatting: een 1K-beeld meldt 1120 image-tokens à $60/1M = $0.0672,
+precies de $0.067 die Google zelf voor een 1K-beeld rekent.
+
+Wil je tóch een "nog over"-getal, zet dan `GEMINI_MONTHLY_BUDGET` — dan trekt
+het rapport het maandverbruik van dat zelfgekozen plafond af.
 
 De code zit in het pakket `image_providers/`: `base.py` definieert de interface
 (`ImageProvider.generate_image(prompt, dest_path, options)`), `fal.py` en

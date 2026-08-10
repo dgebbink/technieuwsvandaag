@@ -91,6 +91,11 @@ IMAGE_MENTION_ETHNICITY_PROBABILITY: float = 0.30
 # get_image_provider(); ontbreekt de key van de gekozen provider, dan volgt een
 # ImageProviderError — er is bewust geen terugval op de andere provider.
 IMAGE_PROVIDER: str = os.environ.get("IMAGE_PROVIDER", "fal")
+# Neemt het over als IMAGE_PROVIDER géén beeld oplevert (quota op, time-out).
+# Leeg = geen terugval. Geldt alleen voor runtime-fouten: een ontbrekende key
+# van de primaire provider blijft luid stuklopen, anders draait de site
+# ongemerkt maanden op de verkeerde dienst.
+IMAGE_FALLBACK_PROVIDER: str = os.environ.get("IMAGE_FALLBACK_PROVIDER", "fal")
 
 FAL_API_KEY: str = os.environ.get("FAL_API_KEY", "")
 # Admin-scoped FAL.ai key voor de billing- en usage-endpoints (api.fal.ai/v1/...).
@@ -106,6 +111,14 @@ GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
 # Model-id staat in .env zodat een opvolger geen codewijziging vergt; Google
 # rouleert deze namen (nano banana → gemini-2.5-flash-image → 3.1).
 GEMINI_IMAGE_MODEL: str = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image")
+# Eigen grootboek van Gemini-verbruik. Nodig omdat een Gemini API-key géén
+# billing-endpoint heeft (zie budget_monitor.py); zonder dit bestand is er geen
+# enkel zicht op de kosten in het dagoverzicht.
+GEMINI_USAGE_FILE: Path = BASE_DIR / "gemini_usage.json"
+# Optioneel maandplafond in dollars, puur voor de weergave: Google is postpaid,
+# dus er ís geen resterend tegoed. Staat dit op 0, dan toont het dagoverzicht
+# alleen het verbruik en geen "nog over".
+GEMINI_MONTHLY_BUDGET: float = float(os.environ.get("GEMINI_MONTHLY_BUDGET", "0"))
 
 # Social media
 ENABLE_SOCIAL_POSTING: bool = os.environ.get("ENABLE_SOCIAL_POSTING", "false").lower() == "true"

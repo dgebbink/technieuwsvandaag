@@ -283,12 +283,24 @@ implementaties zitten in het pakket `image_providers/` achter één interface
 `image_generator.py` gaat alleen nog over de prompt en de nabewerking en roept
 `generate_provider_image()` aan. Twee dingen om te weten bij wijzigingen:
 
-- **Geen terugval tussen providers, met opzet.** Ontbreekt de key van de gekozen
-  provider, dan volgt een `ImageProviderError` — `main.py` stopt de run vóór het
-  eerste beeld (in `--dry-run` alleen een waarschuwing). De helpers in
-  `image_generator.py` laten die fout er expliciet doorheen; alle *andere*
-  beeldfouten blijven een gelogde `None`, zodat een artikel gewoon zonder beeld
-  doorgaat. Een stille wissel zou onzichtbaar maken welke dienst de beelden maakt.
+- **Terugval bij een mislukt beeld, níét bij een misconfiguratie.** Levert de
+  primaire provider geen beeld op (quota op, time-out), dan neemt
+  `IMAGE_FALLBACK_PROVIDER` (standaard `fal`) het over, met een `WARNING` in de
+  log. Ontbreekt daarentegen de *key* van de primaire provider of is
+  `IMAGE_PROVIDER` onbekend, dan volgt een `ImageProviderError` en stopt
+  `main.py` vóór het eerste beeld (in `--dry-run` alleen een waarschuwing) —
+  terugval zou die fout verbergen en de site maanden ongemerkt op de verkeerde
+  dienst laten draaien. De helpers in `image_generator.py` laten die fout er
+  expliciet doorheen; alle *andere* beeldfouten blijven een gelogde `None`.
+  **De terugvalprovider krijgt de kale prompt**, niet de al aangevulde: de
+  logo-instructie van Nano Banana mag niet meeliften naar flux/dev.
+- **Gemini-kosten houden we zelf bij.** Een Gemini API-key heeft geen
+  billing-endpoint (FAL.ai wél), dus `record_gemini_usage()` schrijft per beeld
+  een regel in `gemini_usage.json` en `budget_monitor.py` telt die op voor het
+  dagoverzicht. De berekening sluit aan op Google's eigen prijslijst (1120
+  image-tokens × $60/1M = $0.067 voor een 1K-beeld). Er is geen "resterend
+  tegoed": Google is postpaid. `GEMINI_MONTHLY_BUDGET` geeft desgewenst een
+  zelfgekozen plafond om vanaf te rekenen.
 - **De promptteksten zijn op flux/dev afgestemd.** De uitsluitingen staan
   bewust in de *positieve* prompt (flux kent geen `negative_prompt`, zie
   hieronder). Gemini leest die net zo goed, maar wie de prompts herschrijft voor

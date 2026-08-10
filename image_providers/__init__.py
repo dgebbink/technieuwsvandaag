@@ -4,18 +4,28 @@ Beeldgeneratie-providers, gekozen via IMAGE_PROVIDER in .env.
     IMAGE_PROVIDER=fal          → FAL.ai flux/dev            (FAL_API_KEY)
     IMAGE_PROVIDER=nanobanana   → Nano Banana 2 / Gemini     (GEMINI_API_KEY)
 
-Er is bewust geen automatische terugval van de ene provider op de andere: een
-stille wissel maakt het onmogelijk om aan de beelden af te lezen welke dienst ze
-maakte, en verbergt precies de configuratiefout die je wilt zien.
+`IMAGE_FALLBACK_PROVIDER` wijst de provider aan die het overneemt als de eerste
+geen beeld oplevert (bijvoorbeeld doordat het Gemini-budget op is). Twee soorten
+falen worden daarbij uit elkaar gehouden:
+
+- **Configuratiefout** (onbekende naam, ontbrekende API-key van de *primaire*
+  provider): blijft luid stuk via `ImageProviderError`. Terugval zou hier de
+  fout verbergen die je juist wilt zien, en dan draait de site maandenlang op de
+  verkeerde dienst zonder dat iemand het merkt.
+- **Runtime-fout** (quota op, time-out, geweigerde prompt): dán pas terugval,
+  met een `WARNING` in de log zodat het zichtbaar blijft dat het gebeurde.
 """
+import logging
 from functools import lru_cache
 from typing import Optional
 
-from config import IMAGE_PROVIDER
+from config import IMAGE_FALLBACK_PROVIDER, IMAGE_PROVIDER
 
 from .base import ImageOptions, ImageProvider, ImageProviderError
 from .fal import FalImageProvider
 from .nanobanana import NanoBananaImageProvider
+
+logger = logging.getLogger(__name__)
 
 _PROVIDERS: dict[str, type[ImageProvider]] = {
     FalImageProvider.name: FalImageProvider,
@@ -28,6 +38,7 @@ __all__ = [
     "ImageProvider",
     "ImageProviderError",
     "NanoBananaImageProvider",
+    "get_fallback_provider",
     "get_image_provider",
 ]
 
@@ -51,3 +62,23 @@ def get_image_provider(name: Optional[str] = None) -> ImageProvider:
             f"{', '.join(sorted(_PROVIDERS))}."
         )
     return provider_cls()
+
+
+@lru_cache(maxsize=None)
+def get_fallback_provider(primary_name: str) -> Optional[ImageProvider]:
+    """De provider die het overneemt als `primary_name` geen beeld oplevert.
+
+    Pre:  primary_name is de naam van de actieve provider
+    Post: een ImageProvider, of None als terugval uit staat, op zichzelf wijst,
+          of niet bruikbaar is. Raises nooit: een onbruikbare terugval mag de
+          gewone weg niet blokkeren — dan is er simpelweg geen vangnet, en dat
+          staat als waarschuwing in de log.
+    """
+    key = (IMAGE_FALLBACK_PROVIDER or "").strip().lower()
+    if not key or key == primary_name:
+        return None
+    try:
+        return get_image_provider(key)
+    except ImageProviderError as exc:
+        logger.warning("Terugvalprovider %r niet bruikbaar: %s", key, exc)
+        return None
