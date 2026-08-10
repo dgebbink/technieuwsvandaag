@@ -294,11 +294,18 @@ implementaties zitten in het pakket `image_providers/` achter één interface
   hieronder). Gemini leest die net zo goed, maar wie de prompts herschrijft voor
   één provider, verandert ze voor beide.
 - **Nano Banana vereist billing, ook voor één beeld.** De gratis Gemini-tier
-  geeft élk image-model quota 0 (`HTTP 429 ... limit: 0`), dus `nanobanana`
-  werkt pas als er billing aan staat op het Google Cloud-project. Getest
-  2026-08-10: de key is geldig en `gemini-3.1-flash-image` staat in zijn
-  modellenlijst, maar genereren gaf 429. De providerkeuze staat daarom nog op
-  `fal`.
+  geeft élk image-model quota 0 (`HTTP 429 ... limit: 0`); zonder billing op het
+  Google Cloud-project werkt `nanobanana` niet. Billing staat sinds 2026-08-10
+  aan en de provider is die dag end-to-end getest: ~19 s per beeld, 2752×1536
+  JPEG (≈3 MB ruw, ≈1 MB nadat `add_ai_label()` het opnieuw wegschrijft).
+- **Nano Banana tekent échte merklogo's, en dat is een ander probleem dan bij
+  flux/dev.** In beide testbeelden stonden herkenbare, correcte logo's
+  (Play Store, WhatsApp, Instagram, Facebook, Telegram) op schermen in beeld,
+  ondanks "no text or lettering" in de prompt. De logo-uitsluitingen gingen er
+  op 2026-08-04 uit omdat flux/dev alleen vervórmde pseudo-logo's maakte; dit
+  model is goed genoeg om de echte merktekens te renderen. Stap je over op
+  `nanobanana`, zet dan een expliciete logo-uitsluiting terug in de *positieve*
+  prompt in `image_generator.py`.
 - `generate_header_image.py` en `update_bluesky_profile.py` hebben nog hun eigen
   directe FAL.ai-aanroep en volgen `IMAGE_PROVIDER` niet — losse hulpscripts.
 

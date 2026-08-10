@@ -253,6 +253,7 @@ een regel in `_PROVIDERS`.
 | FAL.ai timeout | FAL.ai kan 60-90 sec nodig hebben; verhoog `FAL_IMAGE_TIMEOUT` in `image_providers/fal.py` |
 | `Beeldprovider niet bruikbaar: ...` | De API-sleutel van de provider uit `IMAGE_PROVIDER` ontbreekt, of de waarde is niet `fal`/`nanobanana` — zie [Beeldprovider kiezen](#beeldprovider-kiezen) |
 | Nano Banana: `HTTP 429 ... limit: 0` | Beeldgeneratie zit **niet** in de gratis Gemini-tier: elk image-model geeft quota 0 tot er billing aan staat op het Google Cloud-project. Aanzetten via [aistudio.google.com](https://aistudio.google.com/apikey) → project → billing. Een gewone rate limit geeft een limit > 0 |
+| Echte merklogo's in een Nano Banana-beeld | Bekend gedrag van dit model — het rendert herkenbare logo's ondanks "no text or lettering". Zet een expliciete logo-uitsluiting terug in de positieve prompt in `image_generator.py` |
 | FAL.ai tegoed laag | Je ontvangt automatisch een waarschuwingsmail; herlaad via fal.ai → Dashboard → Billing |
 | `atproto` niet gevonden | Voer `pip install atproto` uit |
 
