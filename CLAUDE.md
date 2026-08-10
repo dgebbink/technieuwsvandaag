@@ -298,14 +298,20 @@ implementaties zitten in het pakket `image_providers/` achter één interface
   Google Cloud-project werkt `nanobanana` niet. Billing staat sinds 2026-08-10
   aan en de provider is die dag end-to-end getest: ~19 s per beeld, 2752×1536
   JPEG (≈3 MB ruw, ≈1 MB nadat `add_ai_label()` het opnieuw wegschrijft).
-- **Nano Banana tekent échte merklogo's, en dat is een ander probleem dan bij
-  flux/dev.** In beide testbeelden stonden herkenbare, correcte logo's
-  (Play Store, WhatsApp, Instagram, Facebook, Telegram) op schermen in beeld,
-  ondanks "no text or lettering" in de prompt. De logo-uitsluitingen gingen er
-  op 2026-08-04 uit omdat flux/dev alleen vervórmde pseudo-logo's maakte; dit
-  model is goed genoeg om de echte merktekens te renderen. Stap je over op
-  `nanobanana`, zet dan een expliciete logo-uitsluiting terug in de *positieve*
-  prompt in `image_generator.py`.
+- **Nano Banana tekent échte merklogo's — opgevangen via `prompt_suffix`.** In
+  de eerste twee testbeelden stonden herkenbare, correcte logo's (Play Store,
+  WhatsApp, Instagram, Facebook, Telegram) op schermen in beeld, ondanks "no
+  text or lettering" in de prompt. De logo-uitsluitingen gingen er op
+  2026-08-04 uit omdat flux/dev alleen vervórmde pseudo-logo's maakte; dit
+  model is goed genoeg om de echte merktekens te renderen, wat een zwaarder
+  probleem is op een publieke nieuwssite. Daarom hangt
+  `NanoBananaImageProvider.prompt_suffix` er een expliciete uitsluiting achter
+  (positief geformuleerd; er is geen negative prompt). `generate_provider_image()`
+  plakt die er op het laatste moment aan, dus hij geldt voor álle
+  promptvarianten — nieuws, editorial én gevoelig onderwerp.
+  **De FAL-prompts zijn hierdoor letterlijk ongewijzigd** t.o.v. 2026-08-04:
+  `FalImageProvider.prompt_suffix` is leeg. Wie een uitsluiting voor beide
+  providers wil, zet hem in de gedeelde prompt in `image_generator.py`, niet hier.
 - `generate_header_image.py` en `update_bluesky_profile.py` hebben nog hun eigen
   directe FAL.ai-aanroep en volgen `IMAGE_PROVIDER` niet — losse hulpscripts.
 

@@ -205,8 +205,13 @@ Bij `IMAGE_STRATEGY=generate` schrijft Claude de beeldprompt en maakt een
 
 | `IMAGE_PROVIDER` | Dienst | Model | Vereiste env-var |
 |---|---|---|---|
-| `fal` (standaard) | FAL.ai | `fal-ai/flux/dev` | `FAL_API_KEY` |
+| `fal` | FAL.ai | `fal-ai/flux/dev` | `FAL_API_KEY` |
 | `nanobanana` | Google Gemini API | Nano Banana 2 (`gemini-3.1-flash-image`) | `GEMINI_API_KEY` |
+
+> De code valt zonder instelling terug op `fal`; **productie draait sinds
+> 2026-08-10 op `nanobanana`** (ingesteld in `.env`). Let op: beeldgeneratie zit
+> niet in de gratis Gemini-tier — zonder billing op het Google Cloud-project
+> geeft elk image-model quota 0.
 
 Omschakelen is één regel in `.env` — er hoeft geen code aangepast te worden:
 
@@ -236,6 +241,13 @@ De code zit in het pakket `image_providers/`: `base.py` definieert de interface
 (`get_image_provider()`). Een derde provider toevoegen is een module erbij plus
 een regel in `_PROVIDERS`.
 
+**Providerspecifieke promptaanvulling.** Een provider mag via `prompt_suffix`
+iets achter elke prompt laten plakken, voor eigenaardigheden van zijn eigen
+model. Nano Banana gebruikt dat voor een logo-uitsluiting: het model tekent
+anders échte, herkenbare merklogo's (Play Store, WhatsApp, Instagram) op
+schermen in beeld. `FalImageProvider.prompt_suffix` is leeg, zodat de
+flux/dev-prompts exact blijven zoals ze waren.
+
 > De losse hulpscripts `generate_header_image.py` en `update_bluesky_profile.py`
 > hebben nog hun eigen, directe FAL.ai-aanroep en volgen `IMAGE_PROVIDER` niet.
 
@@ -253,7 +265,7 @@ een regel in `_PROVIDERS`.
 | FAL.ai timeout | FAL.ai kan 60-90 sec nodig hebben; verhoog `FAL_IMAGE_TIMEOUT` in `image_providers/fal.py` |
 | `Beeldprovider niet bruikbaar: ...` | De API-sleutel van de provider uit `IMAGE_PROVIDER` ontbreekt, of de waarde is niet `fal`/`nanobanana` — zie [Beeldprovider kiezen](#beeldprovider-kiezen) |
 | Nano Banana: `HTTP 429 ... limit: 0` | Beeldgeneratie zit **niet** in de gratis Gemini-tier: elk image-model geeft quota 0 tot er billing aan staat op het Google Cloud-project. Aanzetten via [aistudio.google.com](https://aistudio.google.com/apikey) → project → billing. Een gewone rate limit geeft een limit > 0 |
-| Echte merklogo's in een Nano Banana-beeld | Bekend gedrag van dit model — het rendert herkenbare logo's ondanks "no text or lettering". Zet een expliciete logo-uitsluiting terug in de positieve prompt in `image_generator.py` |
+| Echte merklogo's in een Nano Banana-beeld | Zou niet meer moeten: `NanoBananaImageProvider.prompt_suffix` sluit ze uit. Controleer in de log of de regel `Prompt aangevuld voor nanobanana: ...` erbij staat; zo niet, dan draait de run op een andere provider |
 | FAL.ai tegoed laag | Je ontvangt automatisch een waarschuwingsmail; herlaad via fal.ai → Dashboard → Billing |
 | `atproto` niet gevonden | Voer `pip install atproto` uit |
 

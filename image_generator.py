@@ -687,13 +687,22 @@ def add_ai_label(image_path: str) -> None:
 def generate_provider_image(prompt: str, dest_path: str) -> Optional[str]:
     """Genereer het beeld via de ingestelde provider (IMAGE_PROVIDER).
 
+    De provider mag er zijn eigen `prompt_suffix` achter plakken voor
+    eigenaardigheden van zijn model (Nano Banana tekent anders echte merklogo's).
+    Dat gebeurt hier, op het laatste moment, zodat het voor álle promptvarianten
+    geldt — nieuws, editorial en de gevoelig-onderwerp-variant.
+
     Pre:  prompt is niet-leeg; dest_path is schrijfbaar
     Post: dest_path bij succes, None als het genereren mislukt. Raises
           ImageProviderError als IMAGE_PROVIDER onbekend is of de API-key van de
           gekozen provider ontbreekt — dat is een configuratiefout die zichtbaar
           moet zijn, geen beeld dat toevallig niet lukte.
     """
-    return get_image_provider().generate_image(prompt, dest_path)
+    provider = get_image_provider()
+    if provider.prompt_suffix:
+        prompt = prompt.rstrip() + provider.prompt_suffix
+        logger.info("Prompt aangevuld voor %s: %s", provider.name, prompt)
+    return provider.generate_image(prompt, dest_path)
 
 
 def generate_image_for_article(

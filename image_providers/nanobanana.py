@@ -69,11 +69,31 @@ def _extract_image_b64(payload: dict) -> Optional[str]:
     return None
 
 
+# Dit model tekent échte, herkenbare merklogo's — Play Store, WhatsApp,
+# Instagram, Facebook, Telegram stonden alle in de eerste twee testbeelden op
+# schermen in beeld, terwijl er "no text or lettering" in de prompt stond. De
+# logo-uitsluitingen gingen op 2026-08-04 uit de gedeelde prompts omdat
+# flux/dev alleen vervórmde pseudo-logo's maakte; die afweging valt hier anders
+# uit. Vandaar providerspecifiek: de flux-prompts blijven letterlijk zoals ze
+# toen zijn achtergelaten.
+#
+# Als positieve uitsluiting geformuleerd — er is geen negative prompt, en
+# schermen waren juist de plek waar de logo's opdoken, dus die worden expliciet
+# genoemd.
+_LOGO_PROMPT_SUFFIX = (
+    " No brand logos, trademarks, wordmarks, app icons or company marks appear "
+    "anywhere in the image: any screens, phones, monitors, signage or clothing "
+    "show only plain, generic, unbranded shapes, colours and placeholder "
+    "graphics that resemble no existing company or product."
+)
+
+
 class NanoBananaImageProvider(ImageProvider):
     """Beeld via Nano Banana 2 (Gemini 3.1 Flash Image)."""
 
     name = "nanobanana"
     api_key_env = "GEMINI_API_KEY"
+    prompt_suffix = _LOGO_PROMPT_SUFFIX
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None) -> None:
         self.api_key = GEMINI_API_KEY if api_key is None else api_key

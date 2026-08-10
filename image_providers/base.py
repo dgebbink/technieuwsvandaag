@@ -37,6 +37,11 @@ class ImageProvider(ABC):
     name: ClassVar[str]
     #: Naam van de env-var met de API-key, voor de foutmelding bij ontbreken.
     api_key_env: ClassVar[str]
+    #: Providerspecifieke aanvulling die achter elke prompt wordt geplakt, voor
+    #: eigenaardigheden van dít model. Bewust hier en niet in image_generator:
+    #: alleen de provider weet wat zijn model verkeerd doet, en zo blijven de
+    #: prompts van de andere providers letterlijk ongewijzigd.
+    prompt_suffix: ClassVar[str] = ""
 
     @abstractmethod
     def generate_image(
