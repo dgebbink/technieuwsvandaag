@@ -237,6 +237,18 @@ def next_reel_day(after: date | None = None) -> date:
 # wordt door Meta gedempt of verwijderd. Pad relatief aan BASE_DIR of absoluut.
 REEL_AUDIO_FILE: str = os.environ.get("REEL_AUDIO_FILE", "Beauty Flow.mp3")
 
+# Bewegende Reel: laat de artikelbeelden animeren via de gratis
+# Gemini-webinterface (zie reel_animator.py). De stilstaande versie blijft de
+# terugval: mislukt de animatie voor een artikel — quota op, sessie verlopen,
+# UI gewijzigd — dan gaat dát artikel als gewone slide mee en draait de Reel
+# gewoon door. Zet dit op false om volledig terug te vallen op de oude,
+# stilstaande Reel.
+REEL_ANIMATE: bool = os.environ.get("REEL_ANIMATE", "true").lower() == "true"
+# Lengte van een geanimeerde clip; Veo levert ~10 s, we tonen het begin.
+REEL_ANIMATE_SECONDS: float = float(os.environ.get("REEL_ANIMATE_SECONDS", "3.0"))
+# Per beeld; animeren duurde in de proef ~65 s, maar Veo kan uitschieten.
+REEL_ANIMATE_TIMEOUT: int = int(os.environ.get("REEL_ANIMATE_TIMEOUT", "300"))
+
 # De standaardtrack staat onder CC BY 4.0: commercieel gebruik mag, maar
 # naamsvermelding is een licentievoorwaarde. Die staat bewust op één centrale
 # plek — de colofonpagina (assets/pagina-colofon.html, sectie "Muziek") — en

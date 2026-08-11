@@ -33,6 +33,7 @@ from config import (
 )
 from instagram_image import compose_instagram_image, compose_reel_card
 from instagram_reel import SLIDE_SECONDS, build_reel_video
+from config import REEL_ANIMATE, REEL_ANIMATE_SECONDS
 from social_poster import post_instagram_reel, publish_video_publicly
 from wordpress_client import fetch_posts_for_reel
 
@@ -60,6 +61,34 @@ OUTRO_SECONDS = 2.5  # afsluiter mag iets langer, die moet gelezen worden
 REEL_BAND_BOTTOM = 0.75
 
 _NL_WEEKDAGEN = ["MAANDAG", "DINSDAG", "WOENSDAG", "DONDERDAG", "VRIJDAG", "ZATERDAG", "ZONDAG"]
+
+
+
+def _animated_clip(src_path: str, slide_path: str, index: int) -> str | None:
+    """Maak een bewegende clip van één artikelbeeld, met de opmaak van de slide.
+
+    Post: pad naar een stille MP4 van REEL_ANIMATE_SECONDS, of None als er iets
+          misging — de aanroeper valt dan terug op de stilstaande slide.
+    """
+    try:
+        from reel_animator import animate_image, build_clip, build_overlay  # noqa: PLC0415
+
+        overlay = build_overlay(
+            slide_path, src_path, str(_TMP_DIR / f"reel_overlay_{index}.png"),
+            REEL_CANVAS[0], REEL_CANVAS[1],
+        )
+        if not overlay:
+            return None
+        raw = animate_image(src_path, str(_TMP_DIR / f"reel_anim_{index}.mp4"))
+        if not raw:
+            return None
+        return build_clip(
+            raw, overlay, str(_TMP_DIR / f"reel_clip_{index}.mp4"),
+            REEL_CANVAS[0], REEL_CANVAS[1], seconds=REEL_ANIMATE_SECONDS,
+        )
+    except Exception as exc:
+        logger.warning("Animatie voor slide %d mislukt: %s", index, exc)
+        return None
 
 
 def _kicker_for(date_str: str) -> str:
@@ -120,8 +149,23 @@ def main() -> None:
             canvas_w=REEL_CANVAS[0], canvas_h=REEL_CANVAS[1],
             band_bottom_frac=REEL_BAND_BOTTOM,
         )
-        if composed:
-            slide_paths.append(composed)
+        if not composed:
+            continue
+
+        # Bewegende variant: hetzelfde beeld geanimeerd, met exact dezelfde
+        # opmaaklaag eroverheen. Mislukt dat (quota op, sessie verlopen, UI
+        # gewijzigd), dan gaat de stilstaande slide mee — per artikel, zodat één
+        # mislukking de Reel niet kost.
+        slide = composed
+        if REEL_ANIMATE:
+            clip = _animated_clip(str(src), composed, i)
+            if clip:
+                slide = clip
+            else:
+                logger.warning(
+                    "Animatie mislukt voor slide %d — stilstaande slide gebruikt", i
+                )
+        slide_paths.append(slide)
 
     if len(slide_paths) < MIN_SLIDES:
         logger.error(
@@ -143,7 +187,10 @@ def main() -> None:
         canvas_w=REEL_CANVAS[0], canvas_h=REEL_CANVAS[1],
     )
 
-    durations = [SLIDE_SECONDS] * len(slide_paths)
+    durations = [
+        REEL_ANIMATE_SECONDS if str(p).endswith(".mp4") else SLIDE_SECONDS
+        for p in slide_paths
+    ]
     if intro:
         slide_paths.insert(0, intro)
         durations.insert(0, CARD_SECONDS)

@@ -12,6 +12,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+CANVAS_W, CANVAS_H = 1080, 1920
 SLIDE_SECONDS = 3.0
 FPS = 30
 _FADE_SECONDS = 2.0
@@ -32,7 +33,12 @@ def build_reel_video(
     Reel op 2026-07-26). "Silent" betekent dus een leeg audiospoor, niet géén
     audiospoor.
 
-    Pre:  slide_paths bevat >=1 bestaande JPEG's, allemaal dezelfde afmeting
+    Slides mogen JPEG's zijn óf korte MP4-clips (zie reel_animator): een
+    bewegende Reel mengt beide, want een artikel waarvan de animatie mislukte
+    gaat als stilstaande slide mee. Video-inputs worden op dezelfde maat en fps
+    genormaliseerd, anders weigert concat ze te mengen.
+
+    Pre:  slide_paths bevat >=1 bestaande JPEG's of MP4's, allemaal dezelfde afmeting
           (zie compose_instagram_image met canvas_w/canvas_h=1080x1920).
           audio_path is leeg (→ stil spoor) of verwijst naar een audiobestand
           waarvan jij de rechten hebt; het wordt geloopt tot de videolengte en
@@ -57,8 +63,12 @@ def build_reel_video(
         per_slide = durations or [seconds_per_slide] * len(slide_paths)
 
         cmd = ["ffmpeg", "-y"]
-        for path, secs in zip(slide_paths, per_slide):
-            cmd += ["-loop", "1", "-t", str(secs), "-i", path]
+        is_video = [str(p).lower().endswith((".mp4", ".mov", ".webm")) for p in slide_paths]
+        for path, secs, vid in zip(slide_paths, per_slide, is_video):
+            if vid:
+                cmd += ["-t", str(secs), "-i", str(path)]
+            else:
+                cmd += ["-loop", "1", "-t", str(secs), "-i", str(path)]
 
         n = len(slide_paths)
         total_seconds = sum(per_slide)
@@ -80,8 +90,16 @@ def build_reel_video(
                 "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
             ]
 
-        concat_inputs = "".join(f"[{i}:v]" for i in range(n))
-        filter_complex = f"{concat_inputs}concat=n={n}:v=1:a=0[outv]"
+        # Elke stroom eerst gelijktrekken (maat, fps, SAR): een MP4 van Veo en
+        # een stilstaande JPEG komen anders binnen met verschillende timebases en
+        # dan klapt concat eruit.
+        norm = "".join(
+            f"[{i}:v]scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
+            f"crop={CANVAS_W}:{CANVAS_H},setsar=1,fps={fps}[n{i}];"
+            for i in range(n)
+        )
+        concat_inputs = "".join(f"[n{i}]" for i in range(n))
+        filter_complex = f"{norm}{concat_inputs}concat=n={n}:v=1:a=0[outv]"
 
         cmd += ["-filter_complex", filter_complex, "-map", "[outv]", "-map", f"{n}:a"]
 
