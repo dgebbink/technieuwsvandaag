@@ -73,21 +73,17 @@ def _extract_image_b64(payload: dict) -> Optional[str]:
 # blijven letterlijk zoals ze op 2026-08-04 zijn achtergelaten — flux kan dit
 # niet en zou er vervormde merktekens van maken.
 #
-# De laatste zin is niet optioneel: de gedeelde nieuwsprompt vraagt om "no text
-# or lettering", en een woordmerk ís lettering. Zonder die expliciete uitzondering
-# staan er twee tegenstrijdige instructies in één prompt, en dan laat het model
-# er willekeurig één vallen — precies het mechanisme dat de group-template eerder
-# de sekse deed weglaten (zie CLAUDE.md, Afbeeldingsgeneratie).
+# Eerder stond hier een uitzonderingszin, omdat de gedeelde nieuwsprompt "no text
+# or lettering" eiste en een woordmerk ís lettering — twee tegenstrijdige
+# instructies in één prompt. Die no-text-eis is er op 2026-08-11 uitgehaald, dus
+# de uitzondering is overbodig geworden en zou nu naar niets meer verwijzen.
 _BRAND_PROMPT_SUFFIX = (
     " Real brand logos and product marks may appear where they would naturally "
     "occur in a genuine photograph — on devices, screens, signage, packaging or "
     "clothing. Render them accurately and in correct proportion, but keep them "
     "subtle and secondary: small, incidental, softened by depth of field or "
     "viewing angle, never the focal point of the composition, and never "
-    "enlarged, repeated or distorted for emphasis. This is a deliberate "
-    "exception to the instruction above about text and lettering: brand "
-    "wordmarks and logos are permitted, while other text — captions, headlines, "
-    "labels and UI copy — remains absent."
+    "enlarged, repeated or distorted for emphasis."
 )
 
 

@@ -337,6 +337,44 @@ def _enforce_person_in_prompt(prompt: str, variant: dict) -> str:
     return prompt
 
 
+# Clausules over tekst in beeld horen er niet meer in (2026-08-11, op verzoek).
+# De instructie alleen is niet genoeg: "no text or lettering" is zo'n
+# standaardzin in beeldprompts dat Claude hem uit zichzelf terugzet — hij dook
+# meteen weer op in de eerste prompt ná het schrappen. Vandaar deze
+# deterministische nabewerking, in de lijn van _enforce_person_in_prompt().
+_NO_TEXT_CLAUSE = re.compile(
+    r"\b(?:no|without any|without|avoid(?:ing)?|free of|excluding)\b"
+    r"[^,.;]{0,40}?\b(?:text|lettering|typography|wording|writing|captions|"
+    r"letters|words)\b[^,.;]{0,40}",
+    re.IGNORECASE,
+)
+
+
+def _strip_no_text_clause(prompt: str) -> str:
+    """Haal 'geen tekst in beeld'-clausules uit een gegenereerde prompt.
+
+    Pre:  prompt is de door Claude geschreven beeldprompt
+    Post: dezelfde prompt zonder die clausules, met opgeruimde leestekens.
+          Raakt niets anders aan; wat er niet in staat wordt niet gemist.
+    """
+    cleaned = _NO_TEXT_CLAUSE.sub("", prompt)
+    # Opruimen wat het knippen achterlaat: dubbele scheidingstekens en een
+    # voegwoord dat ineens nergens meer naar verwijst ("..., and.").
+    cleaned = re.sub(r"([;:])\s*,", r"\1", cleaned)
+    cleaned = re.sub(r",\s*(?=[,;.])", "", cleaned)
+    cleaned = re.sub(r"\b(?:and|with|plus|as well as)\s*(?=[.;,]|$)", "", cleaned,
+                     flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+([,.;])", r"\1", cleaned)
+    cleaned = re.sub(r"([;,])\s*\.", ".", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    cleaned = cleaned.strip(" ,;")
+    if cleaned and not cleaned.endswith("."):
+        cleaned += "."
+    if cleaned != prompt.strip(" ,;"):
+        logger.info("Tekst-uitsluiting uit de prompt gehaald")
+    return cleaned
+
+
 def is_sensitive_topic(title: str, article_text: str) -> bool:
     """Beoordeelt of de standaard beeldstijl ongepast is voor dit artikel.
 
@@ -408,7 +446,8 @@ def _build_sensitive_image_prompt(title: str, article_text: str) -> str:
         "Prefer a conceptual, understated scene — architecture, empty spaces, "
         "objects, institutional or infrastructural context — with neutral, even "
         "lighting and a calm, serious mood. "
-        "Include no text or lettering. "
+        "Do NOT add any clause about text, lettering or watermarks; text in the "
+        "image is acceptable and must not be excluded. "
         "Note: if the article refers to AI or language 'models', this means LLM/AI "
         "models, not fashion or photo models.\n\n"
         f"Article title: {title}\n"
@@ -419,11 +458,11 @@ def _build_sensitive_image_prompt(title: str, article_text: str) -> str:
     try:
         data = _extract_json(raw)
         if isinstance(data, dict) and data.get("prompt"):
-            return data["prompt"].rstrip() + _SENSITIVE_PROMPT_SUFFIX
+            return _strip_no_text_clause(data["prompt"]).rstrip() + _SENSITIVE_PROMPT_SUFFIX
         raise ValueError("geen 'prompt'-veld")
     except Exception:
         logger.warning("Claude returned non-JSON for sensitive image prompt, using raw text")
-        return raw.rstrip() + _SENSITIVE_PROMPT_SUFFIX
+        return _strip_no_text_clause(raw).rstrip() + _SENSITIVE_PROMPT_SUFFIX
 
 
 def generate_image_prompt(title: str, article_text: str) -> tuple[str, dict, bool]:
@@ -449,7 +488,9 @@ def generate_image_prompt(title: str, article_text: str) -> tuple[str, dict, boo
         "mood. Avoid dark backgrounds. Choose light, modern, realistic environments "
         "such as daylit offices, meeting rooms, or labs with crisp interfaces. "
         "Convey the brand identity through color palette, product design, "
-        "materials, or scene context, without including any text or lettering. "
+        "materials, or scene context. "
+        "Do NOT add any clause about text, lettering or watermarks; text in the "
+        "image is acceptable and must not be excluded. "
         "Note: if the article refers to AI or language 'models', "
         "this means LLM/AI models, not fashion or photo models — do not let this "
         "influence how any people in the image are styled. "
@@ -464,11 +505,11 @@ def generate_image_prompt(title: str, article_text: str) -> tuple[str, dict, boo
         # ```json-fences en stuurde dan de ruwe tekst als prompt naar FAL.ai.
         data = _extract_json(raw)
         if isinstance(data, dict) and data.get("prompt"):
-            return _enforce_person_in_prompt(data["prompt"], variant), variant, False
+            return _strip_no_text_clause(_enforce_person_in_prompt(data["prompt"], variant)), variant, False
         raise ValueError("geen 'prompt'-veld")
     except Exception:
         logger.warning("Claude returned non-JSON for image prompt, using raw text")
-        return _enforce_person_in_prompt(raw, variant), variant, False
+        return _strip_no_text_clause(_enforce_person_in_prompt(raw, variant)), variant, False
 
 
 # Vaste beeldtaal voor editorials, door de redactie vastgesteld. Alleen het
@@ -480,7 +521,7 @@ _EDITORIAL_IMAGE_TEMPLATE = (
     "Editorial photograph, conceptual composition representing {thema}, "
     "dramatic side lighting, high contrast, moody atmosphere, shallow depth of field, "
     "shot on 35mm film, photojournalistic style, muted color palette with one bold accent color, "
-    "subtle tension in composition, no text, no watermarks, "
+    "subtle tension in composition, no watermarks, "
     "professional editorial photography, 4k detail, realistic textures. "
     "Not a cartoon, not an illustration, not a 3d render; no oversaturated "
     "colours, no distorted hands or extra limbs, nothing low-quality or blurry."

@@ -121,7 +121,14 @@ def _call_claude(prompt: str, timeout: int = 90) -> str:
     else:
         cmd = [claude, "-p", prompt, "--dangerously-skip-permissions"]
     result = subprocess.run(
+        # stdin dichtzetten is niet optioneel: zonder open terminal wacht de CLI
+        # 3 s op stdin, waarschuwt "no stdin data received" en eindigt met exit 1.
+        # Dat sloeg toe zodra de aanroep uit een daemon kwam (approval-server via
+        # supervisord) of uit een losgekoppeld achtergrondproces — cron gaf zelf
+        # al /dev/null mee, vandaar dat de nachtelijke runs wél liepen en dit
+        # lang onzichtbaar bleef.
         cmd, capture_output=True, text=True, timeout=timeout, env=env,
+        stdin=subprocess.DEVNULL,
     )
     if result.returncode != 0:
         err = result.stderr.strip()
