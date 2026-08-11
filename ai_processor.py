@@ -56,6 +56,8 @@ class ProcessedArticle:
     # Provider die het beeld daadwerkelijk maakte (webgemini/nanobanana/fal);
     # met een terugvalketen is dat lang niet altijd de primaire.
     image_provider: str = ""
+    # Pad naar de bewaarde kopie zónder AI-label (voor de bewegende Reel)
+    image_unlabeled: str = ""
     # Gerandomiseerd woordaantal waarmee de samenvatting is opgevraagd (300-1000)
     target_words: int = 0
     # Instagram-velden: korte kop voor op het beeld, de losse hook-tekst (voor

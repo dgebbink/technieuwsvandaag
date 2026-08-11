@@ -33,7 +33,7 @@ from config import (
 )
 from instagram_image import compose_instagram_image, compose_reel_card
 from instagram_reel import SLIDE_SECONDS, build_reel_video
-from config import REEL_ANIMATE, REEL_ANIMATE_SECONDS
+from config import REEL_ANIMATE, REEL_ANIMATE_SECONDS, UNLABELED_IMAGE_DIR
 from social_poster import post_instagram_reel, publish_video_publicly
 from wordpress_client import fetch_posts_for_reel
 
@@ -158,7 +158,17 @@ def main() -> None:
         # mislukking de Reel niet kost.
         slide = composed
         if REEL_ANIMATE:
-            clip = _animated_clip(str(src), composed, i)
+            # Liever het bewaarde beeld zónder AI-label animeren: dat label is
+            # in het gepubliceerde beeld ingebrand en Veo laat het meebewegen.
+            # Alleen als die kopie er niet is valt reel_animator terug op
+            # wegsnijden.
+            from urllib.parse import urlparse as _urlparse  # noqa: PLC0415
+
+            plain = UNLABELED_IMAGE_DIR / Path(_urlparse(post["image_url"]).path).name
+            anim_src = str(plain) if plain.is_file() else str(src)
+            if plain.is_file():
+                logger.info("Kaal origineel gevonden voor slide %d", i)
+            clip = _animated_clip(anim_src, composed, i)
             if clip:
                 slide = clip
             else:

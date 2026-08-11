@@ -261,6 +261,7 @@ def main() -> int:
             processed.image_variant = variant or None
             processed.image_prompt = prompt_info.get("prompt", "")
             processed.image_provider = prompt_info.get("provider", "")
+            processed.image_unlabeled = prompt_info.get("unlabeled", "")
             if not processed.image_path:
                 logger.warning("Afbeelding mislukt voor '%s' — doorgaan zonder", processed.titel)
     else:
@@ -303,6 +304,14 @@ def main() -> int:
             url = article.original.url
             save_posted_url(url)
             save_posted_title(article.titel, url)
+            # Het kale beeld krijgt nu pas zijn definitieve naam: die van de
+            # WordPress-afbeelding, zodat weekly_reel het later terugvindt.
+            if getattr(article, "image_unlabeled", ""):
+                from image_generator import name_unlabeled_after  # noqa: PLC0415
+
+                name_unlabeled_after(
+                    article.image_unlabeled, result["post"].get("image_url", "")
+                )
             logger.info(
                 "URL opgeslagen als gepost: %s → %s",
                 url,

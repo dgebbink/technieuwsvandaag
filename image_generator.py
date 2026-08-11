@@ -10,13 +10,20 @@ import json
 import logging
 import random
 import re
+import shutil
+import time
+import uuid
+from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
 from config import (
     FAL_CREDIT_THRESHOLD,
+    UNLABELED_IMAGE_DIR,
+    UNLABELED_RETENTION_DAYS,
     IMAGE_DISTRIBUTION_FILE,
     IMAGE_DISTRIBUTION_TARGETS,
     IMAGE_MENTION_ETHNICITY_PROBABILITY,
@@ -25,6 +32,53 @@ from ai_processor import _call_claude, _extract_json
 from image_providers import ImageProviderError, get_fallback_providers, get_image_provider
 
 logger = logging.getLogger(__name__)
+
+
+
+def stash_unlabeled(image_path: str) -> Optional[str]:
+    """Bewaar een kopie van het beeld zoals het is, vóór add_ai_label().
+
+    Het label wordt in-place ingebrand, dus dit is de enige kans om het
+    origineel te houden. De bewegende Reel heeft dat nodig: Veo animeert een
+    ingebrand label mee en dan wiebelt het onder de stilstaande overlay.
+
+    Post: pad naar de kopie, of None als het niet lukte (nooit raisen — een
+          mislukte kopie mag geen beeld kosten). Kopieën ouder dan
+          UNLABELED_RETENTION_DAYS worden meteen opgeruimd.
+    """
+    try:
+        UNLABELED_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+        dest = UNLABELED_IMAGE_DIR / f"pending_{uuid.uuid4().hex}.jpg"
+        shutil.copyfile(image_path, dest)
+
+        cutoff = time.time() - UNLABELED_RETENTION_DAYS * 86400
+        for old in UNLABELED_IMAGE_DIR.glob("*.jpg"):
+            try:
+                if old.stat().st_mtime < cutoff:
+                    old.unlink()
+            except OSError:
+                pass
+        return str(dest)
+    except Exception as exc:
+        logger.warning("Origineel zonder AI-label niet bewaard: %s", exc)
+        return None
+
+
+def name_unlabeled_after(stash_path: str, image_url: str) -> Optional[str]:
+    """Hernoem de bewaarde kopie naar de bestandsnaam van de WordPress-afbeelding.
+
+    Pas ná publicatie is die naam bekend; weekly_reel zoekt het origineel later
+    op via de basisnaam van post["image_url"].
+    """
+    try:
+        if not stash_path or not image_url:
+            return None
+        target = UNLABELED_IMAGE_DIR / Path(urlparse(image_url).path).name
+        Path(stash_path).replace(target)
+        return str(target)
+    except Exception as exc:
+        logger.warning("Origineel niet hernoemd naar de WP-naam: %s", exc)
+        return None
 
 
 def check_fal_balance() -> Optional[float]:
@@ -820,11 +874,15 @@ def generate_image_for_article(
         used: dict = {}
         result = generate_provider_image(image_prompt, dest_path, used_out=used)
         if result:
+            # Eerst het kale beeld wegzetten: add_ai_label() brandt het label
+            # in-place in en daarna is het origineel onherstelbaar.
+            stashed = stash_unlabeled(dest_path)
             add_ai_label(dest_path)
             # De mail noemt de provider die het beeld écht maakte; met een keten
             # is dat regelmatig niet de primaire.
             if prompt_out is not None:
                 prompt_out["provider"] = used.get("provider", "")
+                prompt_out["unlabeled"] = stashed or ""
         return result
     except ImageProviderError:
         # Configuratiefout, geen mislukt beeld — niet wegmoffelen als "geen beeld".

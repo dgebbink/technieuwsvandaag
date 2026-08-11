@@ -57,6 +57,16 @@ IMAGE_STRATEGY: str = os.environ.get("IMAGE_STRATEGY", "generate")
 # zijn doelaandeel, zodat de werkelijke verdeling naar deze gewichten convergeert
 # (i.p.v. puur toeval, dat bij ~1 beeld/dag flink kan afdwalen).
 # Gewichten zijn relatief; alle gelijke gewichten = uniforme verdeling.
+# Kopie van elk gegenereerd beeld zónder het AI-label. Het label wordt in-place
+# op het bestand gebrand, dus zonder deze kopie is het origineel weg — en juist
+# dat origineel is nodig voor de bewegende Reel: Veo animeert een ingebrand
+# label mee, waardoor het onder de stilstaande overlay gaat wiebelen.
+# Bestandsnaam = de basisnaam van de WordPress-afbeelding, zodat weekly_reel het
+# terugvindt vanaf de image_url van een post.
+UNLABELED_IMAGE_DIR: Path = BASE_DIR / "unlabeled"
+# Opruimen na deze termijn; de Reel kijkt maximaal REEL_DAYS terug.
+UNLABELED_RETENTION_DAYS: int = int(os.environ.get("UNLABELED_RETENTION_DAYS", "21"))
+
 IMAGE_DISTRIBUTION_FILE: Path = BASE_DIR / "image_distribution.json"
 IMAGE_DISTRIBUTION_TARGETS: dict = {
     "gender": {
