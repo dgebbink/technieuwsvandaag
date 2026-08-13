@@ -139,10 +139,10 @@ def generate_person_variant() -> dict:
     teller, zodat de werkelijke verdeling per dimensie naar de doelen in
     config.IMAGE_DISTRIBUTION_TARGETS convergeert in plaats van puur toeval.
 
-    Post: dict met keys gender, ethnicity, age, scene_population en
+    Post: dict met keys gender, ethnicity, age, scene_population, outfit en
           mention_ethnicity. De teller in IMAGE_DISTRIBUTION_FILE is bijgewerkt
           voor de via convergentie gekozen dimensies (gender, ethnicity,
-          age_bucket, scene_population). mention_ethnicity is een losse random
+          age_bucket, scene_population, outfit). mention_ethnicity is een losse random
           toggle (geen convergentie-tracking) die alleen bepaalt of de
           ethniciteit wordt benoemd in de solo-template; alle dimensies worden
           onafhankelijk van elkaar getrokken.
@@ -160,6 +160,7 @@ def generate_person_variant() -> dict:
     scene_population = _pick_balanced(
         "scene_population", targets["scene_population"], state
     )
+    outfit = _pick_balanced("outfit", targets["outfit"], state)
 
     _save_distribution_state(state)
 
@@ -171,6 +172,7 @@ def generate_person_variant() -> dict:
         "ethnicity": ethnicity,
         "age": age,
         "scene_population": scene_population,
+        "outfit": outfit,
         "mention_ethnicity": mention_ethnicity,
     }
     logger.info("Beeld-persoonsvariant gekozen: %s", describe_variant(variant))
@@ -185,6 +187,8 @@ def describe_variant(variant: dict) -> str:
         parts.append(variant["ethnicity"])
     parts.append(f"~{variant['age']} jr")
     parts.append(variant.get("scene_population", "solo"))
+    if variant.get("outfit"):
+        parts.append(_OUTFIT_LABELS.get(variant["outfit"], variant["outfit"]))
     return " · ".join(parts)
 
 
@@ -253,28 +257,32 @@ def build_person_instruction(variant: dict) -> str:
     """Bouw de person-instructie uit de gekozen variant.
 
     GROUP benoemt nooit ethniciteit (los van mention_ethnicity). SOLO benoemt de
-    ethniciteit alleen als mention_ethnicity true is.
+    ethniciteit alleen als mention_ethnicity true is. De kledingstijl komt er in
+    alle gevallen achteraan.
     """
     if variant.get("scene_population") == "group":
         gender_plural = _GENDER_PLURAL.get(variant["gender"], "people")
-        return _PERSON_TEMPLATE_GROUP.format(
+        instruction = _PERSON_TEMPLATE_GROUP.format(
             gender_plural=gender_plural,
             age=variant["age"],
             age_words=_age_words(variant["age"]),
             appearance=build_appearance_clause(variant),
         )
-    if variant.get("mention_ethnicity"):
-        return _PERSON_TEMPLATE_SOLO_WITH_ETHNICITY.format(
+    elif variant.get("mention_ethnicity"):
+        instruction = _PERSON_TEMPLATE_SOLO_WITH_ETHNICITY.format(
             gender=variant["gender"],
             ethnicity=variant["ethnicity"],
             age=variant["age"],
             appearance=build_appearance_clause(variant),
         )
-    return _PERSON_TEMPLATE_SOLO_NO_ETHNICITY.format(
-        gender=variant["gender"],
-        age=variant["age"],
-        appearance=build_appearance_clause(variant),
-    )
+    else:
+        instruction = _PERSON_TEMPLATE_SOLO_NO_ETHNICITY.format(
+            gender=variant["gender"],
+            age=variant["age"],
+            appearance=build_appearance_clause(variant),
+        )
+    outfit = build_outfit_clause(variant)
+    return f"{instruction} {outfit}".rstrip() if outfit else instruction
 
 
 # Styling voor de vrouwelijke variant; de mannelijke houdt de neutrale basis.
@@ -295,8 +303,12 @@ _APPEARANCE_ATTRACTIVE_SOLO = (
 _APPEARANCE_ATTRACTIVE_GROUP = (
     "Give them the appearance of confident professionals with a natural, "
     "authentic expression, who are simultaneously subtly erotic: natural and "
-    "well-formed figures and fashionable, "
-    "form-fitting outfits that flatter their figure. They are committed to "
+    "well-formed figures and "
+    # Bewust géén "fashionable" meer: de kledingstíjl komt sinds de outfit-
+    # dimensie uit build_outfit_clause(), en twee instructies over kleding in
+    # één prompt laat het model er willekeurig één van laten vallen. Deze
+    # clausule zegt alleen nog hóé de kleding zit, niet welke stijl het is.
+    "form-fitting clothing that flatters their figure. They are committed to "
     "their work, never passive or decorative. Natural skin texture and "
     "realistic proportions throughout, wearing no makeup or barely any makeup."
 )
@@ -315,6 +327,58 @@ def build_appearance_clause(variant: dict) -> str:
     return _APPEARANCE_ATTRACTIVE_GROUP if group else _APPEARANCE_ATTRACTIVE_SOLO
 
 
+# Kledingstijl, als eigen dimensie naast sekse/leeftijd (zie
+# IMAGE_DISTRIBUTION_TARGETS["outfit"]). De beeldmodellen kiezen zonder
+# instructie standaard zakelijke kantoorkleding, waardoor elk artikel hetzelfde
+# beeld opleverde. De teksten beschrijven kléding, niet de omgeving: de scène
+# blijft het lichte, moderne decor uit de nieuwsprompt en bij 'vintage' is
+# alleen de kleding retro — niet het kantoor of de techniek.
+_OUTFIT_STYLES = {
+    "casual": (
+        "relaxed casual everyday clothing — a plain t-shirt, a soft knit sweater "
+        "or an open overshirt with jeans or chinos and simple sneakers; no suit, "
+        "no blazer, no formal office dress code"
+    ),
+    "streetwear": (
+        "contemporary streetwear — an oversized hoodie, a bomber or varsity "
+        "jacket, cargo or wide-leg trousers, chunky sneakers and optionally a cap "
+        "or beanie; urban and deliberately styled, no suit and no formal office "
+        "dress code"
+    ),
+    "vintage": (
+        "vintage retro clothing in a clearly 1970s or 1980s style — corduroy, "
+        "washed denim, a patterned shirt with a wide collar, a leather or "
+        "windbreaker jacket, period-correct eyewear; only the clothing is retro, "
+        "the setting and the technology stay present-day"
+    ),
+}
+
+# Korte labels voor de log- en mailregel (describe_variant).
+_OUTFIT_LABELS = {
+    "casual": "casual",
+    "streetwear": "streetwear",
+    "vintage": "vintage/retro",
+}
+
+
+def build_outfit_clause(variant: dict) -> str:
+    """Bouw de kledinginstructie voor deze variant.
+
+    Pre:  variant is niet leeg; onbekende/ontbrekende outfit levert een lege
+          string, zodat een oude variant zonder deze dimensie blijft werken
+    Post: één zin die zegt wie wat draagt, passend bij solo of groep
+    """
+    description = _OUTFIT_STYLES.get(variant.get("outfit", ""))
+    if not description:
+        return ""
+    subject = (
+        "Every person in the scene wears"
+        if variant.get("scene_population") == "group"
+        else "The person in the scene wears"
+    )
+    return f"{subject} {description}."
+
+
 # Markers waaraan te zien is dat de attractieve styling al in de prompt zit,
 # ook als Claude hem in eigen woorden herschreef.
 _ATTRACTIVE_MARKERS = (
@@ -324,6 +388,19 @@ _ATTRACTIVE_MARKERS = (
     "form-fitting",
     "alluring",
 )
+
+# Markers waaraan te zien is dat de gevraagde kledingstijl al in de prompt zit,
+# ook als Claude hem in eigen woorden schreef. Bewust onderscheidende woorden:
+# overlap tussen de stijlen (sneakers, denim) zou de check laten slagen op de
+# verkeerde stijl. Slaat hij ten onrechte aan, dan blijft de instructie staan
+# die Claude al kreeg; dubbel aanhangen is de vervelendere uitkomst.
+_OUTFIT_MARKERS = {
+    "casual": ("casual", "t-shirt", "tshirt", "chinos", "knit sweater", "overshirt"),
+    "streetwear": ("streetwear", "hoodie", "bomber", "cargo", "wide-leg", "beanie",
+                   "oversized"),
+    "vintage": ("vintage", "retro", "1970s", "1980s", "seventies", "eighties",
+                "corduroy", "wide collar"),
+}
 
 # Woordpatronen om te toetsen of de gekozen sekse écht in de prompt staat.
 # \b voorkomt dat "man" matcht binnen "woman"/"human" en "men" binnen "women".
@@ -387,6 +464,19 @@ def _enforce_person_in_prompt(prompt: str, variant: dict) -> str:
         if not any(marker in low for marker in _ATTRACTIVE_MARKERS):
             logger.info("Uiterlijk-styling ontbrak in de prompt — expliciet toegevoegd")
             prompt = prompt.rstrip() + " " + build_appearance_clause(variant)
+
+    # Zelfde vangnet voor de kledingstijl: zonder expliciete kleding in de prompt
+    # valt het beeldmodel terug op zakelijke kantoorkleding, en dan verdwijnt de
+    # variatie waarvoor deze dimensie bestaat.
+    outfit = variant.get("outfit", "")
+    markers = _OUTFIT_MARKERS.get(outfit)
+    if markers:
+        low = prompt.lower()
+        if not any(marker in low for marker in markers):
+            logger.info(
+                "Kledingstijl (%s) ontbrak in de prompt — expliciet toegevoegd", outfit
+            )
+            prompt = prompt.rstrip() + " " + build_outfit_clause(variant)
 
     return prompt
 

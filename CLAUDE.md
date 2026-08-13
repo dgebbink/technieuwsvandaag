@@ -421,6 +421,21 @@ styling is expliciet.
 herformuleert hem meestal). Staat er geen enkel woord uit de tekst in, dan hangt
 de clausule er een tweede keer achter.
 
+**De kledingstijl is een eigen dimensie** (`outfit` in
+`IMAGE_DISTRIBUTION_TARGETS`, gelijk verdeeld over `casual`, `streetwear` en
+`vintage`) en rouleert dus via dezelfde teller als sekse en leeftijd. Zonder
+instructie kiest het beeldmodel bij élk artikel zakelijke kantoorkleding, en
+worden de beelden onderling inwisselbaar. `build_outfit_clause()` levert de zin,
+`_enforce_person_in_prompt()` hangt hem er alsnog achter als Claude de stijl
+liet vallen (`_OUTFIT_MARKERS` is de check — houd die lijst onderscheidend, want
+overlappende woorden als "sneakers" of "denim" laten de check op de verkéérde
+stijl slagen). Bij `vintage` is alleen de kleding retro, niet het decor of de
+techniek. De styling-clausule van de vrouwelijke groepsvariant zegt daarom
+sindsdien alleen nog "form-fitting clothing" en niet meer "fashionable outfits":
+twee instructies over kleding in één prompt en het model laat er willekeurig één
+vallen — hetzelfde mechanisme dat de group-template eerder de sekse deed
+weglaten.
+
 Twee promptvarianten, bewust gescheiden — en op een fundamenteel andere manier
 opgebouwd:
 

@@ -90,6 +90,15 @@ IMAGE_DISTRIBUTION_TARGETS: dict = {
         "group": 60,
         "solo": 40,
     },
+    # Kledingstijl van de personen in beeld. Zonder deze dimensie koos het
+    # beeldmodel standaard zakelijke kantoorkleding bij élk artikel, waardoor de
+    # beelden onderling inwisselbaar werden. Gelijke doelen: de drie stijlen
+    # rouleren.
+    "outfit": {
+        "casual": 1,
+        "streetwear": 1,
+        "vintage": 1,
+    },
 }
 # Onafhankelijke random toggle (geen convergentie-tracking): kans dat de
 # ethniciteit expliciet in de solo person-instructie wordt benoemd.
