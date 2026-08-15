@@ -260,9 +260,21 @@ REEL_AUDIO_FILE: str = os.environ.get("REEL_AUDIO_FILE", "Beauty Flow.mp3")
 # Gemini-webinterface (zie reel_animator.py). De stilstaande versie blijft de
 # terugval: mislukt de animatie voor een artikel — quota op, sessie verlopen,
 # UI gewijzigd — dan gaat dát artikel als gewone slide mee en draait de Reel
-# gewoon door. Zet dit op false om volledig terug te vallen op de oude,
-# stilstaande Reel.
-REEL_ANIMATE: bool = os.environ.get("REEL_ANIMATE", "true").lower() == "true"
+# gewoon door.
+#
+# **Staat uit sinds 2026-08-15: het gratis account kán geen video meer maken.**
+# Veo-animatie zit achter Google AI Pro/Ultra; Gemini antwoordt op het
+# animatieverzoek met een upsell (het gesprek van de run van 14 aug heet in
+# Gemini letterlijk "Subscription Required for Animation"). Tijdens de bouw op
+# 11 aug lukte het nog, die gratis ruimte is op. De terugval wérkte — de Reel
+# van 14 aug postte gewoon — maar elke poging kost tot REEL_ANIMATE_TIMEOUT
+# aan wachten op een weigering die er al is, ~12 min per run voor niets.
+# Aanzetten heeft pas zin met een betaald abonnement, en dan moet éérst de
+# bestandsveld-detectie in reel_animator.py gefikst worden: op een vers
+# geladen gemini.google.com staat er geen input[type="file"] in de DOM, en de
+# aria-label-heuristiek voor het plus-menu raakt hem maar zelden (5 van de 7
+# slides faalden er op 14 aug al vóór het quotum een rol speelde).
+REEL_ANIMATE: bool = os.environ.get("REEL_ANIMATE", "false").lower() == "true"
 # Lengte van een geanimeerde clip; Veo levert ~10 s, we tonen het begin.
 REEL_ANIMATE_SECONDS: float = float(os.environ.get("REEL_ANIMATE_SECONDS", "3.0"))
 # Per beeld; animeren duurde in de proef ~65 s, maar Veo kan uitschieten.

@@ -79,21 +79,15 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
   daarnaast wekelijks een silent 9:16-slideshow (één artikel per dag, rechtstreeks uit
   WordPress — los van de dagwachtrij) — Reels zijn het enige kanaal dat niet-volgers
   bereikt, feedposts amper. Zie `INSTAGRAM_PLAN.md` fase 7.
-  **De Reel is sinds 2026-08-11 bewegend.** Per artikel wordt het bronbeeld
-  geanimeerd via de gratis Gemini-webinterface (`reel_animator.py`, Veo) en
-  krijgt het exact dezelfde opmaaklaag eroverheen als de stilstaande versie.
-  Die opmaak wordt niet nagebouwd maar **uit de bestaande compositie gelicht**:
-  `compose_instagram_image()` tekent de balk ondoorzichtig over de foto, dus het
-  verschil met dezelfde kale bijsnede ís de opmaak. Eén ontwerpbron dus.
-  **De stilstaande Reel blijft de terugval** — mislukt de animatie voor één
-  artikel (quota op, sessie verlopen, UI gewijzigd), dan gaat dát artikel als
-  gewone slide mee en draait de Reel door; `build_reel_video()` mengt MP4's en
-  JPEG's en trekt ze eerst gelijk (maat/fps/SAR), anders weigert concat.
-  `REEL_ANIMATE=false` zet alles terug op de oude, volledig stilstaande versie.
-  Let op: het AI-label wordt vóór het animeren weggesneden — het zit al in het
-  artikelbeeld en Veo laat het anders zichtbaar wiebelen onder de stilstaande
-  overlay. Gemini zet zelf een klein sparkle-watermerk rechtsonder in de video.
-  De Gemini-sessielaag is gedeeld met de beeldprovider (`gemini_web_session.py`).
+  **De Reel is stilstaand. `REEL_ANIMATE` staat sinds 2026-08-15 standaard uit**
+  (was aan sinds 11 aug). De machinerie om de beelden te laten bewegen bestaat
+  nog — `reel_animator.py`, Veo via de gratis Gemini-webinterface — maar het
+  gratis account kán geen video meer maken: dat zit achter Google AI Pro/Ultra,
+  en Gemini antwoordt met een upsell. `build_reel_video()` mengt nog steeds
+  MP4's en JPEG's (en trekt ze gelijk in maat/fps/SAR, anders weigert concat),
+  dus aanzetten kost verder niets. Doe dat pas met een abonnement, en fiks dan
+  éérst de bestandsveld-detectie in `reel_animator.py` — zie de toelichting bij
+  `REEL_ANIMATE` in `config.py` voor beide gebreken.
 
   **De Reel draait op een cyclus van 6 dagen, niet wekelijks** — daardoor
   rouleert de weekdag (zo → za → vr → …, hele week in 42 dagen) i.p.v. vast te
