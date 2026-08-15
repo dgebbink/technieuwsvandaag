@@ -22,6 +22,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from config import (
     FAL_CREDIT_THRESHOLD,
+    REEL_ANIMATE,
     UNLABELED_IMAGE_DIR,
     UNLABELED_RETENTION_DAYS,
     IMAGE_DISTRIBUTION_FILE,
@@ -42,14 +43,18 @@ def stash_unlabeled(image_path: str) -> Optional[str]:
     origineel te houden. De bewegende Reel heeft dat nodig: Veo animeert een
     ingebrand label mee en dan wiebelt het onder de stilstaande overlay.
 
-    Post: pad naar de kopie, of None als het niet lukte (nooit raisen — een
-          mislukte kopie mag geen beeld kosten). Kopieën ouder dan
-          UNLABELED_RETENTION_DAYS worden meteen opgeruimd.
+    **Alleen de animatie gebruikt deze kopieën**, dus met REEL_ANIMATE uit
+    wordt er niets meer bewaard — anders groeit `unlabeled/` vol met beelden
+    die niemand opvraagt. Opruimen gebeurt wél nog: de al bestaande kopieën
+    moeten hun UNLABELED_RETENTION_DAYS nog kunnen uitzitten, anders blijven
+    ze eeuwig staan zodra deze functie er meteen uit stapt.
+
+    Post: pad naar de kopie, of None als het niet lukte óf niet gevraagd was
+          (nooit raisen — een mislukte kopie mag geen beeld kosten). Kopieën
+          ouder dan UNLABELED_RETENTION_DAYS worden meteen opgeruimd.
     """
     try:
         UNLABELED_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-        dest = UNLABELED_IMAGE_DIR / f"pending_{uuid.uuid4().hex}.jpg"
-        shutil.copyfile(image_path, dest)
 
         cutoff = time.time() - UNLABELED_RETENTION_DAYS * 86400
         for old in UNLABELED_IMAGE_DIR.glob("*.jpg"):
@@ -58,6 +63,12 @@ def stash_unlabeled(image_path: str) -> Optional[str]:
                     old.unlink()
             except OSError:
                 pass
+
+        if not REEL_ANIMATE:
+            return None
+
+        dest = UNLABELED_IMAGE_DIR / f"pending_{uuid.uuid4().hex}.jpg"
+        shutil.copyfile(image_path, dest)
         return str(dest)
     except Exception as exc:
         logger.warning("Origineel zonder AI-label niet bewaard: %s", exc)
