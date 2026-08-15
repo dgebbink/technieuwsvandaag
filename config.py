@@ -92,12 +92,13 @@ IMAGE_DISTRIBUTION_TARGETS: dict = {
     },
     # Kledingstijl van de personen in beeld. Zonder deze dimensie koos het
     # beeldmodel standaard zakelijke kantoorkleding bij élk artikel, waardoor de
-    # beelden onderling inwisselbaar werden. Gelijke doelen: de twee stijlen
-    # rouleren. ('vintage' zat hier kort bij, maar retro kleding paste niet bij
-    # een nieuwssite over techniek van vandaag — 2026-08-15 eruit.)
+    # beelden onderling inwisselbaar werden. Casual is de huisstijl (8 van de
+    # 10), streetwear de afwisseling (2 van de 10). ('vintage' zat hier kort
+    # bij, maar retro kleding paste niet bij een nieuwssite over techniek van
+    # vandaag — 2026-08-15 eruit.)
     "outfit": {
-        "casual": 1,
-        "streetwear": 1,
+        "casual": 80,
+        "streetwear": 20,
     },
 }
 # Onafhankelijke random toggle (geen convergentie-tracking): kans dat de

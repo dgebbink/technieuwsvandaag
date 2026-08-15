@@ -416,7 +416,7 @@ herformuleert hem meestal). Staat er geen enkel woord uit de tekst in, dan hangt
 de clausule er een tweede keer achter.
 
 **De kledingstijl is een eigen dimensie** (`outfit` in
-`IMAGE_DISTRIBUTION_TARGETS`, gelijk verdeeld over `casual` en `streetwear`) en
+`IMAGE_DISTRIBUTION_TARGETS`, 80% `casual` en 20% `streetwear`) en
 rouleert dus via dezelfde teller als sekse en leeftijd. Zonder
 instructie kiest het beeldmodel bij élk artikel zakelijke kantoorkleding, en
 worden de beelden onderling inwisselbaar. `build_outfit_clause()` levert de zin,
