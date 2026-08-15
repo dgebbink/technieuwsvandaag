@@ -342,8 +342,7 @@ def build_appearance_clause(variant: dict) -> str:
 # IMAGE_DISTRIBUTION_TARGETS["outfit"]). De beeldmodellen kiezen zonder
 # instructie standaard zakelijke kantoorkleding, waardoor elk artikel hetzelfde
 # beeld opleverde. De teksten beschrijven kléding, niet de omgeving: de scène
-# blijft het lichte, moderne decor uit de nieuwsprompt en bij 'vintage' is
-# alleen de kleding retro — niet het kantoor of de techniek.
+# blijft het lichte, moderne decor uit de nieuwsprompt.
 _OUTFIT_STYLES = {
     "casual": (
         "relaxed casual everyday clothing — a plain t-shirt, a soft knit sweater "
@@ -356,19 +355,12 @@ _OUTFIT_STYLES = {
         "or beanie; urban and deliberately styled, no suit and no formal office "
         "dress code"
     ),
-    "vintage": (
-        "vintage retro clothing in a clearly 1970s or 1980s style — corduroy, "
-        "washed denim, a patterned shirt with a wide collar, a leather or "
-        "windbreaker jacket, period-correct eyewear; only the clothing is retro, "
-        "the setting and the technology stay present-day"
-    ),
 }
 
 # Korte labels voor de log- en mailregel (describe_variant).
 _OUTFIT_LABELS = {
     "casual": "casual",
     "streetwear": "streetwear",
-    "vintage": "vintage/retro",
 }
 
 
@@ -409,8 +401,6 @@ _OUTFIT_MARKERS = {
     "casual": ("casual", "t-shirt", "tshirt", "chinos", "knit sweater", "overshirt"),
     "streetwear": ("streetwear", "hoodie", "bomber", "cargo", "wide-leg", "beanie",
                    "oversized"),
-    "vintage": ("vintage", "retro", "1970s", "1980s", "seventies", "eighties",
-                "corduroy", "wide collar"),
 }
 
 # Woordpatronen om te toetsen of de gekozen sekse écht in de prompt staat.

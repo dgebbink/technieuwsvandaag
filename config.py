@@ -92,12 +92,12 @@ IMAGE_DISTRIBUTION_TARGETS: dict = {
     },
     # Kledingstijl van de personen in beeld. Zonder deze dimensie koos het
     # beeldmodel standaard zakelijke kantoorkleding bij élk artikel, waardoor de
-    # beelden onderling inwisselbaar werden. Gelijke doelen: de drie stijlen
-    # rouleren.
+    # beelden onderling inwisselbaar werden. Gelijke doelen: de twee stijlen
+    # rouleren. ('vintage' zat hier kort bij, maar retro kleding paste niet bij
+    # een nieuwssite over techniek van vandaag — 2026-08-15 eruit.)
     "outfit": {
         "casual": 1,
         "streetwear": 1,
-        "vintage": 1,
     },
 }
 # Onafhankelijke random toggle (geen convergentie-tracking): kans dat de
