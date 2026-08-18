@@ -196,15 +196,22 @@ scraper.py → ai_processor.py → image_generator.py → wordpress_client.py �
 **Dataflow:**
 - `scraper.py` produceert `list[Article]` (dataclass met title, url, pub_date, excerpt, image_url)
 - `ai_processor.py` consumeert `list[Article]`, vraagt Claude om selectie en per artikel JSON met titel/samenvatting/trefwoorden/categorie; produceert `list[ProcessedArticle]`
-  - **`filter_tech_articles()` draait als eerste stap**, vóór deduplicatie en
-    selectie: gerenommeerde maar brede bronnen (`nytimes.com`,
-    `theguardian.com`) leveren ook muziek, sport en algemeen nieuws, en de
-    selectieprompt alleen was niet genoeg — op 2026-08-09 won een artikel over
-    een blink-182-album de selectie en stond het op de site. Zulke bronnen staan
-    daarom óók op hun tech-sectiefeed in `sources.txt`; de filter is het vangnet
-    voor wat daar alsnog doorheen komt. Een lege uitkomst is een geldig oordeel
-    (dan publiceert de run niets); alleen een *mislukte* Claude-call laat alle
-    kandidaten staan, zodat de filter de pijplijn nooit blokkeert.
+  - **`triage_articles()` doet tech-filter, deduplicatie, uitsluiting van wat
+    we net brachten én rangschikking in één Claude-aanroep** (waren er vier,
+    tot 2026-08-18 — zie Tokenverbruik). De tech-toets is er omdat
+    gerenommeerde maar brede bronnen (`nytimes.com`, `theguardian.com`) ook
+    muziek, sport en algemeen nieuws leveren en de selectieprompt alleen niet
+    genoeg was: op 2026-08-09 won een artikel over een blink-182-album de
+    selectie en stond het op de site. Zulke bronnen staan daarom óók op hun
+    tech-sectiefeed in `sources.txt`; de filter is het vangnet voor wat daar
+    alsnog doorheen komt.
+    Drie uitkomsten, en het verschil is wezenlijk: een **lege lijst** is een
+    geldig oordeel (dan publiceert de run niets), **`None`** betekent dat de
+    aanroep mislukte en laat álle kandidaten staan zodat de triage de pijplijn
+    nooit blokkeert, en anders krijg je maximaal 5 kandidaten op volgorde. De
+    duplicaat-toets zit nu vóór de samenvatting in plaats van erna, dus een
+    artikel dat op een recente publicatie lijkt kost geen dure aanroep meer.
+    `similar_to_recent_titles()` blijft als gratis lokaal vangnet achteraf.
 - `image_generator.py` vraagt Claude om een FAL.ai prompt + brand_domain (JSON), genereert afbeelding via FAL.ai, haalt echt logo op via Google favicon service en composit het over de afbeelding (PIL, bottom-right)
 - `wordpress_client.py` maakt categorieën/tags aan, uploadt afbeelding, publiceert de post; produceert `list[dict]` met `{'article': ProcessedArticle, 'post': {'id', 'preview_url', 'link', 'image_url', 'title'}}`
 - `mailer.py` verstuurt HTML-notificatiemail met de afbeelding en twee knoppen per artikel
@@ -471,6 +478,53 @@ beeldmisbruik bijna een opgewekt beeld met een vrouw als middelpunt op.
 > **Dode code:** `fetch_brand_logo()` en `composite_logo()` worden nergens
 > aangeroepen — de logo-compositing die hier eerder beschreven stond, gebeurt
 > niet meer. `brand_domain` zit ook niet meer in het JSON-antwoord.
+
+## Tokenverbruik
+
+Elke Claude-vraag in dit project loopt via de **Claude Code CLI** (`_call_claude()`
+in `ai_processor.py`), en die rekent per *aanroep* een vaste berg context af —
+systeemprompt, tooldefinities, CLAUDE.md — vóór de eigenlijke vraag begint.
+Gemeten 2026-08-18: een vraag van 1.700 tekens kostte 35.957 tokens. Het aantal
+aanroepen en het aantal beurten per aanroep bepalen dus het verbruik, niet de
+lengte van de prompt. Drie regels die daaruit volgen:
+
+1. **De CLI draait in `/tmp/tnv-claude-cwd`, niet in de projectmap**
+   (`_neutral_cwd()`). De CLI zoekt CLAUDE.md-bestanden vanaf zijn werkmap
+   omhoog en plakt ze integraal in élke aanroep; vanuit de projectmap was dat
+   ~19.200 tokens per keer aan instructies die met de vraag niets te maken
+   hebben (35.957 → 16.733 tokens context). Verplaats dit niet terug naar
+   `BASE_DIR` — dan vindt de zoektocht omhoog de projectinstructies weer, en
+   `/home/dgebbink/CLAUDE.md` erbij. Neveneffect: de sessielogs van de bot staan
+   onder `~/.claude/projects/-tmp-tnv-claude-cwd/`.
+2. **Voeg geen aanroep toe waar een bestaande vraag verbreed kan worden.**
+   `triage_articles()` was vier losse aanroepen over dezelfde lijst; samengevoegd
+   ging die stap van ~190.000 naar ~48.000 tokens per run. Let wel op de
+   tegenhanger die elders in dit bestand terugkomt: twee *tegenstrijdige*
+   opdrachten in één prompt laat het model er willekeurig één van vallen. Opeen-
+   volgende filters op één lijst mogen samen; de gevoeligheidscheck van
+   `image_generator.py` blijft bewust apart, want die moet juist *tegen* de
+   opgewekte huisstijl in kunnen gaan.
+3. **Laat Claude niet browsen naar tekst die je al hebt.** `process_article()`
+   zei "lees het artikel via de meegeleverde link" óók als de tekst al in de
+   prompt stond; de CLI ging dan zelf op onderzoek (WebFetch, WebSearch, Bash)
+   en één samenvatting kostte 21 API-calls en ~549.000 tokens. Boven
+   `_VOLLEDIGE_TEKST_DREMPEL` (1.200 tekens) draagt de prompt nu expliciet op om
+   de link níét te openen: 2 calls, ~53.000 tokens. Zelf ophalen met
+   `fetch_article_text()` kost een HTTP-request en geen tokens, dus dat proberen
+   we eerst — maar het lukt niet altijd: **DPG Media-sites (o.a. tweakers.net)
+   geven de scraper een consent-muur** ("DPG Media Privacy Gate", 22 tekens), en
+   dan valt zo'n artikel alsnog terug op de dure route.
+
+Meten kan achteraf zonder extra kosten: elke aanroep laat een sessielog achter
+met `usage`-velden per API-call. `~/.claude/projects/-tmp-tnv-claude-cwd/*.jsonl`
+optellen geeft het echte verbruik per stap.
+
+**Wat níét helpt:** de bronnenlijst opdelen en per run een deel scannen.
+Scrapen kost geen tokens, en `MAX_ARTICLES_FOR_SELECTION` kapt de lijst toch al
+op 50 terwijl de bronnen samen 200–450 artikelen per run opleveren — een derde
+van de bronnen levert nog steeds ruim 50 kandidaten, dus de prompt wordt geen
+teken korter. `--tools ""` meegeven aan de CLI is ook averechts: gemeten 135.061
+tokens in plaats van 35.957.
 
 ## Server (WordPress)
 

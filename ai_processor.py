@@ -108,6 +108,36 @@ def _check_claude_cli() -> None:
         )
 
 
+def _neutral_cwd() -> str:
+    """Werkmap voor de claude CLI, bewust buiten élke CLAUDE.md.
+
+    De CLI zoekt CLAUDE.md-bestanden vanaf zijn werkmap omhoog en plakt ze
+    integraal in de context van élke aanroep. Draaide hij in de projectmap, dan
+    kostte dat ~19.200 tokens per aanroep (gemeten 2026-08-18: 35.957 tokens
+    context in de projectmap tegen 16.733 hier) aan projectinstructies die met
+    de vraag niets te maken hebben — bij ~22 aanroepen per dag ruim 400.000
+    tokens. Dat de samenvatter bovendien eerst de beeldpromptregels van dit
+    project las was op zichzelf al ongewenst.
+
+    Dus: een map buiten de projectboom én buiten /home/dgebbink (waar de
+    algemene CLAUDE.md staat), zodat de zoektocht naar boven niets vindt.
+    Neveneffect: de sessielogs van de bot komen nu onder
+    ~/.claude/projects/-tmp-tnv-claude-cwd/ te staan, los van de interactieve
+    sessies in de projectmap.
+    """
+    path = Path("/tmp/tnv-claude-cwd")
+    path.mkdir(exist_ok=True)
+    # Expliciet openzetten, niet via mkdir(mode=...): die wordt door de umask
+    # gemaskeerd, en de map wordt door twee gebruikers gedeeld — cron draait als
+    # dgebbink, de approval-server als root (die daarna naar dgebbink su't).
+    # Wie hem als eerste aanmaakt mag de ander niet buitensluiten.
+    try:
+        path.chmod(0o777)
+    except OSError:
+        pass  # bestaat al met goede rechten, of van een andere eigenaar
+    return str(path)
+
+
 def _call_claude(prompt: str, timeout: int = 90) -> str:
     """Invoke the claude CLI with the given prompt; return stdout."""
     import os
@@ -130,7 +160,7 @@ def _call_claude(prompt: str, timeout: int = 90) -> str:
         # al /dev/null mee, vandaar dat de nachtelijke runs wél liepen en dit
         # lang onzichtbaar bleef.
         cmd, capture_output=True, text=True, timeout=timeout, env=env,
-        stdin=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL, cwd=_neutral_cwd(),
     )
     if result.returncode != 0:
         err = result.stderr.strip()
@@ -172,120 +202,153 @@ def _extract_json(text: str) -> object:
 
 
 # ---------------------------------------------------------------------------
-# Tech-relevantiefilter
+# Redactionele triage
 # ---------------------------------------------------------------------------
 
-def filter_tech_articles(articles: list[Article]) -> list[Article]:
-    """Drop candidates that are not tech news.
+# Hoeveel kandidaten de triage maximaal terugkrijgt. Er wordt er één
+# gepubliceerd; de rest is reserve voor als process_article() faalt.
+_TRIAGE_MAX_RANKED = 5
 
-    Pre:  articles is a list of Article objects
-    Post: returns the subset that is tech news. An empty result is a valid
-          verdict (dan publiceert de run niets); alleen bij een mislukte of
-          onparseerbare Claude-respons komt de volledige lijst terug.
+
+def triage_articles(
+    articles: list[Article],
+    recent_published: list[dict],
+    max_ranked: int = _TRIAGE_MAX_RANKED,
+) -> Optional[list[int]]:
+    """Eén redactionele beoordeling van de hele kandidatenlijst.
+
+    Dit was tot 2026-08-18 vier losse Claude-aanroepen — tech-filter,
+    semantische deduplicatie, selectie en de duplicate-topic-check achteraf —
+    die alle vier vrijwel dezelfde lijst meestuurden. Elke aanroep van de CLI
+    kost tienduizenden tokens aan vaste context vóór de vraag zelf begint, dus
+    het aantal aanroepen weegt veel zwaarder dan de lengte van de lijst. Het
+    zijn bovendien geen tegenstrijdige opdrachten maar drie opeenvolgende
+    filters op één lijst, wat één redacteur in één keer doet.
+
+    Bijkomend voordeel: de duplicaat-toets zat vroeger ná process_article(), de
+    duurste aanroep van de run. Een gekozen artikel dat op een recente
+    publicatie leek, was dus al volledig samengevat voordat het werd
+    weggegooid. Nu valt het af vóórdat er iets aan besteed wordt.
+
+    Pre:  articles is niet-leeg; recent_published is een lijst dicts met
+          'title' en 'excerpt' (nieuwste eerst, mag leeg zijn)
+    Post: 0-gebaseerde indices in articles, belangrijkste eerst, max max_ranked.
+          [] is een geldig oordeel: niets hiervan is publicabel, dan publiceert
+          de run niets. None betekent dat de aanroep mislukte — de caller valt
+          dan terug op de ongefilterde lijst, zodat de triage de pijplijn nooit
+          blokkeert.
     """
     if not articles:
-        return articles
+        return []
 
     numbered = "\n".join(
-        f"{i + 1}. [{_domain(a.source)}] {a.title} — {a.excerpt[:150]}"
+        f"{i + 1}. [{_domain(a.source)}] [{getattr(a, 'source_lang', 'EN')}] {a.title}\n"
+        f"   {a.excerpt[:200]}"
         for i, a in enumerate(articles)
     )
+    recent = "\n".join(
+        f"- {art.get('title', '')} — {art.get('excerpt', '')[:150]}"
+        for art in recent_published
+    ) or "(nog niets gepubliceerd)"
 
     prompt = (
-        "Je bent redacteur van een Nederlandse TECH-nieuwswebsite. Beoordeel per "
-        "artikel of het thuishoort op een tech-site.\n\n"
-        "WEL tech: software, hardware, AI, internet, telecom, chips, cybersecurity, "
-        "privacy en regulering van technologie, ruimtevaart- en wetenschapstechniek, "
-        "gaming-technologie, en het zakelijke nieuws van technologiebedrijven "
-        "(overnames, cijfers, rechtszaken, personeel).\n"
+        "Je bent eindredacteur van een Nederlandse TECH-nieuwswebsite en bepaalt "
+        "welk artikel vandaag gepubliceerd wordt. Loop de drie stappen hieronder "
+        "in één keer door.\n\n"
+        "STAP 1 — schrap wat geen tech-nieuws is.\n"
+        "WEL tech: software, hardware, AI, internet, telecom, chips, "
+        "cybersecurity, privacy en regulering van technologie, ruimtevaart- en "
+        "wetenschapstechniek, gaming-technologie, en het zakelijke nieuws van "
+        "technologiebedrijven (overnames, cijfers, rechtszaken, personeel).\n"
         "NIET tech: muziek, film, tv, celebrity's, sport, algemene politiek, "
-        "economie zonder tech-invalshoek, lifestyle, gezondheid, misdaad en cultuur.\n\n"
-        "Twijfelgeval: de technologie moet de KERN van het verhaal zijn, niet het "
-        "decor. Een muzikant die een album aankondigt in een podcast is GEEN "
-        "tech-nieuws, ook niet als de podcast van een techbedrijf is. Een artikel "
-        "over de aanbevelingsalgoritmes van een streamingdienst is dat WEL.\n"
-        "Bij twijfel: weglaten.\n\n"
-        f"Artikelen:\n{numbered}\n\n"
-        "Geef ALLEEN een JSON array met de nummers van de tech-artikelen, "
-        "bijv: [1, 4, 5]. Is geen enkel artikel tech-nieuws, geef dan []. "
-        "Geen uitleg."
+        "economie zonder tech-invalshoek, lifestyle, gezondheid, misdaad en "
+        "cultuur.\n"
+        "Twijfelgeval: de technologie moet de KERN van het verhaal zijn, niet "
+        "het decor. Een muzikant die een album aankondigt in een podcast is GEEN "
+        "tech-nieuws, ook niet als de podcast van een techbedrijf is. Een "
+        "artikel over de aanbevelingsalgoritmes van een streamingdienst is dat "
+        "WEL. Bij twijfel: weglaten.\n\n"
+        "STAP 2 — schrap duplicaten en wat we al brachten.\n"
+        "Behandelen meerdere kandidaten hetzelfde nieuwsfeit of dezelfde "
+        "aankondiging (ook anders verwoord of uit een andere bron), houd dan "
+        "alleen de beste over — bij voorkeur een NL-bron boven EN, het meest "
+        "gedetailleerde excerpt, de meest gezaghebbende bron.\n"
+        "Schrap daarnaast elke kandidaat die hetzelfde onderwerp of nieuwsfeit "
+        "behandelt als een van de RECENT GEPUBLICEERDE artikelen onderaan. "
+        "Zelfde bedrijf + product + type nieuws telt als duplicaat; ook wanneer "
+        "kandidaat en recent artikel over dezelfde hoofdpersoon of organisatie "
+        "gaan, tenzij het nieuwsfeit duidelijk en wezenlijk anders is. Een écht "
+        "ander aspect van een breed thema (ander product, andere onderneming, "
+        "andere invalshoek) telt NIET als duplicaat.\n\n"
+        "STAP 3 — rangschik wat overblijft, belangrijkste eerst.\n"
+        "Weeg: breedte van impact, innovatie, relevantie voor consument én "
+        "professional, en nieuwswaarde. Weeg [NL]- versus [EN]-bronnen op het "
+        "ONDERWERP van het artikel, niet op de bron zelf:\n"
+        "- Betreft het nieuws specifiek Nederland (een Nederlandse uitvinding of "
+        "onderneming, impact op de Nederlandse economie of markt), geef dan een "
+        "lichte voorkeur aan [NL]-bronnen — gewicht 1.3x t.o.v. [EN] bij "
+        "vergelijkbare nieuwswaarde.\n"
+        "- Betreft het juist algemeen/internationaal tech-nieuws zonder "
+        "specifieke Nederland-link, geef dan een lichte voorkeur aan "
+        "[EN]-bronnen — gewicht 1.3x t.o.v. [NL]. Reden: TechNieuwsVandaag wil "
+        "dat soort nieuws als EERSTE in het Nederlands brengen, en Nederlandse "
+        "bronnen berichten daar doorgaans pas later over.\n\n"
+        f"KANDIDATEN:\n{numbered}\n\n"
+        f"RECENT GEPUBLICEERD (niet opnieuw brengen):\n{recent}\n\n"
+        "Geef ALLEEN een JSON array met de nummers van de kandidaten die stap 1 "
+        f"en 2 overleven, in de volgorde van stap 3, maximaal {max_ranked} "
+        "nummers. Bijvoorbeeld: [12, 4, 27]. Overleeft geen enkele kandidaat, "
+        "geef dan []. Geen uitleg."
     )
 
     try:
-        response = _call_claude(prompt, timeout=120)
-        match = re.search(r"\[[\d,\s]*\]", response)
-        if not match:
-            logger.warning("Tech-filter: geen JSON in antwoord — alle kandidaten behouden")
-            return articles
-
-        keep = {i for i in json.loads(match.group()) if 0 < i <= len(articles)}
+        response = _call_claude(prompt, timeout=180)
+    except InsufficientCreditsError:
+        raise  # doorsturen naar aanroeper voor urgente melding
     except Exception as exc:
-        logger.warning("Tech-filter mislukt: %s — alle kandidaten behouden", exc)
-        return articles
+        logger.warning("Triage mislukt: %s — alle kandidaten behouden", exc)
+        return None
 
-    kept = [a for i, a in enumerate(articles) if i + 1 in keep]
-    for i, a in enumerate(articles):
-        if i + 1 not in keep:
-            logger.info("Tech-filter: '%s' (%s) is geen tech-nieuws — overgeslagen",
-                        a.title, _domain(a.source))
+    match = re.search(r"\[[\d,\s]*\]", response)
+    if not match:
+        logger.warning("Triage: geen JSON-array in antwoord — alle kandidaten behouden")
+        return None
 
-    if not kept:
-        logger.warning("Tech-filter: geen enkele kandidaat is tech-nieuws — deze run publiceert niets")
+    try:
+        numbers = json.loads(match.group())
+    except json.JSONDecodeError as exc:
+        logger.warning("Triage: array onparseerbaar (%s) — alle kandidaten behouden", exc)
+        return None
 
-    return kept
+    ranked: list[int] = []
+    for raw in numbers:
+        idx = int(raw) - 1
+        if 0 <= idx < len(articles):
+            if idx not in ranked:
+                ranked.append(idx)
+        else:
+            logger.warning("Triage gaf ongeldig nummer %s (max %d)", raw, len(articles))
+
+    dropped = len(articles) - len(ranked)
+    if ranked:
+        logger.info(
+            "Triage: %d van %d kandidaten over na tech-filter/deduplicatie; "
+            "eerste keuze: %s",
+            len(ranked), len(articles), articles[ranked[0]].title,
+        )
+    else:
+        logger.warning(
+            "Triage: geen enkele van de %d kandidaten is publicabel tech-nieuws "
+            "— deze run publiceert niets", len(articles),
+        )
+    logger.info("Triage liet %d kandidaat/kandidaten vallen", dropped)
+
+    return ranked[:max_ranked]
 
 
 # ---------------------------------------------------------------------------
 # Deduplicatie helpers
 # ---------------------------------------------------------------------------
-
-def deduplicate_articles(
-    articles: list[Article],
-) -> list[Article]:
-    """Removes near-duplicate articles covering the same topic.
-    Pre:  articles is a list of Article objects
-    Post: returns filtered list — when duplicates found,
-          keeps the single highest-quality article per topic
-          (prefers NL source, then most detailed excerpt)
-    """
-    if len(articles) <= 1:
-        return articles
-
-    numbered = "\n".join([
-        f"{i+1}. [{a.source}] {a.title} — {a.excerpt[:100]}"
-        for i, a in enumerate(articles)
-    ])
-
-    prompt = (
-        "You are a news editor reviewing today's article candidates from multiple sources.\n\n"
-        f"{numbered}\n\n"
-        "Identify groups of articles that cover the SAME news event or announcement "
-        "(even if worded differently or from different sources). "
-        "For each duplicate group keep only the single best article — prefer: "
-        "NL source over EN, most detailed excerpt, most authoritative source.\n\n"
-        "Return ONLY a JSON array of article numbers to KEEP.\n"
-        "Example: [1, 3, 5, 7, 9, 11]\n"
-        "No explanation. Only the JSON array."
-    )
-
-    try:
-        response = _call_claude(prompt, timeout=120)
-        match = re.search(r'\[[\d,\s]+\]', response)
-        if match:
-            keep_indices = [
-                i for i in json.loads(match.group())
-                if 0 < i <= len(articles)
-            ]
-            kept = [articles[i - 1] for i in keep_indices]
-            removed = len(articles) - len(kept)
-            if removed > 0:
-                logger.info("Deduplicatie: %d duplicaat/duplicaten verwijderd", removed)
-            return kept if kept else articles
-    except Exception as e:
-        logger.warning("Dedup parsing mislukt: %s — originele lijst gebruikt", e)
-
-    return articles
-
 
 def is_similar_to_recently_posted(
     title: str,
@@ -338,63 +401,28 @@ def _title_overlap_ratio(a: str, b: str) -> float:
     return len(wa & wb) / len(combined) if combined else 0.0
 
 
-def is_similar_to_recent(
+def similar_to_recent_titles(
     candidate: "ProcessedArticle",
     recent_articles: list[dict],
     title_threshold: float = 0.6,
 ) -> tuple[bool, str]:
-    """Check whether a candidate duplicates the topic of a recently published article.
+    """Goedkoop vangnet: woordoverlap van de NL-titel met recente publicaties.
 
-    Two-stage, cost-aware:
-      1. Cheap: word-overlap of the Dutch title against each recent title.
-      2. Inconclusive → one short, cheap Claude call comparing the candidate
-         title + first sentences against the recent titles + excerpts
-         (no full body needed).
+    Het semantische oordeel hierover zit sinds 2026-08-18 in
+    triage_articles(), dat duplicaten van recente publicaties al vóór de
+    samenvatting wegstreept. Wat hier overblijft is de gratis, lokale toets die
+    er vroeger als eerste trap vóór zat: zelfde bedrijf + product + type nieuws
+    geeft doorgaans hoge woordoverlap in de Nederlandse titel. Kost geen
+    Claude-aanroep, dus hij blijft staan als tweede paar ogen op de kop die
+    Claude uiteindelijk schreef — die kende de triage nog niet.
 
-    Pre:  candidate has .titel and .samenvatting; recent_articles is a list of
-          dicts with 'title' and 'excerpt' keys (newest first)
-    Post: returns (is_similar, reason); reason names the matched recent title.
+    Pre:  candidate heeft .titel; recent_articles is een lijst dicts met 'title'
+    Post: (is_similar, reden); reden noemt de recente titel waarmee het botst
     """
-    if not recent_articles:
-        return False, ""
-
-    # Stap 1 — goedkope titel-overlap (zelfde bedrijf + product + type nieuws
-    # geeft doorgaans hoge woordoverlap in de NL-titel)
     for art in recent_articles:
         ratio = _title_overlap_ratio(candidate.titel, art.get("title", ""))
         if ratio > title_threshold:
             return True, f"titel-overlap {ratio * 100:.0f}% met recent '{art['title']}'"
-
-    # Stap 2 — kort Claude-oordeel; titels + excerpt, dus nog steeds goedkoop
-    # (geen volledige artikeltekst nodig)
-    first_sentences = " ".join(candidate.samenvatting.split(". ")[:2]).strip()
-    recent_titles = "\n".join(
-        f"{i + 1}. {a.get('title', '')} — {a.get('excerpt', '')[:200]}"
-        for i, a in enumerate(recent_articles)
-    )
-    prompt = (
-        "Je bent eindredacteur. Bepaal of het KANDIDAAT-artikel hetzelfde "
-        "onderwerp of nieuwsfeit behandelt als een van de RECENT gepubliceerde "
-        "artikelen. Zelfde bedrijf + product + type nieuws telt als duplicaat; "
-        "ook wanneer het KANDIDAAT en een recent artikel over dezelfde hoofdpersoon "
-        "of organisatie gaan telt dat als duplicaat, tenzij het nieuwsfeit "
-        "duidelijk en wezenlijk anders is. Een écht ander aspect van een breed "
-        "thema (bv. ander product, andere onderneming, andere invalshoek) "
-        "telt NIET als duplicaat.\n\n"
-        f"KANDIDAAT:\nTitel: {candidate.titel}\n{first_sentences}\n\n"
-        f"RECENT GEPUBLICEERD:\n{recent_titles}\n\n"
-        'Antwoord ALLEEN met JSON: {"is_duplicate_topic": true/false, "reason": "..."}'
-    )
-    try:
-        data = _extract_json(_call_claude(prompt, timeout=30))
-        if isinstance(data, dict) and data.get("is_duplicate_topic") is True:
-            return True, str(data.get("reason", "Claude markeerde als duplicaat-onderwerp"))
-    except Exception as exc:
-        logger.warning(
-            "Duplicate-topic check via Claude mislukt: %s — niet als duplicaat behandeld",
-            exc,
-        )
-
     return False, ""
 
 
@@ -405,59 +433,6 @@ def save_posted_title(title: str, url: str) -> None:
     """
     with open(POSTED_TITLES_FILE, "a", encoding="utf-8") as f:
         f.write(f"{date.today().isoformat()}|{url}|{title}\n")
-
-
-# ---------------------------------------------------------------------------
-# Stap 2a: Artikel-selectie
-# ---------------------------------------------------------------------------
-
-def select_articles(articles: list[Article]) -> list[int]:
-    """Ask Claude to pick the 1 most newsworthy article; return 0-based indices."""
-    # pre: len(articles) >= 1
-    # post: returns 1 valid index; raises InsufficientCreditsError on low balance
-    article_list = "\n".join(
-        f"{i + 1}. [{_domain(a.source)}] [{getattr(a, 'source_lang', 'EN')}] {a.title}\n   {a.excerpt[:250]}"
-        for i, a in enumerate(articles)
-    )
-
-    prompt = (
-        "Je bent redacteur van een Nederlandse tech-nieuwswebsite. "
-        "Hieronder een lijst met vandaag gepubliceerde tech-artikelen. "
-        "Selecteer het 1 meest relevante en impactvolle artikel voor een Nederlands publiek. "
-        "Overweeg: breedte van impact, innovatie, relevantie voor consument én professional, "
-        "en nieuwswaarde. "
-        "Weeg [NL]- versus [EN]-bronnen op basis van het ONDERWERP van het artikel, niet op "
-        "basis van de bron zelf:\n"
-        "- Betreft het nieuws specifiek Nederland (bijv. een Nederlandse uitvinding, een "
-        "Nederlands bedrijf, impact op de Nederlandse economie of markt), geef dan een lichte "
-        "voorkeur aan [NL]-bronnen — gewicht 1.3x t.o.v. [EN] bij vergelijkbare nieuwswaarde.\n"
-        "- Betreft het nieuws juist algemeen/internationaal tech-nieuws zonder specifieke "
-        "Nederland-link (bijv. een buitenlandse investering in AI, een overname tussen "
-        "niet-Nederlandse bedrijven), geef dan juist een lichte voorkeur aan [EN]-bronnen — "
-        "gewicht 1.3x t.o.v. [NL] bij vergelijkbare nieuwswaarde. Reden: TechNieuwsVandaag wil "
-        "dat soort internationaal nieuws als EERSTE in het Nederlands brengen, en Nederlandse "
-        "bronnen berichten daar doorgaans pas later over.\n"
-        "Geef als output ALLEEN het nummer van het gekozen artikel als JSON array, "
-        "bijv: [3]\n\n"
-        f"Artikelen:\n{article_list}"
-    )
-
-    response_text = _call_claude(prompt, timeout=30)
-    result = _extract_json(response_text)
-
-    if not isinstance(result, list) or len(result) < 1:
-        raise ValueError(f"Onverwacht antwoord van Claude bij selectie: {response_text}")
-
-    # Converteer van 1-gebaseerd naar 0-gebaseerd en valideer
-    indices = []
-    for i in result[:1]:
-        idx = int(i) - 1
-        if 0 <= idx < len(articles):
-            indices.append(idx)
-        else:
-            logger.warning("Claude gaf ongeldige index %d (max %d)", int(i), len(articles))
-
-    return indices
 
 
 # ---------------------------------------------------------------------------
@@ -581,17 +556,54 @@ def fit_ig_entries(entries: list[dict], max_items: int) -> list[dict]:
 # Stap 2b + 2c: Samenvatting en categorie genereren
 # ---------------------------------------------------------------------------
 
+# Vanaf hoeveel tekens brontekst we de samenvatting zonder eigen onderzoek
+# laten schrijven. Onder deze grens halen we het artikel eerst zelf op; lukt
+# ook dat niet, dan mag Claude de link alsnog openen.
+_VOLLEDIGE_TEKST_DREMPEL = 1200
+
+
 def process_article(article: Article) -> Optional[ProcessedArticle]:
     """Generate Dutch summary, titles, keywords and categories for one article."""
     # pre: article.url is reachable
     # post: returns None on any failure
     categories_str = ", ".join(CATEGORIES)
 
-    # Haal artikeltekst op als excerpt te kort is
+    # Zelf ophalen kost een HTTP-request en geen tokens, dus doen we dat tot aan
+    # dezelfde drempel waaronder we Claude anders zouden vragen te gaan browsen.
+    # Stond op 300 tekens, waardoor een excerpt van 600 wél "genoeg" heette maar
+    # te dun was om echt op te vatten.
     artikel_tekst = article.excerpt
-    if len(artikel_tekst) < 300:
+    if len(artikel_tekst) < _VOLLEDIGE_TEKST_DREMPEL:
         logger.info("Excerpt te kort, volledige tekst ophalen voor: %s", article.url)
         artikel_tekst = fetch_article_text(article.url) or artikel_tekst
+
+    # Hebben we genoeg tekst, dan moet Claude er ook mee wérken. De opdracht om
+    # "het artikel via de link te lezen" stond hier ook als de tekst al
+    # meegestuurd werd, en dan gaat de CLI zelf op onderzoek uit: gemeten
+    # 2026-08-18 leidde één samenvatting tot 21 API-calls met WebFetch,
+    # WebSearch én zeven Bash-aanroepen, samen ~549.000 tokens — verreweg de
+    # duurste stap van de hele run, voor tekst die al in de prompt stond. Elke
+    # extra beurt herhaalt bovendien de volledige context.
+    # Onder de drempel is de link juist wél nodig: dan hebben we weinig meer
+    # dan een kop, en is zelf ophalen de enige manier aan een samenvatting te
+    # komen.
+    heeft_volledige_tekst = len(artikel_tekst) >= _VOLLEDIGE_TEKST_DREMPEL
+    bron_instructie = (
+        "Werk uitsluitend met de artikeltekst hieronder; die is volledig genoeg. "
+        "Open de link niet en zoek niet verder — de URL staat er alleen ter "
+        "referentie bij. "
+        if heeft_volledige_tekst
+        else "De meegeleverde tekst is onvolledig: haal het artikel éénmaal op "
+             "via de meegeleverde link en werk met wat je daar aantreft. Doe "
+             "geen aanvullend onderzoek, geen zoekopdrachten en geen "
+             "shell-commando's; is de pagina niet leesbaar, schrijf de "
+             "samenvatting dan op basis van titel en meegeleverde tekst. "
+    )
+    if not heeft_volledige_tekst:
+        logger.info(
+            "Slechts %d tekens brontekst — Claude haalt het artikel zelf op",
+            len(artikel_tekst),
+        )
 
     # Gevarieerde artikellengte i.p.v. een vaste ~300 woorden: voorkomt dunne,
     # uniforme content (relevant voor AdSense-review) en maakt de in-article
@@ -602,7 +614,7 @@ def process_article(article: Article) -> Optional[ProcessedArticle]:
     prompt = (
         "Je bent een ervaren auteur en je schrijft artikelen voor een website "
         "die dagelijks nieuwsberichten plaatst. "
-        "Lees het artikel via de meegeleverde link aandachtig door. "
+        f"{bron_instructie}"
         f"Vat de inhoud samen in ongeveer {target_words} woorden, {paragraph_range} paragrafen "
         "en in foutloos Nederlands op taalniveau 2F. "
         "Zorg dat de samenvatting de kernboodschap van het artikel duidelijk overbrengt. "
@@ -726,61 +738,49 @@ def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
         logger.warning("Geen artikelen beschikbaar voor verwerking")
         return []
 
-    # Stap A0: tech-relevantie. Bronnen als nytimes.com en theguardian.com zijn
-    # betrouwbaar maar breed; zonder deze filter kan een muziek- of sportartikel
-    # de selectie winnen (2026-08-09: een blink-182-album haalde de site).
-    before_tech = len(articles)
-    articles = filter_tech_articles(articles)
-    if len(articles) < before_tech:
-        logger.info("Tech-filter: %d van %d kandidaten overgebleven",
-                    len(articles), before_tech)
-
-    if not articles:
-        logger.warning("Geen tech-artikelen tussen de kandidaten")
-        return []
-
-    # Stap A: semantische deduplicatie over alle kandidaten
-    logger.info("Deduplicatie: %d kandidaten controleren op duplicaten", len(articles))
-    articles = deduplicate_articles(articles)
-    logger.info("Na deduplicatie: %d artikel(en) over", len(articles))
-
-    # Stap B: filter artikelen die vandaag al gepost zijn (title overlap)
+    # Stap A: eerst de gratis, lokale filters — die kosten geen Claude-aanroep
+    # en verkleinen de lijst die straks meegestuurd wordt.
     before_filter = len(articles)
     articles = [a for a in articles if not is_similar_to_recently_posted(a.title)]
     filtered = before_filter - len(articles)
     if filtered:
-        logger.info("%d artikel(en) gefilterd wegens overlap met vandaag al geposte titels", filtered)
+        logger.info(
+            "%d artikel(en) gefilterd wegens overlap met vandaag al geposte titels",
+            filtered,
+        )
 
     if not articles:
-        logger.warning("Alle kandidaten gefilterd (duplicaten of al gepost vandaag)")
+        logger.warning("Alle kandidaten al gepost vandaag")
         return []
 
-    # Stap C: Claude selecteert het beste artikel
-    if len(articles) < 2:
-        logger.info("Slechts %d artikel(en) beschikbaar, selectie overgeslagen", len(articles))
-        selected_indices = [0]
-    else:
-        logger.info("AI selecteert 1 artikel uit %d kandidaten", len(articles))
-        try:
-            selected_indices = select_articles(articles)
-            logger.info("Claude selecteerde indices: %s", selected_indices)
-        except InsufficientCreditsError:
-            raise  # doorsturen naar aanroeper voor urgente melding
-        except Exception as exc:
-            logger.error("Artikel-selectie mislukt, val terug op eerste: %s", exc)
-            selected_indices = [0]
-
-    # Bouw kandidatenlijst: geselecteerde index eerst, daarna de rest als fallback
-    fallback_indices = [i for i in range(len(articles)) if i not in selected_indices[:1]]
-    candidate_indices = selected_indices[:1] + fallback_indices
-
-    # Laatste 10 gepubliceerde artikelen ophalen voor de duplicate-topic check.
+    # Laatste 10 gepubliceerde artikelen: gaan mee in de triage, zodat een
+    # onderwerp dat we net brachten al afvalt vóór de dure samenvatting.
     # Up-to-date op selectiemoment: binnen één run publiceert er niets tussen
     # selectie en publicatie, dus dit is gelijk aan de stand bij publiceren.
     from wordpress_client import fetch_recent_published  # noqa: PLC0415
     recent_published = fetch_recent_published(limit=10)
-    logger.info("Duplicate-topic check tegen laatste %d gepubliceerde artikel(en)",
+    logger.info("Triage tegen laatste %d gepubliceerde artikel(en)",
                 len(recent_published))
+
+    # Stap B: één redactionele beoordeling — tech-filter, deduplicatie,
+    # uitsluiting van wat we al brachten, en rangschikking in één aanroep.
+    # Bronnen als nytimes.com en theguardian.com zijn betrouwbaar maar breed;
+    # zonder de tech-toets kan een muziek- of sportartikel de selectie winnen
+    # (2026-08-09: een blink-182-album haalde de site).
+    logger.info("Triage: %d kandidaten beoordelen", len(articles))
+    ranked = triage_articles(articles, recent_published)
+
+    if ranked is None:
+        # Mislukte aanroep mag de pijplijn niet blokkeren: val terug op de
+        # ongefilterde lijst op recentheid, zoals de losse selectie vroeger
+        # terugviel op het eerste artikel.
+        logger.warning("Triage onbruikbaar — alle kandidaten op recentheid gebruikt")
+        candidate_indices = list(range(len(articles)))
+    elif not ranked:
+        # Geldig oordeel: hier zit niets publicabels tussen.
+        return []
+    else:
+        candidate_indices = ranked
 
     MAX_DUP_ATTEMPTS = 5
     processed: list[ProcessedArticle] = []
@@ -804,7 +804,7 @@ def process_articles(articles: list[Article]) -> list[ProcessedArticle]:
             first_processed = result  # bewaar eerste kandidaat als laatste redmiddel
 
         dup_attempts += 1
-        is_dup, reason = is_similar_to_recent(result, recent_published)
+        is_dup, reason = similar_to_recent_titles(result, recent_published)
         if is_dup:
             logger.info(
                 "skipped_duplicate_topic: '%s' overgeslagen (poging %d/%d) — %s",
