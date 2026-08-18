@@ -35,3 +35,4 @@ androidauthority.com|https://www.androidauthority.com/feed/
 nytimes.com|https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml
 404media.co|https://www.404media.co/rss/
 restofworld.org|https://restofworld.org/feed/latest/
+theinformation.com
