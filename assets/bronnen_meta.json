@@ -109,16 +109,6 @@
     "naam": "Security.NL",
     "type": "Nieuwssite"
   },
-  "semianalysis.com": {
-    "beschrijving": "Onderzoeksbureau en nieuwsbrief over halfgeleiders, AI-hardware en datacenters, bekend om diepgaande analyses van chipproductie en toeleveringsketens.",
-    "naam": "SemiAnalysis",
-    "type": "Blog"
-  },
-  "sifted.eu": {
-    "beschrijving": "Britse publicatie over Europese start-ups en durfkapitaal, opgericht met steun van de Financial Times.",
-    "naam": "Sifted",
-    "type": "Nieuwssite"
-  },
   "slashdot.org": {
     "beschrijving": "Veteraan tech-nieuwsaggregator met community-discussies, populair onder IT-professionals.",
     "naam": "Slashdot",
