@@ -3,7 +3,6 @@ www.Tweakers.net|https://tweakers.net/feeds/mixed.xml
 www.Bright.nl
 www.Dutchcowboys.nl|https://www.dutchcowboys.nl/sitemap/news.xml
 www.Androidworld.nl
-emerce.nl|https://emerce.nl/feed
 security.nl
 computable.nl|https://www.computable.nl/feed/
 agconnect.nl
@@ -20,7 +19,6 @@ www.zdnet.com
 www.technologyreview.com
 spectrum.ieee.org
 www.tomshardware.com
-www.anandtech.com
 www.9to5mac.com
 www.slashdot.org
 www.infoq.com

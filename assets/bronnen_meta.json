@@ -14,11 +14,6 @@
     "naam": "AG Connect",
     "type": "Vakblad"
   },
-  "anandtech.com": {
-    "beschrijving": "Technisch diepgravend hardwareplatform bekend om gedetailleerde processor- en GPU-analyses.",
-    "naam": "AnandTech",
-    "type": "Vakblad"
-  },
   "androidauthority.com": {
     "beschrijving": "Engelstalige site over Android, smartphones en wearables, met nieuws, reviews en toestelvergelijkingen.",
     "naam": "Android Authority",
@@ -58,11 +53,6 @@
     "beschrijving": "Nederlandse tech- en internetcultuur-blog met nieuws over startups en innovatie.",
     "naam": "Dutchcowboys",
     "type": "Blog"
-  },
-  "emerce.nl": {
-    "beschrijving": "Nederlands platform over e-commerce, online marketing en digitaal ondernemen, gericht op professionals in de digitale sector.",
-    "naam": "Emerce",
-    "type": "Vakblad"
   },
   "engadget.com": {
     "beschrijving": "Consumentgericht techmedium met dagelijks nieuws over gadgets en elektronica.",
