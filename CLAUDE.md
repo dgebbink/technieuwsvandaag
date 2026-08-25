@@ -121,18 +121,6 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
 - **Service watchdog**: `service_watchdog.sh` elke 5 min via cron (in de
   scheduler-template) — herstart gestopte supervisor-services, herstelt
   log-permissies, meldt via Telegram (credentials uit `.env`).
-- **Bronnenlijst-uitbreiding**: zondag 04:00 `source_discovery.py` (in de
-  scheduler-template) — breidt `sources.txt` automatisch uit met domeinen die
-  deze week door ≥2 bestaande bronnen werden gelinkt, plus een korte
-  Claude-suggestie van ontbrekende gerenommeerde tech-sites. Kandidaten moeten
-  eerst een bereikbaarheids-/RSS-check én een Claude-reputatie-oordeel
-  doorstaan. Toevoegingen (en dry-run-resultaten) staan in
-  `source_discovery_log.txt` — controleer/draai daar desgewenst iets terug.
-  Een *algemeen* nieuwsmedium mag alleen mee met de RSS-feed van zijn
-  tech-sectie (`tech_rss` in het reputatie-oordeel, eerst geverifieerd op echte
-  items); zonder die eis kwam `nytimes.com` binnen op zijn brede voorpaginafeed.
-  Na een geslaagde toevoeging werkt het script ook `/bronnen/` bij via
-  `bronnen_page.py` (zie Hulpscripts).
 - **Op oracle-web**: cron (ubuntu) 06:00+18:00 draait `nginx_stats.py` → JSON-cache
   voor de analytics-pagina; root-cron 05:15 UTC draait
   `/usr/local/bin/ssl_watchdog.sh` (kopie van `ssl_watchdog.sh` hier) — controleert
@@ -143,6 +131,18 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
 
 - `backfill.py` — vult de site geantidateerd met historische artikelen
 - `publish_pages.py` — publiceert/updatet WP-pagina's vanuit `assets/`
+- `source_discovery.py` — breidt `sources.txt` uit met domeinen die door ≥2
+  bestaande bronnen werden gelinkt, plus een Claude-suggestie van ontbrekende
+  gerenommeerde tech-sites; kandidaten moeten een bereikbaarheids-/RSS-check én
+  een Claude-reputatie-oordeel doorstaan, en werken daarna `/bronnen/` bij.
+  **Draait niet meer automatisch** — de wekelijkse cron is er 2026-08-25 uit
+  gehaald omdat de belangrijke bronnen inmiddels in de lijst staan en elke
+  toevoeging daarna vooral ruis is. Handmatig draaien mag; toevoegingen (en
+  dry-run-resultaten) staan in `source_discovery_log.txt`, zodat je iets kunt
+  terugdraaien. Blijft gelden: een *algemeen* nieuwsmedium mag alleen mee met de
+  RSS-feed van zijn tech-sectie (`tech_rss` in het reputatie-oordeel, eerst
+  geverifieerd op echte items) — zonder die eis kwam `nytimes.com` binnen op
+  zijn brede voorpaginafeed.
 - `bronnen_page.py` — genereert `/bronnen/` uit `sources.txt`; `--publish` zet hem
   ook op WordPress. `source_discovery.py` roept dit zelf aan na een toevoeging,
   zodat de publieke bronnenlijst niet achterloopt (aug. 2026 stonden er 21

@@ -168,15 +168,6 @@ def build_crontab(
         f">> {project_path}/logs/service_watchdog.log 2>&1",
     ]
 
-    # Bronnenlijst wekelijks beargumenteerd uitbreiden (cross-linking + Claude-suggesties)
-    lines += [
-        "",
-        "# Bronnenlijst wekelijks uitbreiden (zondag 04:00 CET)",
-        f"0 4 * * 0 cd {project_path} && "
-        f"{PYTHON} source_discovery.py "
-        f">> {project_path}/logs/source_discovery.log 2>&1",
-    ]
-
     # Cultureel Amsterdam — self-healing scrape-stap. Draait 07:30 CET, ná de
     # nacht-scrape (03:00) + resume (06:30). Stond op `30 5` omdat de tijd naar
     # UTC was omgerekend; met TZ=Europe/Amsterdam is dat 05:30 geworden en dus
