@@ -27,6 +27,69 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    zodat planning, `date.today()` en logtijden gelijklopen. `CRON_TZ` is geen
    alternatief — cron 3.0pl1 negeert het. Gevonden en gefixt 2026-08-03.
 
+5. **De contentproductie staat GEPAUZEERD sinds 2026-09-01** (`TNV_PAUSED=true`
+   in `.env` → `config.PAUSED`). Nieuwsruns, editorial, Instagram-digest en Reel
+   draaien niet. Twee grendels: `scheduler.py` laat de contentregels wég uit de
+   crontab, en elk contentscript weigert bovendien zelf te draaien — die tweede
+   is er voor een handmatige aanroep of een crontab die de oude regels nog heeft.
+   Blíjven draaien: `scheduler.py` zelf (die genereert ook de snake-`@reboot`- en
+   amsterdam-regels, zie kernregel 2), `log_cleaner.py`, `service_watchdog.sh`,
+   `daily_digest.py` en de approval-server. **Hervatten:** zet `TNV_PAUSED=false`
+   en draai `venv/bin/python3 scheduler.py`. Een `--dry-run` blijft altijd werken.
+   Aanleiding: zie "Wat de bezoekcijfers waard zijn" hieronder.
+   Aankondiging staat live als post 2744 (`/technieuwsvandaag-pauzeert-voorlopig/`).
+
+6. **AdSense en álle cookies zijn van de site af (1 sep 2026).** De site laadt
+   geen enkel script van Google meer en zet geen enkele cookie — geverifieerd op
+   home, post, colofon en privacybeleid. Drie ingrepen, in deze volgorde te
+   herstellen:
+   - **AdSense hangt volledig aan één WP-option.** `tnv_adsense_client_id` is
+     leeggemaakt; `tnv_adsense_head()` én `tnv_render_ad_slot()` returnen dan
+     meteen, dus zowel de `adsbygoogle.js`-tag als elk slot verdwijnt. De ID
+     staat veilig in `tnv_adsense_client_id_backup`. Terugzetten =
+     `wp option update tnv_adsense_client_id <ca-pub-...>`, meer niet.
+   - **De cookiebanner was géén eigen code.** Google's CMP (Funding Choices)
+     laadt mee via de `adsbygoogle.js`-tag, dus met de ID verdween de banner
+     vanzelf. Zoek dus niet naar een banner om aan of uit te zetten.
+     `tnv-consent.js` (dat alleen `adsbygoogle.push()` doet) wordt in
+     `functions.php` nu alleen nog geënqueued als de client-ID gevuld is — één
+     schakelaar, geen tweede.
+   - **Google Analytics zat in een plugin, niet in het thema**: MonsterInsights
+     (`google-analytics-for-wordpress`, property G-3QVH9QF1CM), gedeactiveerd.
+     Dat was ná het uitzetten van AdSense de énige overgebleven cookiebron.
+   Colofon en privacybeleid zijn meegeschreven — een privacyverklaring die
+   cookies belooft die er niet zijn, is een onjuiste mededeling. Let op: de
+   colofon komt uit `assets/pagina-colofon.html` via `publish_pages.py`, maar
+   het **privacybeleid (pagina 3) staat alleen in WordPress** en heeft geen
+   bestand in `assets/`.
+   > Gevolg voor het hervatten: met GA weg is er geen cookieloze meting meer van
+   > écht menselijk bezoek, terwijl juist dát de maatstaf is voor "voldoende
+   > animo". De vervanger is de assetcheck in `nginx_stats.py` hieronder — die
+   > telt zonder cookies en is nog niet gebouwd.
+
+## Wat de bezoekcijfers waard zijn
+
+**De analytics-pagina overdrijft het bezoek ongeveer 50×; AdSense heeft gelijk.**
+Gemeten op de log van 31 aug 2026: `nginx_stats.py` telde 324 unieke bezoekers /
+489 pageviews, terwijl AdSense 1–6 bezoekers per dag rapporteert. Van die 324
+haalden er **267 alleen de HTML op** — nul css, js of afbeeldingen, dus geen
+browser. De 53 die wél assets laadden waren bij naam vrijwel allemaal bot:
+headless Chrome vanaf Google Cloud (`34.x`/`35.x`, UA `Android 10; K`),
+Tencent Cloud, China Telecom met UA `"pc"` en verzonnen Baidu-referers,
+Lightpanda, en de eigen Uptime-Kuma. Geo-verdeling voor een Nederlandstalige
+site: US 113, CN 46, SG 44, **NL 18**.
+
+Drie gaten in `nginx_stats.py:19`: de UA-blacklist mist alles zonder het woord
+"bot" (`GoogleOther`, `Google-InspectionTool`, `Lightpanda`, `"pc"`,
+`ForestEngine`), er is geen assetcheck, en datacenter-ranges worden niet
+gefilterd. Meer UA-patronen toevoegen is dweilen; de robuuste toets is de
+omkering — **tel een IP pas als bezoeker als het bij die pageview óók de
+stylesheet of een afbeelding ophaalde.** Dat schrapte 267 van de 324 in één
+keer. AdSense telt zo laag omdat het pas meetelt als `adsbygoogle.js`
+daadwerkelijk in een renderende browser draait, en Google datacenter-ranges
+integraal als invalid traffic filtert. (Nog niet gefixt — de filter staat er nog
+ongewijzigd in.)
+
 ## Commands
 
 ```bash

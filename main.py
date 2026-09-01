@@ -53,6 +53,7 @@ from ai_processor import InsufficientCreditsError, ensure_ig_fields, process_art
 from approval_store import update_bluesky_uri  # noqa: E402
 from config import (  # noqa: E402
     BLUESKY_POST_DELAY_SECONDS,
+    PAUSED,
     ENABLE_INSTAGRAM_POSTING,
     ENABLE_SOCIAL_POSTING,
     IMAGE_STRATEGY,
@@ -145,6 +146,12 @@ def main() -> int:
         )
         print(f"Bluesky test: {'✅ geslaagd' if _success else '❌ mislukt'}")
         return 0 if _success else 1
+
+    # Noodrem uit .env. Staat ná de dry-run-afhandeling zodat een handmatige
+    # --dry-run altijd blijft werken; alleen een echte publicerende run stopt.
+    if PAUSED and not args.dry_run:
+        logger.info("TNV_PAUSED=true — nieuwsrun overgeslagen")
+        return 0
 
     if args.dry_run:
         logger.info("=" * 60)

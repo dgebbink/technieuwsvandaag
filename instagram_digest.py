@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 from ai_processor import build_combined_ig_caption, fit_ig_entries
 from approval_store import update_instagram_permalink
-from config import ENABLE_INSTAGRAM_POSTING
+from config import ENABLE_INSTAGRAM_POSTING, PAUSED
 from social_poster import (
     load_instagram_queue,
     post_instagram_digest,
@@ -59,6 +59,10 @@ def _is_stale(entry: dict, now: datetime) -> bool:
 
 def main() -> None:
     args = _parse_args()
+
+    if PAUSED:
+        logger.info("TNV_PAUSED=true — Instagram-digest overgeslagen")
+        return
 
     if not ENABLE_INSTAGRAM_POSTING:
         logger.info("ENABLE_INSTAGRAM_POSTING staat uit — digest overgeslagen")

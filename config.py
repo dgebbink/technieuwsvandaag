@@ -23,6 +23,20 @@ time.tzset()
 
 BASE_DIR: Path = Path(__file__).parent
 
+# Noodrem: zet de hele contentproductie stil (nieuwsruns, editorial,
+# Instagram-digest, Reel) zonder per kanaal een ENABLE_-vlag om te zetten en
+# zonder de crontab met de hand te legen — dat laatste houdt geen 24 uur stand,
+# want `scheduler.py` herschrijft hem elke nacht om 00:00 volledig.
+# Vandaar twee grendels: `scheduler.py` laat de contentregels wég uit de
+# crontab, en elk contentscript weigert bovendien zelf te draaien. Die tweede
+# is er voor een handmatige aanroep of een crontab die om welke reden dan ook
+# de oude regels nog heeft.
+# Bewust NIET gepauzeerd: `scheduler.py` zelf (die genereert ook de
+# snake-@reboot- en amsterdam-regels — zie CLAUDE.md kernregel 2),
+# `log_cleaner.py`, `service_watchdog.sh` en `daily_digest.py`; die laatste
+# blijft juist het venster waarin je ziet dát er niets meer gepost wordt.
+PAUSED: bool = os.environ.get("TNV_PAUSED", "false").lower() == "true"
+
 # WordPress
 WP_URL: str = os.environ.get("WP_URL", "https://technieuwsvandaag.nl")
 WP_USERNAME: str = os.environ.get("WP_USERNAME", "")

@@ -33,7 +33,7 @@ from config import (
 )
 from instagram_image import compose_instagram_image, compose_reel_card
 from instagram_reel import SLIDE_SECONDS, build_reel_video
-from config import REEL_ANIMATE, REEL_ANIMATE_SECONDS, UNLABELED_IMAGE_DIR
+from config import PAUSED, REEL_ANIMATE, REEL_ANIMATE_SECONDS, UNLABELED_IMAGE_DIR
 from social_poster import post_instagram_reel, publish_video_publicly
 from wordpress_client import fetch_posts_for_reel
 
@@ -116,6 +116,10 @@ def _download(url: str, dest: Path) -> bool:
 
 def main() -> None:
     args = _parse_args()
+
+    if PAUSED:
+        logger.info("TNV_PAUSED=true — Reel overgeslagen")
+        return
 
     if not ENABLE_INSTAGRAM_POSTING:
         logger.info("ENABLE_INSTAGRAM_POSTING staat uit — reel overgeslagen")

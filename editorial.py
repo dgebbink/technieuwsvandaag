@@ -24,6 +24,7 @@ from config import (
     EDITORIAL_CATEGORY,
     EDITORIAL_TOKEN_TTL_HOURS,
     ENABLE_EDITORIAL,
+    PAUSED,
 )
 from mailer import send_editorial_email
 from wordpress_client import (
@@ -185,6 +186,10 @@ def _generate(kandidaten: list[dict]) -> dict | None:
 
 def main() -> None:
     args = _parse_args()
+
+    if PAUSED and not args.dry_run:
+        logger.info("TNV_PAUSED=true — editorial overgeslagen")
+        return
 
     if not ENABLE_EDITORIAL and not args.dry_run:
         logger.info("ENABLE_EDITORIAL staat uit — editorial overgeslagen")

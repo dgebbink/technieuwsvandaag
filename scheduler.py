@@ -13,7 +13,7 @@ from datetime import datetime, date
 
 # config pint TZ op Europe/Amsterdam (zie daar) — importeer het vóór er ook maar
 # één datum of tijd wordt berekend.
-from config import REEL_CYCLE_DAYS, is_reel_day, next_reel_day
+from config import PAUSED, REEL_CYCLE_DAYS, is_reel_day, next_reel_day
 
 PYTHON = "/home/dgebbink/projects/technieuwsvandaag/venv/bin/python3"
 
@@ -89,16 +89,25 @@ def build_crontab(
         f"{PYTHON} scheduler.py "
         f">> {project_path}/logs/scheduler.log 2>&1",
         "",
-        "# Daily article runs (random CET times):",
     ]
 
-    for i, (h, m) in enumerate(cet_times, 1):
-        lines.append(
-            f"{m} {h} * * * cd {project_path} && "
-            f"{PYTHON} main.py "
-            f">> {project_path}/logs/cron_run_{i}.log 2>&1"
-            f"  # slot {i}: {h:02d}:{m:02d} CET"
-        )
+    if PAUSED:
+        lines += [
+            "# ---------------------------------------------------------------",
+            "# TNV_PAUSED=true in .env — alle contentregels (main.py, editorial,",
+            "# Instagram-digest, Reel) zijn hieronder weggelaten. Zet de vlag uit",
+            "# en draai scheduler.py om ze terug te zetten.",
+            "# ---------------------------------------------------------------",
+        ]
+    else:
+        lines += ["# Daily article runs (random CET times):"]
+        for i, (h, m) in enumerate(cet_times, 1):
+            lines.append(
+                f"{m} {h} * * * cd {project_path} && "
+                f"{PYTHON} main.py "
+                f">> {project_path}/logs/cron_run_{i}.log 2>&1"
+                f"  # slot {i}: {h:02d}:{m:02d} CET"
+            )
 
     # Log cleanup altijd om 00:00 cron-klok (vóór scheduler-regeneratie)
     lines += [
@@ -112,20 +121,23 @@ def build_crontab(
     # Instagram-digest om 19:45 CET — bundelt de dagwachtrij tot één post,
     # ruim ná het laatste artikel-slot (uiterlijk 19:00) en vóór het
     # dagoverzicht, zodat die de post nog kan meenemen als hij dat ooit doet
-    lines += [
-        "",
-        "# Instagram-digest om 19:45 CET (bundelt de dagartikelen tot 1 post)",
-        f"45 19 * * * cd {project_path} && "
-        f"{PYTHON} instagram_digest.py "
-        f">> {project_path}/logs/cron_instagram_digest.log 2>&1",
-    ]
+    if not PAUSED:
+        lines += [
+            "",
+            "# Instagram-digest om 19:45 CET (bundelt de dagartikelen tot 1 post)",
+            f"45 19 * * * cd {project_path} && "
+            f"{PYTHON} instagram_digest.py "
+            f">> {project_path}/logs/cron_instagram_digest.log 2>&1",
+        ]
 
     # Instagram-Reel elke REEL_CYCLE_DAYS dagen (zie config.is_reel_day) om
     # 11:00 CET — silent 9:16-slideshow, zie INSTAGRAM_PLAN.md fase 7 en 10.
     # De regel staat alleen in de crontab op een cyclusdag; op andere dagen
     # ontbreekt hij gewoon. Daardoor kan de weekdag rouleren, wat met een
     # cron-veld niet uit te drukken is (day-of-month/6 springt per maand).
-    if is_reel_day():
+    if PAUSED:
+        pass  # Reel-regel weggelaten, zie het pauzeblok hierboven
+    elif is_reel_day():
         lines += [
             "",
             f"# Instagram-Reel vandaag om 11:00 CET (cyclus van {REEL_CYCLE_DAYS} dagen)",
@@ -152,13 +164,14 @@ def build_crontab(
     # onderwerp uit de artikelen van de afgelopen dagen. 's Ochtends zodat er
     # een werkdag overblijft om het concept te lezen; het gaat als draft naar
     # WordPress en wacht op de Publiceer-knop in de mail.
-    lines += [
-        "",
-        "# Editorial op ma/wo/vr om 09:00 CET (draft + goedkeuringsmail)",
-        f"0 9 * * 1,3,5 cd {project_path} && "
-        f"{PYTHON} editorial.py "
-        f">> {project_path}/logs/cron_editorial.log 2>&1",
-    ]
+    if not PAUSED:
+        lines += [
+            "",
+            "# Editorial op ma/wo/vr om 09:00 CET (draft + goedkeuringsmail)",
+            f"0 9 * * 1,3,5 cd {project_path} && "
+            f"{PYTHON} editorial.py "
+            f">> {project_path}/logs/cron_editorial.log 2>&1",
+        ]
 
     # Service watchdog elke 5 minuten (herstart gestopte supervisor-services)
     lines += [
@@ -193,18 +206,23 @@ def main() -> None:
     project_path = os.path.dirname(os.path.abspath(__file__))
     os.makedirs(f"{project_path}/logs", exist_ok=True)
 
-    cet_times = generate_random_times(
-        n=5,
-        start_hour=7,
-        end_hour=19,
-        min_gap_minutes=90,
-    )
+    if PAUSED:
+        cet_times = []
+        print(f"TNV_PAUSED=true — geen contentregels in de crontab ({date.today().isoformat()})")
+    else:
+        cet_times = generate_random_times(
+            n=5,
+            start_hour=7,
+            end_hour=19,
+            min_gap_minutes=90,
+        )
     cet_str = [f"{h:02d}:{m:02d}" for h, m in cet_times]
-    print(f"Vandaag ({date.today().isoformat()}) schema (CET): {cet_str}")
+    if not PAUSED:
+        print(f"Vandaag ({date.today().isoformat()}) schema (CET): {cet_str}")
     print(f"Lokale klok van dit proces: {datetime.now().astimezone():%Y-%m-%d %H:%M %Z}")
 
     with open(f"{project_path}/logs/daily_schedule.log", "a") as f:
-        f.write(f"{date.today().isoformat()} {cet_str}\n")
+        f.write(f"{date.today().isoformat()} {'GEPAUZEERD' if PAUSED else cet_str}\n")
 
     crontab = build_crontab(project_path, cet_times)
 
