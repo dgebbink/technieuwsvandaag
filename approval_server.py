@@ -806,6 +806,7 @@ def analytics():
       </div>
       <div id="visitor-error" class="hidden text-sm text-red-500 py-4"></div>
       <div id="visitor-cards" class="hidden grid grid-cols-2 md:grid-cols-3 gap-4 mb-6"></div>
+      <p id="visitor-note" class="hidden text-xs text-gray-400 -mt-4 mb-6 leading-relaxed"></p>
       <canvas id="visitorsChart" class="hidden" height="70"></canvas>
     </div>
 
@@ -1051,6 +1052,20 @@ def analytics():
           _vcard(data.views_30d,    'Pageviews 30 dagen') +
           _vcard(data.unique_30d,   'Uniek 30 dagen');
         cards.classList.remove('hidden');
+
+        // Zonder deze regel lijkt de pagina stuk: de cijfers zijn sinds
+        // 2026-09-01 ~50x lager omdat een IP zich nu eerst als browser moet
+        // bewijzen (css + afbeelding opgehaald). Zie de docstring van
+        // nginx_stats.py. De ongefilterde telling staat erbij als referentie.
+        const note = document.getElementById('visitor-note');
+        if (note && data.unique_30d_raw != null) {{
+          note.textContent =
+            'Alleen bezoekers die zich als browser bewezen (stylesheet + afbeelding opgehaald), '
+            + 'buiten bekende datacenter-ranges. Ongefilterd zouden dit er '
+            + data.unique_30d_raw.toLocaleString('nl-NL')
+            + ' zijn over 30 dagen — vrijwel allemaal crawlers en scrapers.';
+          note.classList.remove('hidden');
+        }}
 
         // Chart
         const canvas = document.getElementById('visitorsChart');

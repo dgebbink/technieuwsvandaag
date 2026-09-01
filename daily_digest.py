@@ -28,6 +28,7 @@ from budget_monitor import collect_funds_report
 from instagram_monitor import collect_daily_instagram_report
 from config import (
     LOGS_DIR,
+    PAUSED,
     NOTIFICATION_EMAIL,
     SMTP_DISPLAY_NAME,
     SMTP_FROM,
@@ -434,4 +435,10 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true",
                         help="Sla op als bestand, verstuur geen mail")
     args = parser.parse_args()
-    send_digest(dry_run=args.dry_run)
+    # Noodrem uit .env. Zonder publicaties, Bluesky- of Instagram-posts is het
+    # dagoverzicht een lege mail; --dry-run blijft wel werken om de opmaak te
+    # kunnen controleren.
+    if PAUSED and not args.dry_run:
+        logger.info("TNV_PAUSED=true — dagoverzicht overgeslagen")
+    else:
+        send_digest(dry_run=args.dry_run)

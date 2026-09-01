@@ -152,13 +152,14 @@ def build_crontab(
         ]
 
     # Gecombineerd dagoverzicht om 20:00 CET (artikelen + Bluesky + tegoed)
-    lines += [
-        "",
-        "# Gecombineerd dagoverzicht om 20:00 CET (artikelen + Bluesky + Instagram + tegoed)",
-        f"0 20 * * * cd {project_path} && "
-        f"{PYTHON} daily_digest.py "
-        f">> {project_path}/logs/cron_digest.log 2>&1",
-    ]
+    if not PAUSED:
+        lines += [
+            "",
+            "# Gecombineerd dagoverzicht om 20:00 CET (artikelen + Bluesky + Instagram + tegoed)",
+            f"0 20 * * * cd {project_path} && "
+            f"{PYTHON} daily_digest.py "
+            f">> {project_path}/logs/cron_digest.log 2>&1",
+        ]
 
     # Editorial op ma/wo/vr om 09:00 CET — opiniërend redactiestuk over een
     # onderwerp uit de artikelen van de afgelopen dagen. 's Ochtends zodat er

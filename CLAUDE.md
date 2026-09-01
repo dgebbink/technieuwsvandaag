@@ -33,8 +33,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    crontab, en elk contentscript weigert bovendien zelf te draaien — die tweede
    is er voor een handmatige aanroep of een crontab die de oude regels nog heeft.
    Blíjven draaien: `scheduler.py` zelf (die genereert ook de snake-`@reboot`- en
-   amsterdam-regels, zie kernregel 2), `log_cleaner.py`, `service_watchdog.sh`,
-   `daily_digest.py` en de approval-server. **Hervatten:** zet `TNV_PAUSED=false`
+   amsterdam-regels, zie kernregel 2), `log_cleaner.py`, `service_watchdog.sh`
+   en de approval-server (die serveert de analytics-pagina en de nog openstaande
+   tokens). `daily_digest.py` is er op 2026-09-01 alsnog bij gezet: zonder
+   publicaties, Bluesky- of Instagram-posts was dat een lege mail.
+   **Hervatten:** zet `TNV_PAUSED=false`
    en draai `venv/bin/python3 scheduler.py`. Een `--dry-run` blijft altijd werken.
    Aanleiding: zie "Wat de bezoekcijfers waard zijn" hieronder.
    Aankondiging staat live als post 2744 (`/technieuwsvandaag-pauzeert-voorlopig/`).
@@ -79,16 +82,43 @@ Tencent Cloud, China Telecom met UA `"pc"` en verzonnen Baidu-referers,
 Lightpanda, en de eigen Uptime-Kuma. Geo-verdeling voor een Nederlandstalige
 site: US 113, CN 46, SG 44, **NL 18**.
 
-Drie gaten in `nginx_stats.py:19`: de UA-blacklist mist alles zonder het woord
-"bot" (`GoogleOther`, `Google-InspectionTool`, `Lightpanda`, `"pc"`,
-`ForestEngine`), er is geen assetcheck, en datacenter-ranges worden niet
-gefilterd. Meer UA-patronen toevoegen is dweilen; de robuuste toets is de
-omkering — **tel een IP pas als bezoeker als het bij die pageview óók de
-stylesheet of een afbeelding ophaalde.** Dat schrapte 267 van de 324 in één
-keer. AdSense telt zo laag omdat het pas meetelt als `adsbygoogle.js`
-daadwerkelijk in een renderende browser draait, en Google datacenter-ranges
-integraal als invalid traffic filtert. (Nog niet gefixt — de filter staat er nog
-ongewijzigd in.)
+AdSense telt zo laag omdat het pas meetelt als `adsbygoogle.js` daadwerkelijk in
+een renderende browser draait, en Google datacenter-ranges integraal als invalid
+traffic filtert.
+
+**Gefixt op 2026-09-01.** `nginx_stats.py` heeft nu drie filters in plaats van
+één; de meetdefinitie staat volledig in de docstring van dat bestand. De kern:
+**een IP telt pas als bezoeker wanneer het minstens één stylesheet én minstens
+één afbeelding heeft opgehaald.** Meer UA-patronen toevoegen was dweilen —
+crawlers verzinnen sneller een nieuwe naam dan je hem toevoegt — maar een
+scraper die de pagina niet rendert vraagt de bijbehorende bestanden nooit op.
+Drie dingen om te weten bij wijzigingen:
+
+- **Het browserbewijs geldt per IP over het hele venster, niet per dag.** Een
+  terugkerende lezer heeft css en beelden in zijn cache en vraagt ze niet
+  opnieuw op; een dagelijkse eis zou juist de trouwste bezoekers wegfilteren.
+  Daarom draait `collect()` in twee fasen: eerst álle regels lezen om het
+  bewijs te verzamelen, dán pas de pageviews filteren. Die volgorde is
+  noodzakelijk — het bewijs kan in een ánder logbestand staan dan de pageview
+  die het geldig maakt.
+- **`_DATACENTER_PREFIXES` is een zeef, geen hek.** Handmatige lijst van wat in
+  deze logs voorkwam (AWS, GCP, Tencent, Hetzner, OVH, IONOS, DigitalOcean,
+  Linode, Alibaba); een ASN-database is er niet, `dbip-country.mmdb` kent alleen
+  landen. Nieuwe ranges mogen erbij. Zonder deze stap blijft ~2/3 van wat de
+  assetcheck doorlaat een cloud-IP met een nagemaakte iPhone-UA.
+- **De uitkomst is een ondergrens.** Een lezer achter een VPN op een
+  datacenter-IP valt af. Daarom blijven `views_series_raw` /
+  `unique_series_raw` in de JSON staan, en toont de analytics-pagina eronder een
+  regel met het ongefilterde getal — anders lijkt de pagina stuk nu de cijfers
+  50× lager zijn.
+
+Resultaat over 14 dagen: 1–9 unieke bezoekers/dag tegen 256–915 daarvoor, en de
+geo-verdeling kantelde van "US bovenaan" naar Nederland bovenaan (78 van de
+~180 over 30 dagen) — precies wat je voor een Nederlandstalige site verwacht.
+Er verschijnen nu ook echte verwijzingen uit `go.bsky.app` en Instagram in de
+referrers. De volledige run over 90 dagen kost ~4 minuten (cron 06:00 + 18:00 op
+oracle-web schrijft `nginx_stats_cache.json`; de analytics-pagina leest alleen
+die cache).
 
 ## Commands
 
