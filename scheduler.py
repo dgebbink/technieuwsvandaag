@@ -195,6 +195,20 @@ def build_crontab(
         f">> {_AMS}/heal_runner.log 2>&1",
     ]
 
+    # Cultureel Amsterdam — dagelijkse mail-opvolg-agent (10:05 CET). Leest de
+    # @cultureelamsterdam.nl-mail op meterkast en volgt autonoom op (antwoorden +
+    # archiveren), mailt daarna een digest. Draait op de WORKSTATION omdat de
+    # iCloud-mailbox alleen vandaaruit (ssh meterkast) bereikbaar is — een
+    # cloud-routine kan daar niet bij. Alleen-stdlib, dus /usr/bin/python3.
+    # Zie amsterdam/scripts/mail_agent.py (pauze: MAIL_AGENT_PAUSED_UNTIL).
+    _AMS_SCRIPTS = "/home/dgebbink/projects/amsterdam/scripts"
+    lines += [
+        "",
+        "# Cultureel Amsterdam mail-opvolg-agent (10:05 CET)",
+        f"5 10 * * * cd {_AMS_SCRIPTS} && /usr/bin/python3 mail_agent.py "
+        f">> {_AMS_SCRIPTS}/mail_agent.log 2>&1",
+    ]
+
     return "\n".join(lines) + "\n"
 
 
