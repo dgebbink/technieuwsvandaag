@@ -195,6 +195,18 @@ def build_crontab(
         f">> {_AMS}/heal_runner.log 2>&1",
     ]
 
+    # Cultureel Amsterdam — datakwaliteit-runner (13:00 CET): audit van ~6 venue-sites per
+    # dag (elke venue ~1x per maand, voorzichtig: 3 pagina's met pauzes) en hooguit één
+    # geverifieerde parserverbetering per dag. Ná heal-runner (07:30) en mail-agent (10:05);
+    # beide runners delen een lock. Zie amsterdam/backend/scrapers/data_quality_runner.py
+    # (pauze: DQ_PAUSED_UNTIL in .env.heal).
+    lines += [
+        "",
+        "# Cultureel Amsterdam datakwaliteit-runner (13:00 CET)",
+        f"0 13 * * * cd {_AMS} && .venv/bin/python data_quality_runner.py "
+        f">> {_AMS}/data_quality_runner.log 2>&1",
+    ]
+
     # Cultureel Amsterdam — dagelijkse mail-opvolg-agent (10:05 CET). Leest de
     # @cultureelamsterdam.nl-mail op meterkast en volgt autonoom op (antwoorden +
     # archiveren), mailt daarna een digest. Draait op de WORKSTATION omdat de
