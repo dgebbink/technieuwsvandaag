@@ -207,6 +207,19 @@ def build_crontab(
         f">> {_AMS}/data_quality_runner.log 2>&1",
     ]
 
+    # Cultureel Amsterdam — gasten van Renk en Justus op vrijdag (Cultuurprogramma van de
+    # dag) uit de rundown van de Zeedijk-editor in de omschrijving van het event zetten.
+    # Donderdagnacht (na de rundown-deadline van 23:00) en vrijdag vlak vóór de
+    # Instagram-post van 08:xx. Zie amsterdam/backend/scrapers/zeedijk_gasten.py.
+    lines += [
+        "",
+        "# Cultureel Amsterdam gasten Renk en Justus (do 23:30, vr 07:40 CET)",
+        f"30 23 * * 4 cd {_AMS} && .venv/bin/python zeedijk_gasten.py "
+        f">> {_AMS}/zeedijk_gasten.log 2>&1",
+        f"40 7 * * 5 cd {_AMS} && .venv/bin/python zeedijk_gasten.py "
+        f">> {_AMS}/zeedijk_gasten.log 2>&1",
+    ]
+
     # Cultureel Amsterdam — dagelijkse mail-opvolg-agent (10:05 CET). Leest de
     # @cultureelamsterdam.nl-mail op meterkast en volgt autonoom op (antwoorden +
     # archiveren), mailt daarna een digest. Draait op de WORKSTATION omdat de
