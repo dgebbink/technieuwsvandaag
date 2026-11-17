@@ -120,6 +120,16 @@ referrers. De volledige run over 90 dagen kost ~4 minuten (cron 06:00 + 18:00 op
 oracle-web schrijft `nginx_stats_cache.json`; de analytics-pagina leest alleen
 die cache).
 
+**Op meterkast (sinds 2026-11-17): `nginx_stats.py --caddy`.** Sinds de verhuizing
+staat de site achter Caddy; met `--caddy` leest het script diens JSON-log via
+`docker exec caddy` (dus op meterkast draaien) met dezelfde filters, plus twee:
+alleen verkeer via Cloudflare telt (`Cf-Ipcountry` aanwezig — zonder die header is
+het een scanner op poort 443 van de router of een eigen LAN-bezoek; 58% van wat de
+UA-filter doorliet), en een IP met meer dan 20 pageviews op één dag telt die dag niet
+(crawler die alles meelaadt). Het land komt uit `Cf-Ipcountry`. De Nachtwacht (stap
+7d) gebruikt dit. **De analytics-pagina leest nog `nginx_stats_cache.json` van
+oracle-web** en toont dus de oude situatie — die is nog niet omgezet.
+
 ## Commands
 
 ```bash

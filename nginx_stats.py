@@ -1,9 +1,20 @@
 #!/usr/bin/env python3
 """
-nginx_stats.py — Parse nginx access logs and output visitor stats as JSON.
+nginx_stats.py — Parse access logs and output visitor stats as JSON.
 
-Runs on the Oracle web server; called via SSH from the local analytics page.
-Reads /var/log/nginx/access.log (and rotated copies) using sudo.
+Twee bronnen, met dezelfde filters:
+  * nginx (standaard) — de oude opzet op oracle-web: /var/log/nginx/access.log
+    en de geroteerde kopieën, via sudo. Aangeroepen via SSH door de
+    analytics-pagina.
+  * `--caddy` — sinds de verhuizing naar meterkast (2026-10-21) staat de site
+    achter Caddy. De JSON-logs staan in de caddy-container
+    (/data/logs/technieuwsvandaag.access.log + gerolde .gz), alleen leesbaar
+    voor root, dus via `docker exec caddy`. Draai dit op meterkast (de
+    Nachtwacht doet dat). Het echte bezoekers-IP is `request.client_ip`
+    (Caddy vertrouwt de Cloudflare-tunnel), het land komt uit Cloudflare's
+    `Cf-Ipcountry`-header — geen GeoIP-database nodig. Zonder die header kwam
+    het verzoek níét via Cloudflare (scanner op de router, of eigen LAN) en
+    telt het niet mee; zie collect().
 
 **Een IP telt pas als bezoeker wanneer het zich als browser heeft bewezen:
 minstens één stylesheet én minstens één afbeelding opgehaald.** Tot 2026-09-01
@@ -22,6 +33,8 @@ Drie filters, in deze volgorde:
   3. Datacenter-ranges — AWS, GCP, Tencent, Hetzner, OVH, IONOS. Zonder deze
      stap blijft ~2/3 van wat filter 2 doorlaat een cloud-IP met een
      nagemaakte iPhone-UA.
+  4. Meer dan MAX_VIEWS_PER_DAY pagina's van één IP op één dag (sinds
+     2026-11-17): een crawler die alles meelaadt. Alleen die dag valt weg.
 
 Het bewijs uit filter 2 geldt **per IP over het hele venster**, niet per dag.
 Dat is bewust: een terugkerende bezoeker heeft css en beelden in zijn
@@ -38,6 +51,7 @@ import json
 import re
 import subprocess
 import sys
+from zoneinfo import ZoneInfo
 from collections import Counter, defaultdict
 from datetime import date, timedelta, datetime
 from typing import List, Optional
@@ -241,16 +255,63 @@ def _read_log(path: str) -> List[str]:
         return []
 
 
+def _nginx_records():
+    """(ip, uri, ua, status, dt, referer, country) per regel uit de nginx-logs."""
+    log_files = ["/var/log/nginx/access.log", "/var/log/nginx/access.log.1"]
+    for i in range(2, 20):
+        log_files.append(f"/var/log/nginx/access.log.{i}.gz")
+    for log_path in log_files:
+        for line in _read_log(log_path):
+            m = LOG_RE.match(line)
+            if not m:
+                continue
+            yield (m.group("ip"), m.group("path"), m.group("ua"), int(m.group("status")),
+                   _parse_dt(m.group("time")), m.group("referer"), None)
+
+
+CADDY_LOG = "technieuwsvandaag"
+_AMS = ZoneInfo("Europe/Amsterdam")
+
+
+def _caddy_records(name: str = CADDY_LOG):
+    """Hetzelfde als _nginx_records, uit de JSON-logs van Caddy (zie docstring).
+
+    Gestreamd: alle gerolde bestanden samen zijn honderden MB's.
+    """
+    cmd = ["docker", "exec", "caddy", "sh", "-c",
+           f"for f in /data/logs/{name}.access-*.log.gz; do [ -f \"$f\" ] && zcat \"$f\"; done; "
+           f"cat /data/logs/{name}.access.log"]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    try:
+        for line in proc.stdout:
+            try:
+                r = json.loads(line)
+                req = r["request"]
+                h = req.get("headers") or {}
+            except (ValueError, KeyError, TypeError):
+                continue
+            ua = (h.get("User-Agent") or ["-"])[0]
+            referer = (h.get("Referer") or ["-"])[0]
+            yield (req.get("client_ip") or req.get("remote_ip", ""), req.get("uri", ""),
+                   ua, int(r.get("status", 0)),
+                   datetime.fromtimestamp(r.get("ts", 0), _AMS), referer,
+                   (h.get("Cf-Ipcountry") or [None])[0])
+    finally:
+        proc.stdout.close()
+        proc.wait(timeout=30)
+
+
 # ---------------------------------------------------------------------------
 # Main collect
 # ---------------------------------------------------------------------------
 
 # Bestandssoorten die alleen een renderende browser opvraagt.
+MAX_VIEWS_PER_DAY = 20  # zie filter 4 in collect()
 _CSS_RE = re.compile(r"\.css(\?|$)", re.IGNORECASE)
 _IMG_RE = re.compile(r"\.(jpg|jpeg|png|webp|gif|svg)(\?|$)", re.IGNORECASE)
 
 
-def collect(days: int = 90) -> dict:
+def collect(days: int = 90, source: str = "nginx") -> dict:
     """Leest de nginx-logs en levert bezoekstatistieken als dict.
 
     Twee fasen, en die volgorde is noodzakelijk: het browserbewijs van een IP
@@ -266,9 +327,7 @@ def collect(days: int = 90) -> dict:
     today = date.today()
     cutoff = today - timedelta(days=days - 1)
 
-    log_files = ["/var/log/nginx/access.log", "/var/log/nginx/access.log.1"]
-    for i in range(2, 20):
-        log_files.append(f"/var/log/nginx/access.log.{i}.gz")
+    records = _caddy_records() if source == "caddy" else _nginx_records()
 
     # ------------------------------------------------------------------
     # Fase 1 — alle regels lezen: browserbewijs verzamelen en de kandidaat-
@@ -278,52 +337,58 @@ def collect(days: int = 90) -> dict:
     loaded_img: set = set()
     candidates: list = []  # (day_str, ip, path, ua, referer, hour, weekday)
 
-    for log_path in log_files:
-        for line in _read_log(log_path):
-            m = LOG_RE.match(line)
-            if not m:
-                continue
+    countries_by_ip: dict = {}
+    for ip, raw, ua, status, dt, referer, country in records:
+        # Browserbewijs telt ongeacht status of datum: een 304 op de
+        # stylesheet bewijst net zo goed dat er een browser aan de andere
+        # kant zit, en het venster is toch al afgebakend door de bestanden.
+        if _CSS_RE.search(raw):
+            loaded_css.add(ip)
+        elif _IMG_RE.search(raw):
+            loaded_img.add(ip)
 
-            ip  = m.group("ip")
-            raw = m.group("path")
+        # Filter 1: user-agent
+        if _is_bot_ua(ua):
+            continue
+        if status != 200:
+            continue
 
-            # Browserbewijs telt ongeacht status of datum: een 304 op de
-            # stylesheet bewijst net zo goed dat er een browser aan de andere
-            # kant zit, en het venster is toch al afgebakend door de bestanden.
-            if _CSS_RE.search(raw):
-                loaded_css.add(ip)
-            elif _IMG_RE.search(raw):
-                loaded_img.add(ip)
+        path = raw.split("?")[0].rstrip("/") or "/"
+        if _SKIP_PATHS.search(path) or not PAGE_RE.match(path):
+            continue
 
-            # Filter 1: user-agent
-            ua = m.group("ua")
-            if _is_bot_ua(ua):
-                continue
-            if int(m.group("status")) != 200:
-                continue
+        if not dt or dt.date() < cutoff:
+            continue
 
-            path = raw.split("?")[0].rstrip("/") or "/"
-            if _SKIP_PATHS.search(path) or not PAGE_RE.match(path):
-                continue
-
-            dt = _parse_dt(m.group("time"))
-            if not dt or dt.date() < cutoff:
-                continue
-
-            candidates.append(
-                (dt.date().isoformat(), ip, path, ua, m.group("referer"),
-                 dt.hour, dt.weekday())
-            )
+        # Caddy: alleen wat via Cloudflare binnenkwam (die zet Cf-Ipcountry).
+        # De DNS wijst naar Cloudflare, dus een lezer komt altijd zo binnen;
+        # zonder die header is het een scanner op poort 443 van de router, of
+        # een eigen bezoek vanaf het LAN (Pi-hole wijst daar rechtstreeks naar
+        # Caddy). Op 2026-11-17 was dat 58% van wat filter 1 doorliet.
+        if source == "caddy" and not country:
+            continue
+        if country:
+            countries_by_ip[ip] = country
+        candidates.append(
+            (dt.date().isoformat(), ip, path, ua, referer, dt.hour, dt.weekday())
+        )
 
     # ------------------------------------------------------------------
     # Fase 2 — pas nu is bekend welke IP's zich als browser gedroegen.
     # ------------------------------------------------------------------
     browsers = loaded_css & loaded_img
 
+    # Filter 4: een IP dat op één dag meer dan MAX_VIEWS_PER_DAY pagina's
+    # opvraagt is een crawler die css en beelden meelaadt, geen lezer. Op
+    # 11 en 13 nov 2026 waren twee zulke IP's (CN, GB) samen ~110 van de 125
+    # pageviews van die week. Geldt alleen voor die dag.
+    per_ip_day = Counter((d, ip) for d, ip, *_ in candidates)
+    crawler_days = {k for k, n in per_ip_day.items() if n > MAX_VIEWS_PER_DAY}
+
     def _is_visitor(ip: str) -> bool:
         return ip in browsers and not _is_datacenter(ip)
 
-    geo_reader = _make_geo_reader()
+    geo_reader = None if source == "caddy" else _make_geo_reader()
 
     daily_views:  defaultdict = defaultdict(int)
     daily_unique: defaultdict = defaultdict(set)
@@ -344,7 +409,7 @@ def collect(days: int = 90) -> dict:
         raw_views[day_str] += 1
         raw_unique[day_str].add(ip)
 
-        if not _is_visitor(ip):
+        if not _is_visitor(ip) or (day_str, ip) in crawler_days:
             continue
 
         daily_views[day_str] += 1
@@ -360,7 +425,7 @@ def collect(days: int = 90) -> dict:
         os_counter[_os(ua)] += 1
 
         if ip not in seen_ips:
-            seen_ips[ip] = _country(ip, geo_reader)
+            seen_ips[ip] = countries_by_ip.get(ip) or _country(ip, geo_reader)
         country_counter[seen_ips[ip]] += 1
 
         ref_label = _referer_label(referer)
@@ -386,6 +451,15 @@ def collect(days: int = 90) -> dict:
     today_idx    = labels.index(today.isoformat()) if today.isoformat() in labels else -1
     views_today  = views_series[today_idx]  if today_idx >= 0 else 0
     unique_today = unique_series[today_idx] if today_idx >= 0 else 0
+    # Gisteren: de Nachtwacht draait om 05:00, dan is "vandaag" nog vrijwel leeg.
+    y_idx = today_idx - 1 if today_idx >= 1 else -1
+    views_yesterday  = views_series[y_idx]  if y_idx >= 0 else 0
+    unique_yesterday = unique_series[y_idx] if y_idx >= 0 else 0
+
+    # Echt verschillende bezoekers in het venster (de *_7d/*_30d-velden tellen
+    # dagelijkse unieken bij elkaar op, zoals de analytics-pagina altijd deed).
+    def _distinct(start_label):
+        return len(set().union(*(daily_unique.get(d, set()) for d in labels if d >= start_label)))
 
     return {
         "labels":          labels,
@@ -397,6 +471,12 @@ def collect(days: int = 90) -> dict:
         "unique_series_raw": unique_raw,
         "views_today":     views_today,
         "unique_today":    unique_today,
+        "views_yesterday":  views_yesterday,
+        "unique_yesterday": unique_yesterday,
+        "distinct_7d":     _distinct(week_ago),
+        "distinct_30d":    _distinct(month_ago),
+        "distinct_window": _distinct(labels[0]),
+        "first_day_seen":  min((d for d in labels if raw_views.get(d)), default=None),
         "views_7d":        _sum(views_series,  week_ago),
         "unique_7d":       _sum(unique_series, week_ago),
         "views_30d":       _sum(views_series,  month_ago),
@@ -413,5 +493,7 @@ def collect(days: int = 90) -> dict:
 
 
 if __name__ == "__main__":
-    days = int(sys.argv[1]) if len(sys.argv) > 1 else 90
-    print(json.dumps(collect(days)))
+    # Gebruik: nginx_stats.py [dagen] [--caddy]
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    days = int(args[0]) if args else 90
+    print(json.dumps(collect(days, "caddy" if "--caddy" in sys.argv else "nginx")))
