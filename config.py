@@ -37,6 +37,40 @@ BASE_DIR: Path = Path(__file__).parent
 # blijft juist het venster waarin je ziet dát er niets meer gepost wordt.
 PAUSED: bool = os.environ.get("TNV_PAUSED", "false").lower() == "true"
 
+# Publicatieritme (sinds de herstart van 2026-11-17). Niet meer 5 artikelen per
+# dag, maar alleen op vaste weekdagen een klein blok: ARTICLES_PER_PUBLISH_DAY
+# nieuwsruns direct na elkaar op één willekeurig moment in het ochtendvenster.
+# Eén run publiceert één artikel; de tweede ziet het eerste al als recent en
+# kiest dus geen dubbel onderwerp. Op andere dagen staat er geen enkele
+# contentregel in de crontab, ook geen Instagram-digest of dagoverzicht — die
+# zouden leeg zijn. Weekdagen als Python-weekday: 0 = maandag … 6 = zondag.
+PUBLISH_WEEKDAYS: frozenset[int] = frozenset(
+    int(d) for d in os.environ.get("TNV_PUBLISH_WEEKDAYS", "0,3").split(",") if d.strip()
+)
+ARTICLES_PER_PUBLISH_DAY: int = int(os.environ.get("TNV_ARTICLES_PER_PUBLISH_DAY", "2"))
+PUBLISH_WINDOW: tuple[int, int] = (8, 10)  # start, eind (uur, Amsterdam-tijd)
+
+
+def is_publish_day(day: date | None = None) -> bool:
+    """True als `day` (standaard vandaag) een publicatiedag is."""
+    return (day or date.today()).weekday() in PUBLISH_WEEKDAYS
+
+
+def next_publish_day(after: date | None = None) -> date:
+    """De eerstvolgende publicatiedag ná `after` (standaard vandaag)."""
+    d = after or date.today()
+    for _ in range(7):
+        d += timedelta(days=1)
+        if is_publish_day(d):
+            return d
+    raise ValueError("TNV_PUBLISH_WEEKDAYS is leeg")
+
+
+# De Instagram-Reel (weekly_reel.py) staat sinds de herstart van 2026-11-17 uit:
+# met vier artikelen per week is er te weinig voor een recap. Aanzetten met
+# ENABLE_REEL=true; de cyclus (REEL_CYCLE_DAYS) loopt gewoon door.
+ENABLE_REEL: bool = os.environ.get("ENABLE_REEL", "false").lower() == "true"
+
 # WordPress
 WP_URL: str = os.environ.get("WP_URL", "https://technieuwsvandaag.nl")
 WP_USERNAME: str = os.environ.get("WP_USERNAME", "")

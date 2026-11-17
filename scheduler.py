@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Daily random scheduler for TechNieuwsVandaag.
-Run once at midnight to set that day's 5 article slots.
-Generates random times between 07:00-19:00 CET with
-minimum 90 minute gaps between runs.
+Daily scheduler for TechNieuwsVandaag.
+Draait elke nacht om 00:00 en zet de crontab van die dag. Op een publicatiedag
+(config.PUBLISH_WEEKDAYS, standaard ma + do) komt er één willekeurig moment in
+het ochtendvenster waarop ARTICLES_PER_PUBLISH_DAY nieuwsruns direct na elkaar
+draaien; op andere dagen geen enkele contentregel. Tot 2026-09-01 waren het 5
+runs per dag tussen 07:00 en 19:00.
 """
 
 import os
@@ -13,7 +15,18 @@ from datetime import datetime, date
 
 # config pint TZ op Europe/Amsterdam (zie daar) — importeer het vóór er ook maar
 # één datum of tijd wordt berekend.
-from config import PAUSED, REEL_CYCLE_DAYS, is_reel_day, next_reel_day
+from config import (
+    ARTICLES_PER_PUBLISH_DAY,
+    ENABLE_EDITORIAL,
+    ENABLE_REEL,
+    PAUSED,
+    PUBLISH_WINDOW,
+    REEL_CYCLE_DAYS,
+    is_publish_day,
+    is_reel_day,
+    next_publish_day,
+    next_reel_day,
+)
 
 PYTHON = "/home/dgebbink/projects/technieuwsvandaag/venv/bin/python3"
 
@@ -52,6 +65,7 @@ def generate_random_times(
 def build_crontab(
     project_path: str,
     cet_times: list[tuple[int, int]],
+    publish_day: bool | None = None,
 ) -> str:
     """Builds complete crontab string for today's schedule.
 
@@ -71,6 +85,8 @@ def build_crontab(
     Post: returns crontab string with all recurring and
           daily-random jobs included
     """
+    if publish_day is None:
+        publish_day = is_publish_day()
     lines = [
         "# Edit this file to introduce tasks to be run by cron.",
         "PATH=/usr/bin:/bin:/usr/local/bin:/home/dgebbink/.local/bin",
@@ -99,15 +115,18 @@ def build_crontab(
             "# en draai scheduler.py om ze terug te zetten.",
             "# ---------------------------------------------------------------",
         ]
+    elif not publish_day:
+        lines += [f"# Geen publicatiedag — eerstvolgende: {next_publish_day().isoformat()}"]
     else:
-        lines += ["# Daily article runs (random CET times):"]
-        for i, (h, m) in enumerate(cet_times, 1):
-            lines.append(
-                f"{m} {h} * * * cd {project_path} && "
-                f"{PYTHON} main.py "
-                f">> {project_path}/logs/cron_run_{i}.log 2>&1"
-                f"  # slot {i}: {h:02d}:{m:02d} CET"
+        # Eén moment, de runs na elkaar (`;`, niet `&&`: mislukt de eerste,
+        # dan krijgt de tweede nog een kans). Elk een eigen log, zoals vroeger.
+        lines += [f"# Publicatiedag: {ARTICLES_PER_PUBLISH_DAY} nieuwsruns na elkaar:"]
+        for h, m in cet_times:
+            runs = "; ".join(
+                f"{PYTHON} main.py >> {project_path}/logs/cron_run_{i}.log 2>&1"
+                for i in range(1, ARTICLES_PER_PUBLISH_DAY + 1)
             )
+            lines.append(f"{m} {h} * * * cd {project_path} && {runs}  # {h:02d}:{m:02d}")
 
     # Log cleanup altijd om 00:00 cron-klok (vóór scheduler-regeneratie)
     lines += [
@@ -121,7 +140,7 @@ def build_crontab(
     # Instagram-digest om 19:45 CET — bundelt de dagwachtrij tot één post,
     # ruim ná het laatste artikel-slot (uiterlijk 19:00) en vóór het
     # dagoverzicht, zodat die de post nog kan meenemen als hij dat ooit doet
-    if not PAUSED:
+    if not PAUSED and publish_day:
         lines += [
             "",
             "# Instagram-digest om 19:45 CET (bundelt de dagartikelen tot 1 post)",
@@ -135,8 +154,8 @@ def build_crontab(
     # De regel staat alleen in de crontab op een cyclusdag; op andere dagen
     # ontbreekt hij gewoon. Daardoor kan de weekdag rouleren, wat met een
     # cron-veld niet uit te drukken is (day-of-month/6 springt per maand).
-    if PAUSED:
-        pass  # Reel-regel weggelaten, zie het pauzeblok hierboven
+    if PAUSED or not ENABLE_REEL:
+        pass  # Reel-regel weggelaten (pauze, of ENABLE_REEL=false)
     elif is_reel_day():
         lines += [
             "",
@@ -151,8 +170,9 @@ def build_crontab(
             f"# Geen Instagram-Reel vandaag — eerstvolgende: {next_reel_day().isoformat()}",
         ]
 
-    # Gecombineerd dagoverzicht om 20:00 CET (artikelen + Bluesky + tegoed)
-    if not PAUSED:
+    # Gecombineerd dagoverzicht om 20:00 CET (artikelen + Bluesky + tegoed),
+    # alleen op publicatiedagen: op andere dagen staat er niets in.
+    if not PAUSED and publish_day:
         lines += [
             "",
             "# Gecombineerd dagoverzicht om 20:00 CET (artikelen + Bluesky + Instagram + tegoed)",
@@ -164,8 +184,9 @@ def build_crontab(
     # Editorial op ma/wo/vr om 09:00 CET — opiniërend redactiestuk over een
     # onderwerp uit de artikelen van de afgelopen dagen. 's Ochtends zodat er
     # een werkdag overblijft om het concept te lezen; het gaat als draft naar
-    # WordPress en wacht op de Publiceer-knop in de mail.
-    if not PAUSED:
+    # WordPress en wacht op de Publiceer-knop in de mail. Uit zolang
+    # ENABLE_EDITORIAL=false (sinds de herstart van 2026-11-17).
+    if not PAUSED and ENABLE_EDITORIAL:
         lines += [
             "",
             "# Editorial op ma/wo/vr om 09:00 CET (draft + goedkeuringsmail)",
@@ -240,31 +261,34 @@ def build_crontab(
 def main() -> None:
     """Generates and installs today's random schedule.
     Pre:  script is in project root; logs/ dir exists
-    Post: crontab updated with 5 random slots for today
+    Post: crontab updated for today (publicatiedag: één moment met
+          ARTICLES_PER_PUBLISH_DAY runs; anders geen contentregels)
           schedule written to logs/daily_schedule.log
     """
     project_path = os.path.dirname(os.path.abspath(__file__))
     os.makedirs(f"{project_path}/logs", exist_ok=True)
 
+    publish_day = is_publish_day()
     if PAUSED:
         cet_times = []
         print(f"TNV_PAUSED=true — geen contentregels in de crontab ({date.today().isoformat()})")
+    elif not publish_day:
+        cet_times = []
+        print(f"Geen publicatiedag ({date.today().isoformat()}) — eerstvolgende: "
+              f"{next_publish_day().isoformat()}")
     else:
-        cet_times = generate_random_times(
-            n=5,
-            start_hour=7,
-            end_hour=19,
-            min_gap_minutes=90,
-        )
+        start, end = PUBLISH_WINDOW
+        cet_times = generate_random_times(n=1, start_hour=start, end_hour=end)
     cet_str = [f"{h:02d}:{m:02d}" for h, m in cet_times]
-    if not PAUSED:
-        print(f"Vandaag ({date.today().isoformat()}) schema (CET): {cet_str}")
+    if not PAUSED and publish_day:
+        print(f"Vandaag ({date.today().isoformat()}) {ARTICLES_PER_PUBLISH_DAY} artikelen om (CET): {cet_str}")
     print(f"Lokale klok van dit proces: {datetime.now().astimezone():%Y-%m-%d %H:%M %Z}")
 
     with open(f"{project_path}/logs/daily_schedule.log", "a") as f:
-        f.write(f"{date.today().isoformat()} {'GEPAUZEERD' if PAUSED else cet_str}\n")
+        stand = "GEPAUZEERD" if PAUSED else (cet_str if publish_day else "geen publicatiedag")
+        f.write(f"{date.today().isoformat()} {stand}\n")
 
-    crontab = build_crontab(project_path, cet_times)
+    crontab = build_crontab(project_path, cet_times, publish_day)
 
     proc = subprocess.run(
         ["crontab", "-"],

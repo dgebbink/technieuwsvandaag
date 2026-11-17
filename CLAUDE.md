@@ -27,20 +27,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    zodat planning, `date.today()` en logtijden gelijklopen. `CRON_TZ` is geen
    alternatief — cron 3.0pl1 negeert het. Gevonden en gefixt 2026-08-03.
 
-5. **De contentproductie staat GEPAUZEERD sinds 2026-09-01** (`TNV_PAUSED=true`
-   in `.env` → `config.PAUSED`). Nieuwsruns, editorial, Instagram-digest en Reel
-   draaien niet. Twee grendels: `scheduler.py` laat de contentregels wég uit de
-   crontab, en elk contentscript weigert bovendien zelf te draaien — die tweede
-   is er voor een handmatige aanroep of een crontab die de oude regels nog heeft.
-   Blíjven draaien: `scheduler.py` zelf (die genereert ook de snake-`@reboot`- en
-   amsterdam-regels, zie kernregel 2), `log_cleaner.py`, `service_watchdog.sh`
-   en de approval-server (die serveert de analytics-pagina en de nog openstaande
-   tokens). `daily_digest.py` is er op 2026-09-01 alsnog bij gezet: zonder
-   publicaties, Bluesky- of Instagram-posts was dat een lege mail.
-   **Hervatten:** zet `TNV_PAUSED=false`
-   en draai `venv/bin/python3 scheduler.py`. Een `--dry-run` blijft altijd werken.
-   Aanleiding: zie "Wat de bezoekcijfers waard zijn" hieronder.
-   Aankondiging staat live als post 2744 (`/technieuwsvandaag-pauzeert-voorlopig/`).
+5. **Publicatieritme: alleen maandag en donderdag, 2 artikelen per keer** (sinds
+   de herstart van 2026-11-17; daarvoor van 2026-09-01 tot 2026-11-17 volledig
+   gepauzeerd, daarvóór 5 per dag). Op een publicatiedag zet `scheduler.py` één
+   willekeurig moment tussen 08:00 en 10:00 met twee `main.py`-runs direct na
+   elkaar (één artikel per run; de tweede ziet het eerste als recent → geen dubbel
+   onderwerp), plus 19:45 Instagram-digest (carousel) en 20:00 dagoverzicht. Op
+   andere dagen staat er géén contentregel in de crontab. Instellingen in `.env`:
+   `TNV_PUBLISH_WEEKDAYS` (standaard `0,3`, Python-weekday), `TNV_ARTICLES_PER_PUBLISH_DAY`
+   (2); het venster is `PUBLISH_WINDOW` in `config.py`. Bluesky volgt elk artikel
+   (`ENABLE_SOCIAL_POSTING`). **Uit:** editorial (`ENABLE_EDITORIAL=false`) en de
+   Reel (`ENABLE_REEL=false`, nieuwe vlag; `weekly_reel.py` weigert dan ook zelf).
+   **Pauzeren kan nog steeds** met `TNV_PAUSED=true` + `venv/bin/python3 scheduler.py`:
+   dan vallen alle contentregels weg en weigert elk contentscript zelf te draaien.
+   De pauze-aankondiging (post 2744) staat sinds de herstart als concept.
 
 6. **AdSense en álle cookies zijn van de site af (1 sep 2026).** De site laadt
    geen enkel script van Google meer en zet geen enkele cookie — geverifieerd op
@@ -144,13 +144,13 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
 
 ## Scheduling & services (workstation)
 
-- **Cron (user)**: 00:00 `scheduler.py` regenereert het schema → 5× `main.py` op
-  random tijden (07:00–19:00 CET, min. 90 min tussenruimte), 00:00 `log_cleaner.py`,
-  ma/wo/vr 09:00 CET `editorial.py` (opiniërend redactiestuk → WP-draft +
+- **Cron (user)**: 00:00 `scheduler.py` regenereert het schema → op ma/do één
+  moment (08:00–10:00) met 2× `main.py` na elkaar (zie kernregel 5), 00:00 `log_cleaner.py`,
+  [uit sinds 2026-11-17] ma/wo/vr 09:00 CET `editorial.py` (opiniërend redactiestuk → WP-draft +
   goedkeuringsmail; zie Architecture),
-  elke 6 dagen 11:00 CET `weekly_reel.py` (silent Instagram-Reel-recap — de
-  cyclus rouleert de weekdag, zie hieronder), 19:45 CET `instagram_digest.py` (bundelt de dagelijkse Instagram-
-  artikelen tot 1 post), 20:00 CET `daily_digest.py` (gecombineerd dagoverzicht:
+  [uit sinds 2026-11-17, `ENABLE_REEL`] elke 6 dagen 11:00 CET `weekly_reel.py` (silent Instagram-Reel-recap — de
+  cyclus rouleert de weekdag, zie hieronder), 19:45 CET (alleen publicatiedagen) `instagram_digest.py` (bundelt de dagelijkse Instagram-
+  artikelen tot 1 post), 20:00 CET (alleen publicatiedagen) `daily_digest.py` (gecombineerd dagoverzicht:
   artikelen + Bluesky + Instagram + FAL.ai-tegoed via `bluesky_monitor.py` +
   `instagram_monitor.py` + `budget_monitor.py`).
   De Instagram-sectie toont volgers, posts van vandaag met likes/reacties en de
