@@ -1,27 +1,16 @@
 #!/usr/bin/env bash
 # ssl_watchdog.sh — controleert SSL-certificaten en repareert nginx-config automatisch
-# Stuurt Telegram-melding bij problemen of fixes.
+# Logt problemen en fixes naar $LOG_FILE (Telegram verwijderd op 2026-11-17).
 set -euo pipefail
 
 ### Config ###
 NGINX_SITES="/etc/nginx/sites-available"
 LETSENCRYPT_LIVE="/etc/letsencrypt/live"
 WARN_DAYS=30          # waarschuw als cert binnen N dagen verloopt
-TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
-TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
 LOG_FILE="/var/log/ssl_watchdog.log"
 
 ### Helpers ###
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
-
-telegram() {
-    local msg="$1"
-    [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]] && return 0
-    curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-        -d chat_id="$TELEGRAM_CHAT_ID" \
-        -d parse_mode="HTML" \
-        -d text="$msg" > /dev/null
-}
 
 # Geeft resterende dagen terug voor een PEM-bestand; -1 bij fout
 cert_days_left() {
@@ -134,12 +123,10 @@ if (( nginx_changed )); then
     fi
 fi
 
-# Stuur Telegram-bericht
+# Meld de bevindingen in de log
 if (( ${#messages[@]} > 0 )); then
-    body=$(printf '%s\n' "${messages[@]}")
-    telegram "🔒 <b>SSL Watchdog — $(hostname)</b>
-
-$body"
+    # De berichten bevatten nog HTML-opmaak (<b>, <code>); die hoort niet in een log.
+    for msg in "${messages[@]}"; do log "MELDING: $(sed 's/<[^>]*>//g' <<<"$msg")"; done
 elif (( issues == 0 )); then
     log "Alle certificaten OK"
 fi

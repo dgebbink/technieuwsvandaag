@@ -163,7 +163,7 @@ def process_single_url(url: str) -> dict | None:
         processed.image_path = generate_image_for_article(
             title=processed.titel,
             article_text=processed.samenvatting,
-            dest_path="/tmp/tnv_telegram_image.jpg",
+            dest_path="/tmp/tnv_adhoc_image.jpg",
             dry_run=False,
         )
     else:
@@ -173,7 +173,7 @@ def process_single_url(url: str) -> dict | None:
         if not img_url:
             img_url = extract_image_from_page(processed.original.url, session)
         if img_url:
-            processed.image_path = download_image(img_url, "/tmp/tnv_telegram_image.jpg")
+            processed.image_path = download_image(img_url, "/tmp/tnv_adhoc_image.jpg")
 
     # Stap 4: WordPress draft aanmaken
     from wordpress_client import publish_articles, publish_post

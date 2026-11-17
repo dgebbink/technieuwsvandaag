@@ -213,12 +213,13 @@ venv/bin/python3 -c "from scraper import scrape_all_sources; arts = scrape_all_s
   alleen op LAN/VPN.
 - **Service watchdog**: `service_watchdog.sh` elke 5 min via cron (in de
   scheduler-template) — herstart gestopte supervisor-services, herstelt
-  log-permissies, meldt via Telegram (credentials uit `.env`).
+  log-permissies, en logt wat het deed naar `logs/service_watchdog.log`.
 - **Op oracle-web**: cron (ubuntu) 06:00+18:00 draait `nginx_stats.py` → JSON-cache
   voor de analytics-pagina; root-cron 05:15 UTC draait
   `/usr/local/bin/ssl_watchdog.sh` (kopie van `ssl_watchdog.sh` hier) — controleert
-  en vernieuwt SSL-certs, herstelt nginx-config, meldt via Telegram (env:
-  `/root/ssl_watchdog.env`).
+  en vernieuwt SSL-certs, herstelt nginx-config. De kopie op oracle-web meldt nog via Telegram
+  (`/root/ssl_watchdog.env`); de versie hier logt alleen (Telegram verwijderd
+  2026-11-17).
 
 ## Hulpscripts (handmatig)
 

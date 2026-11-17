@@ -8,22 +8,6 @@ LOGS_DIR="${PROJECT_DIR}/logs"
 LOG_OWNER="dgebbink"
 SERVICES=("tnv-approval-server")
 
-# Laad Telegram-credentials uit project-.env (cron heeft geen environment)
-if [[ -f "${PROJECT_DIR}/.env" ]]; then
-    TELEGRAM_BOT_TOKEN=$(grep -oP '^TELEGRAM_BOT_TOKEN=\K.*' "${PROJECT_DIR}/.env" || true)
-    TELEGRAM_CHAT_ID=$(grep -oP '^TELEGRAM_ALLOWED_USER_ID=\K.*' "${PROJECT_DIR}/.env" || true)
-fi
-TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
-TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
-
-telegram() {
-    [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]] && return 0
-    curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-        -d chat_id="$TELEGRAM_CHAT_ID" \
-        -d parse_mode="HTML" \
-        -d text="$1" > /dev/null
-}
-
 fixed=()
 alerts=()
 
@@ -46,17 +30,15 @@ for svc in "${SERVICES[@]}"; do
         if [[ "$new_status" == "RUNNING" ]]; then
             fixed+=("Service herstart: $svc (was: $status)")
         else
-            alerts+=("❌ <b>$svc</b> staat op <code>$new_status</code> en kon niet worden herstart.")
+            alerts+=("FOUT: $svc staat op $new_status en kon niet worden herstart.")
         fi
     fi
 done
 
-# Stuur melding als er iets gerepareerd of mis is
+# Meld wat er gerepareerd of mis is in de log (cron schrijft stdout naar
+# logs/service_watchdog.log). Telegram is op 2026-11-17 verwijderd: niet gebruikt.
 if (( ${#fixed[@]} > 0 || ${#alerts[@]} > 0 )); then
-    body=""
-    for msg in "${fixed[@]}"; do body+="🔧 $msg"$'\n'; done
-    for msg in "${alerts[@]}"; do body+="$msg"$'\n'; done
-    telegram "⚙️ <b>Service Watchdog</b>
-
-${body}"
+    ts=$(date '+%Y-%m-%d %H:%M:%S')
+    for msg in "${fixed[@]}"; do echo "[$ts] $msg"; done
+    for msg in "${alerts[@]}"; do echo "[$ts] $msg"; done
 fi
